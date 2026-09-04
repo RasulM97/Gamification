@@ -1,0 +1,14 @@
+node_modules
+dist/
+test-results
+playwright-report
+report/
+Gamification.zip
+__pycache__/
+.pytest_cache/
+*.pyc
+.venv/
+backend/.env
+backend/uploads/
+backend/test-uploads/
+*.tsbuildinfo
