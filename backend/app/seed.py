@@ -226,6 +226,10 @@ def run(db: Session) -> None:
 
     # ── ledger (l2–l4 intentional pre-seed history) ──────────────────────
     db.add_all([
+        # N2: pre-seed economy for Marcus's manager reward redemption (r3),
+        # same pre-seed-history pattern as l2–l4.
+        LedgerTransaction(id='l11', company_id=co.id, at=now - 2 * H, user_id='u-marcus', type='REDEMPTION', amount=-150, ref='Reward redemption — Ergonomic home-office upgrade'),
+        LedgerTransaction(id='l10', company_id=co.id, at=now - 10 * D, user_id='u-marcus', type='TASK_REWARD', amount=150, ref='Task reward — Q3 partner enablement program'),
         LedgerTransaction(id='l9', company_id=co.id, at=now - 5 * H, user_id='u-priya', type='REDEMPTION', amount=-30, ref='Reward redemption — Lunch voucher'),
         LedgerTransaction(id='l8', company_id=co.id, at=now - 1 * D, user_id='u-jonas', type='REDEMPTION', amount=-60, ref='Reward redemption — Company hoodie'),
         LedgerTransaction(id='l7', company_id=co.id, at=now - 3 * D, user_id='u-priya', type='TASK_PARTIAL_REWARD', amount=6, ref='Partial reward (20%) — Quarterly commission reconciliation', task_id='t-commission', cycle=1),
@@ -238,13 +242,16 @@ def run(db: Session) -> None:
     ])
 
     # ── rewards & redemptions ────────────────────────────────────────────
+    # N2-A: eligibility per reward; rw-devsetup is manager-only.
     db.add_all([
-        Reward(id='rw-lunch', company_id=co.id, name='Lunch voucher', description='€25 voucher for the bistro downstairs. Valid any weekday.', cost=30, stock=10, active=True, category='Perks'),
-        Reward(id='rw-hoodie', company_id=co.id, name='Company hoodie', description='The good one — heavyweight, embroidered logo. All sizes.', cost=60, stock=4, active=True, category='Swag'),
-        Reward(id='rw-coffee', company_id=co.id, name='Coffee subscription — 1 month', description='One month of the good beans, delivered to your desk.', cost=45, stock=None, active=True, category='Perks'),
-        Reward(id='rw-parking', company_id=co.id, name='Parking spot — 1 week', description='The reserved spot by the entrance, for a full week.', cost=25, stock=2, active=True, category='Perks'),
-        Reward(id='rw-halfday', company_id=co.id, name='Half-day off', description='An afternoon on the house. Coordinate with your manager.', cost=120, stock=3, active=True, category='Time'),
-        Reward(id='rw-conf', company_id=co.id, name='Conference ticket', description='Ticket to the annual industry summit, travel not included.', cost=300, stock=1, active=False, category='Growth'),
+        Reward(id='rw-lunch', company_id=co.id, name='Lunch voucher', description='€25 voucher for the bistro downstairs. Valid any weekday.', cost=30, stock=10, active=True, category='Perks', eligibility='EMPLOYEES', created_by='u-dana'),
+        Reward(id='rw-hoodie', company_id=co.id, name='Company hoodie', description='The good one — heavyweight, embroidered logo. All sizes.', cost=60, stock=4, active=True, category='Swag', eligibility='BOTH', created_by='u-dana'),
+        Reward(id='rw-coffee', company_id=co.id, name='Coffee subscription — 1 month', description='One month of the good beans, delivered to your desk.', cost=45, stock=None, active=True, category='Perks', eligibility='EMPLOYEES', created_by='u-dana'),
+        Reward(id='rw-parking', company_id=co.id, name='Parking spot — 1 week', description='The reserved spot by the entrance, for a full week.', cost=25, stock=2, active=True, category='Perks', eligibility='EMPLOYEES', created_by='u-dana'),
+        Reward(id='rw-halfday', company_id=co.id, name='Half-day off', description='An afternoon on the house. Coordinate with your manager.', cost=120, stock=3, active=True, category='Time', eligibility='EMPLOYEES', created_by='u-dana'),
+        Reward(id='rw-conf', company_id=co.id, name='Conference ticket', description='Ticket to the annual industry summit, travel not included.', cost=300, stock=1, active=False, category='Growth', eligibility='BOTH', created_by='u-dana'),
+        Reward(id='rw-devsetup', company_id=co.id, name='Ergonomic home-office upgrade', description='€150 budget for your home-office setup — chair, stand, lighting. Management only.', cost=150, stock=2, active=True, category='Growth', eligibility='MANAGERS', created_by='u-marcus'),
+        Redemption(id='r3', company_id=co.id, user_id='u-marcus', reward_id='rw-devsetup', cost=150, status='PENDING', at=now - 2 * H),
         Redemption(id='r2', company_id=co.id, user_id='u-priya', reward_id='rw-lunch', cost=30, status='PENDING', at=now - 5 * H),
         Redemption(id='r1', company_id=co.id, user_id='u-jonas', reward_id='rw-hoodie', cost=60, status='FULFILLED', at=now - 1 * D),
     ])
@@ -260,7 +267,11 @@ def run(db: Session) -> None:
         Notification(id='n2', company_id=co.id, user_id='u-aisha', level='ACTION_REQUIRED', category='Tasks', text='Rework required — Trade-show lead list cleanup. Reason: duplicates remain in rows 200–260…', task_id='t-leads', at=now - 26 * H, read=True),
         Notification(id='n1', company_id=co.id, user_id='u-jonas', level='IMPORTANT', category='Economy', text='Approved — Q3 inventory audit. +32 Coins credited to your wallet.', task_id='t-audit', at=now - 5 * D, read=True),
     ])
+    # N2: manager redemption decisions go to the OTHER manager-level users —
+    # here Dana (admin). Mirrors exactly what redeem() emits for managers.
+    db.add(Notification(id='n8', company_id=co.id, user_id='u-dana', level='ACTION_REQUIRED', category='Rewards', text='Reward fulfillment needed — Ergonomic home-office upgrade for Marcus Webb (150 Coins).', at=now - 2 * H, redemption_id='r3'))
     db.add_all([
+        Activity(id='a11', company_id=co.id, at=now - 2 * H, actor_id='u-marcus', action='redeemed reward', object='Ergonomic home-office upgrade', econ='-150 Coins'),
         Activity(id='a10', company_id=co.id, at=now - 3 * H, actor_id='u-dana', action='created task', object='Q4 sales incentive plan', task_id='t-incentive', cycle=1),
         Activity(id='a9', company_id=co.id, at=now - 5 * H, actor_id='u-priya', action='submitted work for review', object='Client onboarding pack — Northstar Labs', task_id='t-northstar', cycle=1),
         Activity(id='a8', company_id=co.id, at=now - 5 * H, actor_id='u-priya', action='redeemed reward', object='Lunch voucher', econ='-30 Coins'),
