@@ -136,7 +136,12 @@ def bootstrap(db: Session, company: Company) -> dict:
         'ledger': [_ledger(l) for l in ledger_rows],
         'rewards': [{'id': r.id, 'name': r.name, 'description': r.description,
                      'cost': r.cost, 'stock': r.stock, 'active': r.active,
-                     'category': r.category} for r in rewards],
+                     'category': r.category,
+                     # N2-A: pre-N2 rows serialize as EMPLOYEES (historical default)
+                     'eligibility': r.eligibility or 'EMPLOYEES',
+                     # N2.1-A2: ownership — pre-N2.1 rows were all admin-created
+                     'createdBy': r.created_by or next(
+                         (u.id for u in users if u.role == 'ADMIN'), '')} for r in rewards],
         'redemptions': [_redemption(r) for r in redemptions],
         'notices': [_notice(n) for n in notices],
         'activity': [_act(a) for a in activity],
