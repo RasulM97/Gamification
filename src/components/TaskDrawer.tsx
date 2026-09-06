@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { MAX_ACTIVE, activeCount, roleFits } from '../domain/engine'
 import type { Task } from '../domain/engine'
-import { AttachmentChips, Avatar, ClampedText, Coin, Drawer, PriBadge, Progress, StatusBadge, ago, coins, deadlineInfo } from '../ui'
+import { AttachmentChips, Avatar, ClampedText, Coin, Drawer, PriBadge, Progress, StatusBadge, actMarker, ago, coins, deadlineInfo } from '../ui'
 import { SubmitModal, RejectModal, DeclineModal, CancelModal, ReturnModal, ReopenModal, ReactivateModal, EditTaskModal } from './TaskModals'
 import { HandoffWizard } from './HandoffWizard'
 
@@ -46,7 +46,11 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
      backend refuse them (403); the UI must not present them at all. */
   const canHandoff = isMgr && (t.status === 'IN_PROGRESS' || t.status === 'SUBMITTED') && t.ownerId && t.ownerId !== me.id
   const canReviewDecision = isMgr && t.status === 'SUBMITTED' && !isOwner
+  /* N2.1-A1: cancel is a canonical-ownership act — creator or admin only.
+     A manager must never see a cancel affordance on an admin-created task;
+     the engine and the backend refuse it too (403), the UI must not offer it. */
   const canCancel = isMgr && !['APPROVED', 'CANCELLED'].includes(t.status) && !isOwner
+    && (me.role === 'ADMIN' || t.createdBy === me.id)
 
   return (
     <Drawer open onClose={onClose} wide
@@ -233,18 +237,30 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
       {taskActs.length > 0 && (
         <div className="dsec">
           <span className="eyebrow">History</span>
+          {/* N1-D: meaningful transitions carry a compact human-readable
+              marker (APPROVED / REJECTED / DECLINED / HANDOFF / REWORK /
+              ASSIGNED / CLAIMED / SUBMITTED / REOPENED / CANCELLED) so the
+              timeline scans at a glance. Routine events stay unmarked; raw
+              enums never render. Uses existing Activity data — no duplicate
+              history records. */}
           <div style={{ marginTop: 6 }}>
-            {taskActs.slice(0, 12).map(a => (
-              <div className="aitem" key={a.id} style={{ padding: '7px 0' }}>
-                <Avatar name={user(a.actorId)?.name ?? '?'} size={20} />
-                <div className="aa">
-                  <span>{user(a.actorId)?.name} {a.action} </span>
-                  {a.reason && <div className="rs">“{a.reason}”</div>}
-                  {a.econ && <span className="num warn" style={{ fontSize: 11 }}>{a.econ}</span>}
+            {taskActs.slice(0, 12).map(a => {
+              const m = actMarker(a.action)
+              return (
+                <div className="aitem" key={a.id} style={{ padding: '7px 0' }}>
+                  <Avatar name={user(a.actorId)?.name ?? '?'} size={20} />
+                  <div className="aa">
+                    <span>
+                      {m && <span className={'bd hist-marker ' + m.cls} data-testid={`hist-marker-${m.label}`}>{m.label}</span>}
+                      {user(a.actorId)?.name} {a.action}{' '}
+                    </span>
+                    {a.reason && <div className="rs">“{a.reason}”</div>}
+                    {a.econ && <span className="num warn" style={{ fontSize: 11 }}>{a.econ}</span>}
+                  </div>
+                  <span className="at">{ago(a.at)}</span>
                 </div>
-                <span className="at">{ago(a.at)}</span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
