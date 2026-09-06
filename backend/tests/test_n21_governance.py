@@ -109,7 +109,7 @@ def test_n21_r2_edit_matrix(client, auth):
     assert r.status_code == 200
     rw = next(x for x in r.json()['rewards'] if x['id'] == 'rw-lunch')
     assert rw['cost'] == 33 and rw['createdBy'] == 'u-dana'  # audit preserved
-    # …but the manager can never steer a reward to a MANAGERS audience
+    # …but the manager can never steer it to a MANAGERS audience
     r = client.post('/api/rewards', headers=auth['marcus'],
                     json=_reward_payload('rw-lunch', 'MANAGERS', 'Lunch voucher', cost=33))
     assert r.status_code == 403 and r.json()['code'] == 'FORBIDDEN'
