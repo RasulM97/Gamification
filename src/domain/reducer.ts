@@ -5,8 +5,9 @@ import type {
   Priority, Redemption, Reward, Settings, State, Task,
 } from './model'
 import {
-  MAX_ACTIVE, MUTABLE_LEVELS, activeCount, balanceOf, claimPenalty,
-  fmtCoins, normalizeDeadline, partialPayout, roleFits, validateAttachments,
+  MAX_ACTIVE, MUTABLE_LEVELS, activeCount, balanceOf, canCreateReward, canDecideRedemption,
+  canManageReward, claimPenalty,
+  fmtCoins, normalizeDeadline, partialPayout, rewardFits, roleFits, validateAttachments,
 } from './model'
 /* ── reducer ───────────────────────────────────────────────────────────── */
 export type Action =
@@ -417,6 +418,11 @@ export function reducer(prev: State, a: Action): State {
     case 'CANCEL_TASK': {
       if (!isMgmt(a.by)) break
       const t = task(a.taskId)
+      /* Canonical-ownership protection (N2.1-A1, mirrors EDIT_TASK): the
+         task's creator and any admin may cancel it. A manager must NOT
+         cancel an admin-created task as management owner. Worker actions
+         (claim/submit) are unaffected. */
+      if (!isAdmin(a.by) && t.createdBy !== a.by) break
       if (t.status === 'APPROVED' || t.status === 'CANCELLED') break
       if (t.ownerId === a.by && t.ownerId) break // owners can't cancel-decide their own payout
       /* Mid-work cancel: contributors keep partial credit for work already
@@ -477,42 +483,65 @@ export function reducer(prev: State, a: Action): State {
     }
 
     case 'REDEEM': {
-      if (user(a.userId).role === 'ADMIN') break // economy exclusion (M1-C): admins never redeem
+      const u = user(a.userId)
+      if (u.role === 'ADMIN') break // economy exclusion (M1-C): admins never redeem
       const r = s.rewards.find(x => x.id === a.rewardId)!
+      if (!rewardFits(r, u)) break // N2-A: eligibility is enforced in the engine, never only in UI
       if (!r.active || (r.stock !== null && r.stock <= 0)) break
       if (balanceOf(s, a.userId) < r.cost) break
       if (r.stock !== null) r.stock -= 1
       ledger(a.userId, 'REDEMPTION', -r.cost, `Reward redemption — ${r.name}`)
       s.redemptions.unshift({ id: nid('r'), userId: a.userId, rewardId: r.id, cost: r.cost, status: 'PENDING', at: now })
       act(a.userId, 'redeemed reward', r.name, { econ: `-${r.cost} Coins` })
-      managers().forEach(m => note(m.id, 'ACTION_REQUIRED', 'Rewards', `Reward fulfillment needed — ${r.name} for ${user(a.userId).name} (${r.cost} Coins).`, undefined, s.redemptions[0].id))
+      /* N2.1-R2: the decision request goes only to users who hold decision
+         authority over THIS redemption — an employee's redemption asks all
+         management; a manager's redemption asks admins only (managers may
+         never decide a manager's redemption, not even another's). */
+      managers().filter(m => canDecideRedemption(u, m))
+        .forEach(m => note(m.id, 'ACTION_REQUIRED', 'Rewards', `Reward fulfillment needed — ${r.name} for ${u.name} (${r.cost} Coins).`, undefined, s.redemptions[0].id))
       break
     }
 
     case 'FULFILL_REDEMPTION': {
       const rd = s.redemptions.find(x => x.id === a.id)!
       if (rd.status !== 'PENDING') break
-      if (user(a.by).role === 'EMPLOYEE') break // fulfillment is a management act
+      /* N2.1-R2: decision authority depends on the REDEEMER's role — admin
+         decides all; a manager decides EMPLOYEE redemptions only (never
+         their own or another manager's). Employees never decide. */
+      if (!canDecideRedemption(user(rd.userId), user(a.by))) break
       rd.status = 'FULFILLED'
       const r = s.rewards.find(x => x.id === rd.rewardId)!
       act(a.by, 'fulfilled redemption', `${r.name} — ${user(rd.userId).name}`)
       note(rd.userId, 'INFORMATIONAL', 'Rewards', `Fulfilled — ${r.name}. Enjoy!`, undefined, rd.id)
+      /* N2-D: if the redeemer is a manager, the OTHER manager-level users
+         decide — they get the decision event too, so every authorized
+         reviewer can see who fulfilled it. Employees never see these. */
+      if (user(rd.userId).role === 'MANAGER')
+        managers().filter(m => m.id !== a.by)
+          .forEach(m => note(m.id, 'INFORMATIONAL', 'Rewards', `Redemption fulfilled — ${r.name} for ${user(rd.userId).name} (${r.cost} Coins), by ${user(a.by).name}.`, undefined, rd.id))
       break
     }
 
     case 'CANCEL_REDEMPTION': {
       const rd = s.redemptions.find(x => x.id === a.id)!
-      /* Domain authorization: management may cancel any pending redemption;
-         an employee may cancel only their own. The PENDING gate guarantees
-         the refund and stock restore each happen exactly once. */
+      /* Domain authorization: an employee may cancel only their own pending
+         redemption; management decisions follow the N2.1-R2 matrix — admin
+         decides all, a manager decides EMPLOYEE redemptions only. The
+         PENDING gate guarantees refund and stock restore each happen once. */
       if (rd.status !== 'PENDING') break
       if (user(a.by).role === 'EMPLOYEE' && rd.userId !== a.by) break
+      if (user(a.by).role !== 'EMPLOYEE' && !canDecideRedemption(user(rd.userId), user(a.by))) break
       rd.status = 'CANCELLED'; rd.reason = a.reason
       const r = s.rewards.find(x => x.id === rd.rewardId)!
       if (r.stock !== null) r.stock += 1
       ledger(rd.userId, 'REFUND', rd.cost, `Refund — ${r.name}`)
       act(a.by, 'cancelled redemption', `${r.name} — ${user(rd.userId).name}`, { reason: a.reason, econ: fmtCoins(rd.cost) })
       note(rd.userId, 'IMPORTANT', 'Rewards', `Redemption cancelled — ${r.name}. ${fmtCoins(rd.cost)} refunded. Reason: ${a.reason}`, undefined, rd.id)
+      /* N2-D: manager's redemption cancelled by management — the other
+         managers/admins see the decision and the refund. */
+      if (user(rd.userId).role === 'MANAGER' && user(a.by).role !== 'EMPLOYEE')
+        managers().filter(m => m.id !== a.by)
+          .forEach(m => note(m.id, 'INFORMATIONAL', 'Rewards', `Redemption cancelled — ${r.name} for ${user(rd.userId).name}, refunded ${fmtCoins(rd.cost)}, by ${user(a.by).name}.`, undefined, rd.id))
       break
     }
 
@@ -534,8 +563,24 @@ export function reducer(prev: State, a: Action): State {
     case 'SAVE_REWARD': {
       if (!isMgmt(a.by)) break
       const i = s.rewards.findIndex(x => x.id === a.reward.id)
-      if (i >= 0) { s.rewards[i] = a.reward; act(a.by, 'updated reward', a.reward.name) }
-      else { s.rewards.push({ ...a.reward, id: nid('rw') }); act(a.by, 'created reward', a.reward.name) }
+      if (i >= 0) {
+        /* Canonical governance matrix (N2.1-R2): a manager manages only
+           EMPLOYEES-targeted rewards — regardless of who created them — and
+           can never steer a reward to a MANAGERS audience (that would create
+           management scope they may not hold). createdBy is audit-only and
+           immutable: an edit can never transfer or launder it. */
+        if (!canManageReward(s.rewards[i], user(a.by))) break
+        if (!isAdmin(a.by) && a.reward.eligibility === 'MANAGERS') break
+        s.rewards[i] = { ...a.reward, id: s.rewards[i].id, createdBy: s.rewards[i].createdBy }
+        act(a.by, 'updated reward', a.reward.name)
+      } else {
+        /* Create follows the matrix too: a manager may create EMPLOYEES or
+           BOTH rewards (a BOTH reward is company-wide → admin-managed from
+           birth), never a MANAGERS-targeted one. */
+        if (!canCreateReward(a.reward.eligibility, user(a.by))) break
+        s.rewards.push({ ...a.reward, id: nid('rw'), createdBy: a.by })
+        act(a.by, 'created reward', a.reward.name)
+      }
       break
     }
 
