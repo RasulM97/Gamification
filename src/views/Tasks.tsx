@@ -80,7 +80,16 @@ export function TasksView({ scope, onOpen, onCreate }: {
           {isMgr && scope === 'all' && <button className="btn primary" onClick={onCreate}>+ Create task</button>}
         </div>
       }>
-      {/* N1-C — priority chips keep the workspace filterable in one click */}
+      {/* N1-C: My Work opens with the two numbers a worker checks first —
+          active capacity in use (canonical: in-progress + in-review) and the
+          review queue. */}
+      {scope === 'mine' && (
+        <div className="mywork-strip" data-testid="mywork-strip">
+          <span>Active work: <b data-testid="mywork-active">{activeCount(state, me.id)}</b> / {MAX_ACTIVE}</span>
+          <span className="sep">·</span>
+          <span>In review: <b data-testid="mywork-review">{state.tasks.filter(t => t.ownerId === me.id && t.status === 'SUBMITTED').length}</b></span>
+        </div>
+      )}
       <div className="filterbar">
         <span className="fb-label">Priority</span>
         {priOpts.map(p => (
