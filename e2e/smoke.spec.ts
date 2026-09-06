@@ -196,7 +196,9 @@ test.describe('admin', () => {
   test('fulfill a redemption as manager-facing op', async ({ page }) => {
     await startAs(page, 'dana')
     await nav(page, 'Redemptions')
-    await page.locator('.att-row', { hasText: 'Lunch voucher' }).getByRole('button', { name: 'Fulfill' }).click()
+    // N2-C: decisions are made from the review surface, not directly on the row.
+    await page.locator('.att-row', { hasText: 'Lunch voucher' }).getByRole('button', { name: 'Review & decide' }).click()
+    await page.locator('.modal').getByRole('button', { name: 'Fulfill' }).click()
     await expect(page.locator('.att-row', { hasText: 'Lunch voucher' }).filter({ hasText: 'Fulfilled' })).toBeVisible()
   })
 })
