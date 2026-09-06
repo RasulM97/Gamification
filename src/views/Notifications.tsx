@@ -2,21 +2,26 @@ import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { MUTABLE_LEVELS, isMuted, sortNotices, visibleNotices } from '../domain/engine'
 import type { NotifLevel } from '../domain/engine'
-import { Empty, NotifBadge, Panel, Seg, ago, rowProps } from '../ui'
+import { Empty, NotifBadge, Panel, Seg, ago, noticeTab, rowProps } from '../ui'
 
-/* Notification Center: attention mechanism, not an activity dump. Categories
-   map to the deterministic taxonomy from the spec. Mute preferences (N-B)
-   only cover low-priority levels — work that needs a decision always lands. */
+/* Notification Center (N1-B): exactly two product tabs — TASKS and REWARDS —
+   each with its own unread count, derived client-side from the existing
+   notice fields (see noticeTab in ui.tsx). Levels are preserved untouched:
+   ACTION_REQUIRED / IMPORTANT / INFORMATIONAL still badge every row, and
+   mute preferences (N-B) only cover low-priority levels — work that needs a
+   decision always lands. Product Activity is never classified as a
+   notification; the bell badge stays the total actionable unread count. */
 export function NotificationsView({ onOpenTask, onOpenRedemption }: {
   onOpenTask: (id: string) => void; onOpenRedemption: () => void
 }) {
   const { state, dispatch } = useStore()
   const me = useMe()
-  const [tab, setTab] = useState('all')
+  const [tab, setTab] = useState('tasks')
   const [q, setQ] = useState('')
 
   const visible = sortNotices(visibleNotices(state, me.id))
-  const unread = visible.filter(n => !n.read && !n.archived).length
+  const unreadTasks = visible.filter(n => !n.read && !n.archived && noticeTab(n) === 'TASKS').length
+  const unreadRewards = visible.filter(n => !n.read && !n.archived && noticeTab(n) === 'REWARDS').length
   const hiddenCount = state.notices.filter(n =>
     n.userId === me.id && !n.archived && isMuted(state, me.id, n.level)).length
 
@@ -25,20 +30,13 @@ export function NotificationsView({ onOpenTask, onOpenRedemption }: {
   const source = tab === 'muted' ? sortNotices(state.notices.filter(n => n.userId === me.id)) : visible
   const filtered = source.filter(n => {
     if (tab === 'muted') return isMuted(state, me.id, n.level) && !n.archived
-    if (tab === 'all') return !n.archived
-    if (tab === 'unread') return !n.read && !n.archived
     if (tab === 'archived') return n.archived
-    return n.category.toLowerCase() === tab && !n.archived
+    return noticeTab(n).toLowerCase() === tab && !n.archived
   }).filter(n => !q.trim() || n.text.toLowerCase().includes(q.trim().toLowerCase()))
 
   const tabs = [
-    { v: 'all', label: 'All' },
-    { v: 'unread', label: `Unread (${unread})` },
-    { v: 'tasks', label: 'Tasks' },
-    { v: 'reviews', label: 'Reviews' },
-    { v: 'assignments', label: 'Assignments' },
-    { v: 'rewards', label: 'Rewards & redemptions' },
-    { v: 'economy', label: 'Economy' },
+    { v: 'tasks', label: `Tasks (${unreadTasks})` },
+    { v: 'rewards', label: `Rewards (${unreadRewards})` },
     ...(hiddenCount > 0 || tab === 'muted' ? [{ v: 'muted', label: `Muted (${hiddenCount})` }] : []),
     { v: 'archived', label: 'Archived' },
   ]

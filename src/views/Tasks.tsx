@@ -80,6 +80,7 @@ export function TasksView({ scope, onOpen, onCreate }: {
           {isMgr && scope === 'all' && <button className="btn primary" onClick={onCreate}>+ Create task</button>}
         </div>
       }>
+      {/* N1-C — priority chips keep the workspace filterable in one click */}
       <div className="filterbar">
         <span className="fb-label">Priority</span>
         {priOpts.map(p => (
