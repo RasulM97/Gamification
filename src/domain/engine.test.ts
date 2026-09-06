@@ -578,7 +578,7 @@ describe('mid-work cancel with partial credit', () => {
   it('pays the owner partial credit by the canonical formula', () => {
     // t-commission: reward 30, verified 20, paid 6, owner Jonas, reported 35
     let s = reducer(seed(), {
-      type: 'CANCEL_TASK', taskId: 't-commission', by: MGR, reason: 'Budget cut', acceptedPct: 30,
+      type: 'CANCEL_TASK', taskId: 't-commission', by: ADMIN, reason: 'Budget cut', acceptedPct: 30,
     })
     const t = task(s, 't-commission')
     expect(t.status).toBe('CANCELLED')
@@ -593,7 +593,7 @@ describe('mid-work cancel with partial credit', () => {
 
   it('clamps acceptedPct to what remains unverified and unpaid', () => {
     let s = reducer(seed(), {
-      type: 'CANCEL_TASK', taskId: 't-commission', by: MGR, reason: 'x', acceptedPct: 100,
+      type: 'CANCEL_TASK', taskId: 't-commission', by: ADMIN, reason: 'x', acceptedPct: 100,
     })
     const t = task(s, 't-commission')
     expect(t.verified).toBe(100)
@@ -610,7 +610,7 @@ describe('mid-work cancel with partial credit', () => {
 
   it('zero credit writes no ledger row and no contribution (§13.7)', () => {
     const len = seed().ledger.length
-    const s = reducer(seed(), { type: 'CANCEL_TASK', taskId: 't-commission', by: MGR, reason: 'x', acceptedPct: 0 })
+    const s = reducer(seed(), { type: 'CANCEL_TASK', taskId: 't-commission', by: ADMIN, reason: 'x', acceptedPct: 0 })
     expect(task(s, 't-commission').status).toBe('CANCELLED')
     expect(s.ledger.length).toBe(len)
     expect(task(s, 't-commission').contributions.length).toBe(1) // only the seed handoff
@@ -904,7 +904,7 @@ describe('immutable submission history', () => {
     let s = seed()
     s = reducer(s, { type: 'CLAIM_TASK', taskId: 't-recount', userId: AISHA })
     s = reducer(s, { type: 'SUBMIT_WORK', taskId: 't-recount', userId: AISHA, note: 'wip', attachments: [] })
-    s = reducer(s, { type: 'CANCEL_TASK', taskId: 't-recount', by: MGR, reason: 'Audit postponed', acceptedPct: 20 })
+    s = reducer(s, { type: 'CANCEL_TASK', taskId: 't-recount', by: ADMIN, reason: 'Audit postponed', acceptedPct: 20 })
     expect(task(s, 't-recount').submissions.at(-1)!.outcome).toBe('CANCELLED')
   })
 
@@ -1274,7 +1274,7 @@ describe('domain-level role enforcement (M0-B)', () => {
     expect(s.tasks.some(t => t.title === 'Self-made')).toBe(false)
     s = reducer(s, {
       type: 'SAVE_REWARD', by: JONAS,
-      reward: { id: '', name: 'Free money', description: '', cost: 1, stock: null, active: true, category: 'x' },
+      reward: { id: '', name: 'Free money', description: '', cost: 1, stock: null, active: true, category: 'x', eligibility: 'EMPLOYEES', createdBy: 'u-dana' },
     })
     expect(s.rewards.some(r => r.name === 'Free money')).toBe(false)
     expect(ledgerIds(s)).toBe(before)
@@ -1360,8 +1360,11 @@ describe('new-cycle routing freedom (M1-D D7)', () => {
 
   it('employee-worked cycle → reopen routed to a manager', () => {
     // t-audit: EMPLOYEES audience, two employee cycles, APPROVED
-    const cyclesBefore = structuredClone(task(seed(), 't-audit').cycles)
-    let s = reducer(seed(), { type: 'REOPEN', taskId: 't-audit', by: ADMIN, audience: 'MANAGEMENT', assigneeId: MGR })
+    // NOTE: seed() stamps wall-clock-relative times — compare against cycles
+    // from the SAME seed instance, or a millisecond rollover flakes the diff.
+    const base = seed()
+    const cyclesBefore = structuredClone(task(base, 't-audit').cycles)
+    let s = reducer(base, { type: 'REOPEN', taskId: 't-audit', by: ADMIN, audience: 'MANAGEMENT', assigneeId: MGR })
     const t = task(s, 't-audit')
     expect(t.cycle).toBe(3)
     expect(t.audience).toBe('MANAGEMENT')
