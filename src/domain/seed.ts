@@ -173,6 +173,11 @@ export function seed(): State {
      real usage where history outlives archived work, and it exercises the
      UI's tolerance for entries without a task link. */
   const ledger: LedgerEntry[] = [
+    /* Pre-seed economy for Marcus's seeded manager reward redemption (r3):
+       manager-scope earnings (Q4 incentive plan bonus work) then the debit.
+       Same pattern as l2–l4 — the source tasks intentionally don't exist. */
+    { id: 'l11', at: now - 2 * H, userId: 'u-marcus', type: 'REDEMPTION', amount: -150, ref: 'Reward redemption — Ergonomic home-office upgrade' },
+    { id: 'l10', at: now - 10 * D, userId: 'u-marcus', type: 'TASK_REWARD', amount: 150, ref: 'Task reward — Q3 partner enablement program' },
     { id: 'l9', at: now - 5 * H, userId: 'u-priya', type: 'REDEMPTION', amount: -30, ref: 'Reward redemption — Lunch voucher' },
     { id: 'l8', at: now - 1 * D, userId: 'u-jonas', type: 'REDEMPTION', amount: -60, ref: 'Reward redemption — Company hoodie' },
     { id: 'l7', at: now - 3 * D, userId: 'u-priya', type: 'TASK_PARTIAL_REWARD', amount: 6, ref: 'Partial reward (20%) — Quarterly commission reconciliation', taskId: 't-commission', cycle: 1 },
@@ -184,21 +189,33 @@ export function seed(): State {
     { id: 'l1', at: now - 33 * D, userId: 'u-jonas', type: 'TASK_REWARD', amount: 40, ref: 'Task reward — Q3 inventory audit (cycle 1)', taskId: 't-audit', cycle: 1 },
   ]
 
+  /* N2-A: every reward declares who may redeem it. `rw-devsetup` is
+     manager-only — employees never see it (N2-B visibility). */
   const rewards: Reward[] = [
-    { id: 'rw-lunch', name: 'Lunch voucher', description: '€25 voucher for the bistro downstairs. Valid any weekday.', cost: 30, stock: 10, active: true, category: 'Perks' },
-    { id: 'rw-hoodie', name: 'Company hoodie', description: 'The good one — heavyweight, embroidered logo. All sizes.', cost: 60, stock: 4, active: true, category: 'Swag' },
-    { id: 'rw-coffee', name: 'Coffee subscription — 1 month', description: 'One month of the good beans, delivered to your desk.', cost: 45, stock: null, active: true, category: 'Perks' },
-    { id: 'rw-parking', name: 'Parking spot — 1 week', description: 'The reserved spot by the entrance, for a full week.', cost: 25, stock: 2, active: true, category: 'Perks' },
-    { id: 'rw-halfday', name: 'Half-day off', description: 'An afternoon on the house. Coordinate with your manager.', cost: 120, stock: 3, active: true, category: 'Time' },
-    { id: 'rw-conf', name: 'Conference ticket', description: 'Ticket to the annual industry summit, travel not included.', cost: 300, stock: 1, active: false, category: 'Growth' },
+    { id: 'rw-lunch', name: 'Lunch voucher', description: '€25 voucher for the bistro downstairs. Valid any weekday.', cost: 30, stock: 10, active: true, category: 'Perks', eligibility: 'EMPLOYEES', createdBy: 'u-dana' },
+    { id: 'rw-hoodie', name: 'Company hoodie', description: 'The good one — heavyweight, embroidered logo. All sizes.', cost: 60, stock: 4, active: true, category: 'Swag', eligibility: 'BOTH', createdBy: 'u-dana' },
+    { id: 'rw-coffee', name: 'Coffee subscription — 1 month', description: 'One month of the good beans, delivered to your desk.', cost: 45, stock: null, active: true, category: 'Perks', eligibility: 'EMPLOYEES', createdBy: 'u-dana' },
+    { id: 'rw-parking', name: 'Parking spot — 1 week', description: 'The reserved spot by the entrance, for a full week.', cost: 25, stock: 2, active: true, category: 'Perks', eligibility: 'EMPLOYEES', createdBy: 'u-dana' },
+    { id: 'rw-halfday', name: 'Half-day off', description: 'An afternoon on the house. Coordinate with your manager.', cost: 120, stock: 3, active: true, category: 'Time', eligibility: 'EMPLOYEES', createdBy: 'u-dana' },
+    { id: 'rw-conf', name: 'Conference ticket', description: 'Ticket to the annual industry summit, travel not included.', cost: 300, stock: 1, active: false, category: 'Growth', eligibility: 'BOTH', createdBy: 'u-dana' },
+    /* N2.1-A2: one manager-created reward so the demo shows both sides of
+       reward ownership — Marcus manages his own, never the admin's. */
+    { id: 'rw-devsetup', name: 'Ergonomic home-office upgrade', description: '€150 budget for your home-office setup — chair, stand, lighting. Management only.', cost: 150, stock: 2, active: true, category: 'Growth', eligibility: 'MANAGERS', createdBy: 'u-marcus' },
   ]
 
   const redemptions: Redemption[] = [
+    /* N2: Marcus is at zero balance — seed his manager reward redemption as
+       pre-seed history, exactly like the l2–l4 task rewards below. The
+       pending request exercises the N2-C review context end to end. */
+    { id: 'r3', userId: 'u-marcus', rewardId: 'rw-devsetup', cost: 150, status: 'PENDING', at: now - 2 * H },
     { id: 'r2', userId: 'u-priya', rewardId: 'rw-lunch', cost: 30, status: 'PENDING', at: now - 5 * H },
     { id: 'r1', userId: 'u-jonas', rewardId: 'rw-hoodie', cost: 60, status: 'FULFILLED', at: now - 1 * D },
   ]
 
   const notices: Notice[] = [
+    /* N2: a manager's redemption is decided by the OTHER manager-level users
+       — here Dana (admin). Mirrors exactly what REDEEM emits for managers. */
+    { id: 'n8', userId: 'u-dana', level: 'ACTION_REQUIRED', category: 'Rewards', text: 'Reward fulfillment needed — Ergonomic home-office upgrade for Marcus Webb (150 Coins).', at: now - 2 * H, read: false, archived: false, redemptionId: 'r3' },
     { id: 'n7', userId: 'u-marcus', level: 'ACTION_REQUIRED', category: 'Assignments', text: 'New assignment — Q4 sales incentive plan (worth 50 Coins). Accept or decline.', taskId: 't-incentive', pri: 'IMPORTANT', at: now - 3 * 3600e3, read: false, archived: false },
     { id: 'n6', userId: 'u-marcus', level: 'ACTION_REQUIRED', category: 'Reviews', text: 'Submission ready for review — Client onboarding pack — Northstar Labs by Priya Nair.', taskId: 't-northstar', at: now - 5 * H, read: false, archived: false },
     { id: 'n5', userId: 'u-marcus', level: 'ACTION_REQUIRED', category: 'Rewards', text: 'Reward fulfillment needed — Lunch voucher for Priya Nair (30 Coins).', at: now - 5 * H, read: false, archived: false, redemptionId: 'r2' },
@@ -212,6 +229,7 @@ export function seed(): State {
   ]
 
   const activity: Act[] = [
+    { id: 'a11', at: now - 2 * H, actorId: 'u-marcus', action: 'redeemed reward', object: 'Ergonomic home-office upgrade', econ: '-150 Coins' },
     { id: 'a10', at: now - 3 * H, actorId: 'u-dana', action: 'created task', object: 'Q4 sales incentive plan', taskId: 't-incentive', cycle: 1 },
     { id: 'a9', at: now - 5 * H, actorId: 'u-priya', action: 'submitted work for review', object: 'Client onboarding pack — Northstar Labs', taskId: 't-northstar', cycle: 1 },
     { id: 'a8', at: now - 5 * H, actorId: 'u-priya', action: 'redeemed reward', object: 'Lunch voucher', econ: '-30 Coins' },
