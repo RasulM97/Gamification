@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
 import { useStore, useMe } from '../store'
-import { MAX_ACTIVE, activeCount, balanceOf, canSeeTask, coinsInCirculation, canonicalSort } from '../domain/engine'
+import { MAX_ACTIVE, activeCount, balanceOf, canSeeTask, rewardFits, coinsInCirculation, canonicalSort } from '../domain/engine'
 import { Avatar, Coin, Empty, Panel, PriBadge, Progress, StatusBadge, ago, coins, rowProps } from '../ui'
 
 function css(v: string) { return getComputedStyle(document.documentElement).getPropertyValue('--' + v).trim() }
@@ -61,6 +61,8 @@ export function Overview({ onGo }: { onGo: (view: string, taskId?: string) => vo
 
 function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => void }) {
   const { state } = useStore()
+  const me = useMe()
+  const isAdmin = me.role === 'ADMIN'
   const pendingReviews = state.tasks.filter(t => t.status === 'SUBMITTED')
   const rework = state.tasks.filter(t => t.status === 'REJECTED')
   const unclaimedHot = state.tasks.filter(t => t.status === 'OPEN' && t.assignMode === 'ALL_EMPLOYEES'
@@ -70,6 +72,18 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
   const avgVerified = active.length ? Math.round(active.reduce((a, t) => a + t.verified, 0) / active.length) : 0
   const recentActs = state.activity.slice(0, 7)
   const user = (id: string) => state.users.find(u => u.id === id)
+
+  /* N1-C — PERSONAL WORK vs MANAGEMENT WORK are separate number sets, never
+     mixed. The admin/founder never owns work (M1-D D3), so the personal-work
+     strip exists only for managers. */
+  const myActiveOwned = state.tasks.filter(t => t.ownerId === me.id && ['IN_PROGRESS', 'REJECTED'].includes(t.status))
+  const myInReviewWorker = state.tasks.filter(t => t.ownerId === me.id && t.status === 'SUBMITTED')
+  const reviewsWaiting = pendingReviews.filter(t => t.ownerId !== me.id)
+  const needsAttention = rework.length
+    + state.tasks.filter(t => t.status === 'OPEN' && t.assignMode === 'SPECIFIC_EMPLOYEE' && !t.assigneeId).length
+  /* N2-B: a working manager also sees their own reward picture. */
+  const myBal = balanceOf(state, me.id)
+  const myAffordable = state.rewards.filter(r => r.active && rewardFits(r, me) && r.cost <= myBal && (r.stock === null || r.stock > 0))
 
   const statusMix: echarts.EChartsOption = {
     tooltip: { trigger: 'item' },
@@ -144,6 +158,26 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
         </Panel>
       )}
 
+      {/* N1-C: personal work first (managers only), then management work,
+          then the portfolio/economy deck — three clearly labeled number sets. */}
+      {!isAdmin && (
+        <>
+          <div className="kpi-group-label" data-testid="personal-work-label">Personal work — you as a worker</div>
+          <div className="kpis" data-testid="personal-work-kpis">
+            <div className="kpi2"><div className="l">Active owned tasks</div><div className="v">{myActiveOwned.length}<u>/ {MAX_ACTIVE}</u></div><div className="s">capacity you hold as a worker</div></div>
+            <div className="kpi2"><div className="l">In review as worker</div><div className="v">{myInReviewWorker.length}</div><div className="s">decided by another manager or the admin</div></div>
+            <div className="kpi2"><div className="l">Wallet balance</div><div className="v">{coins(myBal)}<u>Coins</u></div><div className="s">{myAffordable.length} rewards affordable to you</div></div>
+          </div>
+        </>
+      )}
+
+      <div className="kpi-group-label" data-testid="management-work-label">Management work</div>
+      <div className="kpis" data-testid="management-work-kpis">
+        <div className="kpi2"><div className="l">Reviews waiting</div><div className="v">{reviewsWaiting.length}</div><div className="s">submissions needing your decision</div></div>
+        <div className="kpi2"><div className="l">Needs attention</div><div className="v">{needsAttention}</div><div className="s">rework + unanswered assignments</div></div>
+      </div>
+
+      <div className="kpi-group-label">Portfolio &amp; economy</div>
       <div className="kpis">
         <div className="kpi2"><div className="l">Active tasks</div><div className="v">{active.length}</div><div className="s">{pendingReviews.length} awaiting review</div></div>
         <div className="kpi2"><div className="l">Avg verified progress</div><div className="v">{avgVerified}<u>%</u></div><div className="s">manager-verified only</div></div>
@@ -229,16 +263,25 @@ function EmployeeOverview({ onGo }: { onGo: (view: string, taskId?: string) => v
     && canSeeTask(t, me)
     && (t.priority === 'URGENT' || t.priority === 'IMPORTANT')).sort(canonicalSort)
   const earned = state.ledger.filter(l => l.userId === me.id && l.amount > 0).reduce((a, l) => a + l.amount, 0)
-  const affordable = state.rewards.filter(r => r.active && r.cost <= bal && (r.stock === null || r.stock > 0))
+  /* N2-B: affordability respects eligibility — a manager-only reward never
+     surfaces to an employee, and vice versa. */
+  const affordable = state.rewards.filter(r => r.active && rewardFits(r, me) && r.cost <= bal && (r.stock === null || r.stock > 0))
+  /* N1-C: active/pending reward status is part of the work-status picture. */
+  const myPendingRewards = state.redemptions.filter(r => r.userId === me.id && r.status === 'PENDING')
 
   return (
     <div className="wrap">
       <WelcomeCard />
+      {/* N1-C: the employee's work status reads left to right — active work,
+          review queue, marketplace, then wallet and pending rewards. */}
       <div className="kpis">
-        <div className="kpi2"><div className="l">Wallet balance</div><div className="v">{coins(bal)}<u>Coins</u></div><div className="s">{affordable.length} rewards affordable</div></div>
-        <div className="kpi2"><div className="l">Lifetime earned</div><div className="v">{coins(earned)}</div><div className="s">append-only ledger</div></div>
-        <div className="kpi2"><div className="l">Active tasks</div><div className="v">{myActive.length}<u>/ 2</u></div><div className="s">{mySubmitted.length} in review</div></div>
+        <div className="kpi2"><div className="l">Active work</div><div className="v" data-testid="emp-active-count">{myActive.length}<u>/ {MAX_ACTIVE}</u></div><div className="s">capacity in use: {activeCount(state, me.id)} / {MAX_ACTIVE}</div></div>
+        <div className="kpi2"><div className="l">In review</div><div className="v" data-testid="emp-review-count">{mySubmitted.length}</div><div className="s">waiting for a manager decision</div></div>
         <div className="kpi2"><div className="l">Marketplace</div><div className="v">{state.tasks.filter(t => t.status === 'OPEN' && t.assignMode === 'ALL_EMPLOYEES' && canSeeTask(t, me)).length}</div><div className="s">open to claim</div></div>
+        <div className="kpi2"><div className="l">Wallet balance</div><div className="v">{coins(bal)}<u>Coins</u></div><div className="s">{affordable.length} rewards affordable · {coins(earned)} earned lifetime</div></div>
+        {myPendingRewards.length > 0 && (
+          <div className="kpi2"><div className="l">Pending rewards</div><div className="v">{myPendingRewards.length}</div><div className="s">awaiting fulfillment</div></div>
+        )}
       </div>
 
       {myAssignments.length > 0 && (
