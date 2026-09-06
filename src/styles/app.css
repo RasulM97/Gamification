@@ -214,6 +214,11 @@ textarea:focus-visible,.field input:focus-visible{outline:2px solid var(--accent
 .bell-pop .bp-head{display:flex;align-items:center;padding:12px 15px;border-bottom:1px solid var(--rim-soft);
   font-size:12.5px;font-weight:600}
 .bell-pop .bp-list{max-height:380px;overflow-y:auto}
+/* N2.1-D: compact Tasks/Rewards tabs inside the popover. */
+.bell-pop .bp-tabs{display:flex;margin:8px 12px 4px;border-bottom:1px solid var(--rim-soft);
+  padding-bottom:8px;border-radius:0;background:none}
+.bell-pop .bp-tabs button{flex:1;font-size:11.5px;border-radius:6px}
+.bell-pop .bp-tabs button.on{background:var(--accent-soft);color:var(--accent)}
 .bell-pop .bp-foot{padding:10px 14px;border-top:1px solid var(--rim-soft);text-align:center}
 
 /* ── badges / atoms ────────────────────────────────────────────────────── */
@@ -285,6 +290,20 @@ textarea:focus-visible,.field input:focus-visible{outline:2px solid var(--accent
 .kpi2 .v{font-size:27px;font-weight:700;line-height:1.15;font-variant-numeric:tabular-nums}
 .kpi2 .v u{font-size:13px;text-decoration:none;color:var(--muted);margin-left:4px}
 .kpi2 .s{font-size:11.5px;color:var(--faint)}
+/* N1-C: labeled KPI groups — personal work vs management work vs portfolio */
+.kpi-group-label{margin:16px 0 8px;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)}
+.kpi-group-label:first-of-type{margin-top:0}
+/* N1-C: My Work status strip — active capacity + review queue at a glance */
+.mywork-strip{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 15px;
+  font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--rim-soft)}
+.mywork-strip b{color:var(--ink);font-variant-numeric:tabular-nums}
+.mywork-strip .sep{color:var(--faint)}
+/* N1-D: compact transition markers in Task History / Activity */
+.hist-marker{margin-right:7px;font-size:9.5px;letter-spacing:.06em;vertical-align:1px}
+/* N2-C: redemption review context — compact KPI strip inside the modal */
+.redemption-review{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.redemption-review .kpi2{padding:11px 13px}
+.redemption-review .kpi2 .v{font-size:20px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .grid32{display:grid;grid-template-columns:3fr 2fr;gap:16px}
 .attn{display:flex;flex-direction:column;gap:9px}
