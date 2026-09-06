@@ -292,6 +292,11 @@ def edit_task(db: Session, actor: User, task_id: str, *, title=None, description
     if not _is_mgmt(actor):
         raise DomainError('FORBIDDEN', 'Editing work is a management act')
     t = get_task(db, actor.company_id, task_id)
+    # N2.1-A1: canonical-ownership protection — the task's creator and any
+    # admin may edit the canonical definition. A manager must NOT edit an
+    # admin-created task (mirrors the demo reducer's frozen rule).
+    if actor.role != 'ADMIN' and t.created_by != actor.id:
+        raise DomainError('FORBIDDEN', 'Only the task creator or an admin can edit this task')
     if t.status in ('APPROVED', 'CANCELLED'):
         raise DomainError('BAD_STATE', 'Terminal tasks are immutable history')
     if reward is not None and reward < t.paid:
@@ -635,6 +640,10 @@ def cancel_task(db: Session, actor: User, task_id: str, *, reason: str,
     if not _is_mgmt(actor):
         raise DomainError('FORBIDDEN', 'Cancelling work is a management act')
     t = get_task(db, actor.company_id, task_id)
+    # N2.1-A1: canonical-ownership protection — creator or admin only. A
+    # manager must NOT cancel an admin-created task as management owner.
+    if actor.role != 'ADMIN' and t.created_by != actor.id:
+        raise DomainError('FORBIDDEN', 'Only the task creator or an admin can cancel this task')
     if t.status in ('APPROVED', 'CANCELLED'):
         raise DomainError('BAD_STATE', 'Terminal tasks cannot be cancelled')
     if t.owner_id and t.owner_id == actor.id:
@@ -704,10 +713,17 @@ def reactivate_task(db: Session, actor: User, task_id: str, *, reason: str,
 
 def redeem(db: Session, actor: User, reward_id: str) -> Redemption:
     cid = actor.company_id
+    if actor.role == 'ADMIN':
+        raise DomainError('FORBIDDEN', 'The founder/admin never redeems rewards')
     r = db.scalar(select(Reward).where(Reward.id == reward_id, Reward.company_id == cid)
                   .with_for_update())
     if r is None:
         raise DomainError('NOT_FOUND', 'Reward not found')
+    # N2-A: eligibility is enforced by the backend, never only by the UI
+    if r.eligibility == 'EMPLOYEES' and actor.role != 'EMPLOYEE':
+        raise DomainError('FORBIDDEN', 'This reward is for employees only')
+    if r.eligibility == 'MANAGERS' and actor.role != 'MANAGER':
+        raise DomainError('FORBIDDEN', 'This reward is for managers only')
     if not r.active or (r.stock is not None and r.stock <= 0):
         raise DomainError('OUT_OF_STOCK', 'This reward is not available')
     if balance_of(db, cid, actor.id) < r.cost:
@@ -720,7 +736,11 @@ def redeem(db: Session, actor: User, reward_id: str) -> Redemption:
     db.add(rd)
     db.flush()
     act(db, cid, actor.id, 'redeemed reward', r.name, econ=f'-{_num(r.cost)} Coins')
+    # N2: a manager's redemption is decided by OTHER managers/admins — never
+    # by the redeemer themselves (decision-separation, mirrors no-self-review).
     for m in managers(db, cid):
+        if actor.role == 'MANAGER' and m.id == actor.id:
+            continue
         note(db, cid, m.id, 'ACTION_REQUIRED', 'Rewards',
              f'Reward fulfillment needed — {r.name} for {actor.name} ({_num(r.cost)} Coins).',
              redemption_id=rd.id)
@@ -737,12 +757,27 @@ def fulfill_redemption(db: Session, actor: User, redemption_id: str) -> Redempti
         raise DomainError('NOT_FOUND', 'Redemption not found')
     if rd.status != 'PENDING':
         raise DomainError('BAD_STATE', 'Only a pending redemption can be fulfilled')
+    # N2.1-R2: decision authority depends on the REDEEMER's role — a manager
+    # decides EMPLOYEE redemptions only (never their own or another
+    # manager's); the admin decides all.
+    redeemer = get_user(db, actor.company_id, rd.user_id)
+    if actor.role == 'MANAGER' and redeemer.role != 'EMPLOYEE':
+        raise DomainError('FORBIDDEN', "Only an admin can decide a manager's redemption")
     rd.status = 'FULFILLED'
     r = db.get(Reward, rd.reward_id)
-    user = get_user(db, actor.company_id, rd.user_id)
+    user = redeemer
     act(db, actor.company_id, actor.id, 'fulfilled redemption', f'{r.name} — {user.name}')
     note(db, actor.company_id, rd.user_id, 'INFORMATIONAL', 'Rewards',
          f'Fulfilled — {r.name}. Enjoy!', redemption_id=rd.id)
+    # N2-D: a manager's redemption was decided by another manager/admin —
+    # the remaining manager-level users see the decision event too.
+    if user.role == 'MANAGER':
+        for m in managers(db, actor.company_id):
+            if m.id == actor.id:
+                continue
+            note(db, actor.company_id, m.id, 'INFORMATIONAL', 'Rewards',
+                 f'Redemption fulfilled — {r.name} for {user.name} ({_num(rd.cost)} Coins), by {actor.name}.',
+                 redemption_id=rd.id)
     return rd
 
 
@@ -756,6 +791,10 @@ def cancel_redemption(db: Session, actor: User, redemption_id: str, reason: str)
         raise DomainError('BAD_STATE', 'Only a pending redemption can be cancelled')
     if actor.role == 'EMPLOYEE' and rd.user_id != actor.id:
         raise DomainError('FORBIDDEN', 'You can only cancel your own redemption')
+    # N2.1-R2: a manager cancels EMPLOYEE redemptions only — never their own
+    # or another manager's; the admin decides all.
+    if actor.role == 'MANAGER' and get_user(db, actor.company_id, rd.user_id).role != 'EMPLOYEE':
+        raise DomainError('FORBIDDEN', "Only an admin can decide a manager's redemption")
     # the PENDING gate (above, under row lock) makes refund + stock restore exactly-once
     rd.status = 'CANCELLED'
     rd.reason = reason
@@ -769,6 +808,15 @@ def cancel_redemption(db: Session, actor: User, redemption_id: str, reason: str)
     note(db, actor.company_id, rd.user_id, 'IMPORTANT', 'Rewards',
          f'Redemption cancelled — {r.name}. {fmt_coins(rd.cost)} refunded. Reason: {reason}',
          redemption_id=rd.id)
+    # N2-D: manager's redemption cancelled by management — the other
+    # managers/admins see the decision and the refund.
+    if user.role == 'MANAGER' and actor.role != 'EMPLOYEE':
+        for m in managers(db, actor.company_id):
+            if m.id == actor.id:
+                continue
+            note(db, actor.company_id, m.id, 'INFORMATIONAL', 'Rewards',
+                 f'Redemption cancelled — {r.name} for {user.name}, refunded {fmt_coins(rd.cost)}, by {actor.name}.',
+                 redemption_id=rd.id)
     return rd
 
 
@@ -798,20 +846,36 @@ def admin_adjust(db: Session, actor: User, *, user_id: str, amount: float,
 
 def save_reward(db: Session, actor: User, *, reward_id: Optional[str], name: str,
                 description: str, cost: float, stock: Optional[int],
-                active: bool, category: str) -> Reward:
+                active: bool, category: str, eligibility: str) -> Reward:
     if not _is_mgmt(actor):
         raise DomainError('FORBIDDEN', 'Managing the catalog is a management act')
+    # N2-A: canonical eligibility values only — never ADMIN.
+    if eligibility not in ('EMPLOYEES', 'MANAGERS', 'BOTH'):
+        raise DomainError('BAD_REQUEST', 'Eligibility must be EMPLOYEES, MANAGERS or BOTH')
     if reward_id:
         r = db.scalar(select(Reward).where(Reward.id == reward_id,
                                            Reward.company_id == actor.company_id))
         if r is None:
             raise DomainError('NOT_FOUND', 'Reward not found')
+        # N2.1-R2 canonical governance matrix (replaces the creator-ownership
+        # rule): a manager manages only EMPLOYEES-targeted rewards — even ones
+        # they created — and can never steer a reward to a MANAGERS audience.
+        # created_by is audit/history only and is never changed by an edit.
+        if actor.role == 'MANAGER' and (r.eligibility != 'EMPLOYEES' or eligibility == 'MANAGERS'):
+            raise DomainError('FORBIDDEN', 'Managers manage employee-targeted rewards only')
         r.name, r.description, r.cost = name, description, cost
         r.stock, r.active, r.category = stock, active, category
+        r.eligibility = eligibility
         act(db, actor.company_id, actor.id, 'updated reward', name)
         return r
+    # Create follows the matrix: a manager may create EMPLOYEES or BOTH
+    # rewards (a BOTH reward is company-wide → admin-managed from birth),
+    # never a MANAGERS-targeted one.
+    if actor.role == 'MANAGER' and eligibility == 'MANAGERS':
+        raise DomainError('FORBIDDEN', 'Managers cannot create manager-targeted rewards')
     r = Reward(company_id=actor.company_id, name=name, description=description,
-               cost=cost, stock=stock, active=active, category=category)
+               cost=cost, stock=stock, active=active, category=category,
+               eligibility=eligibility, created_by=actor.id)
     db.add(r)
     db.flush()
     act(db, actor.company_id, actor.id, 'created reward', name)
