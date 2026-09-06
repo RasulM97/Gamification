@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
-import type { Attachment, Priority, TaskStatus, NotifLevel, LedgerType } from './domain/engine'
+import type { Attachment, Notice, Priority, TaskStatus, NotifLevel, LedgerType } from './domain/engine'
 import { validateAttachments } from './domain/engine'
 import { openStoredFile } from './api'
 import { IS_DEMO } from './runtime'
@@ -166,6 +166,43 @@ export const NotifBadge = ({ l }: { l: NotifLevel }) => {
   }
   const [label, cls] = map[l]
   return <span className={'bd ' + cls}>{label}</span>
+}
+
+/* ── N1-B: notification center has exactly two product tabs ─────────────
+   Derived client-side from the existing notice fields — no new DB column,
+   no new table, no backend change:
+     REWARDS — every redemption/reward event (category Rewards, anything
+       carrying a redemptionId) plus pure wallet/economy events that are not
+       tied to a task (e.g. an admin Coin adjustment).
+     TASKS   — everything else: assignments, claims, submissions, reviews,
+       rejections, declines, handoffs, task edits, and task-linked economy
+       notices (payouts and claim penalties carry a taskId). */
+export type NoticeTab = 'TASKS' | 'REWARDS'
+export const noticeTab = (n: Pick<Notice, 'category' | 'taskId' | 'redemptionId'>): NoticeTab =>
+  n.category === 'Rewards' || n.redemptionId || (n.category === 'Economy' && !n.taskId)
+    ? 'REWARDS' : 'TASKS'
+
+/* ── N1-D: compact human-readable markers for task history ──────────────
+   Mapped from the reducer's canonical activity verbs (read before write —
+   see src/domain/reducer.ts `act(...)` call sites). Meaningful state
+   transitions get a marker; routine noise (progress reports, edits, policy
+   changes) stays unmarked, and no raw enum ever leaks into the UI. */
+export type ActMarker = { label: string; cls: string }
+export function actMarker(action: string): ActMarker | null {
+  if (action === 'approved work') return { label: 'APPROVED', cls: 'st-done' }
+  if (action === 'rejected submission') return { label: 'REJECTED', cls: 'st-rej' }
+  if (action === 'declined assignment' || action === 'handed back assignment')
+    return { label: 'DECLINED', cls: 'bd-important' }
+  if (action.startsWith('handed off')) return { label: 'HANDOFF', cls: 'bd-important' }
+  if (action === 'resumed rework') return { label: 'REWORK', cls: 'st-review' }
+  if (action.startsWith('reassigned to')) return { label: 'ASSIGNED', cls: 'bd-normal' }
+  if (action === 'claimed task' || action === 'accepted assignment')
+    return { label: 'CLAIMED', cls: 'st-prog' }
+  if (action === 'submitted work for review') return { label: 'SUBMITTED', cls: 'st-review' }
+  if (action.startsWith('reopened task') || action.startsWith('reactivated task'))
+    return { label: 'REOPENED', cls: 'st-open' }
+  if (action.startsWith('cancelled task')) return { label: 'CANCELLED', cls: 'st-cancel' }
+  return null
 }
 
 export const LedgerBadge = ({ t }: { t: LedgerType }) => {
