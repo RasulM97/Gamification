@@ -25,12 +25,12 @@ export default defineConfig({
   projects: [
     {
       name: 'demo',
-      testIgnore: '**/m1d-server.spec.ts',
+      testIgnore: '**/*-server.spec.ts',
       use: { baseURL: 'http://localhost:4173' },
     },
     {
       name: 'server-dev',
-      testMatch: '**/m1d-server.spec.ts',
+      testMatch: '**/*-server.spec.ts',
       use: { baseURL: 'http://localhost:4321' },
     },
   ],

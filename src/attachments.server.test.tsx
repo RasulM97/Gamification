@@ -7,7 +7,7 @@ import { createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 
 vi.mock('./runtime', () => ({ IS_DEMO: false, DATA_MODE: 'server', DEV_TOOLS: false }))
-const openStoredFile = vi.fn(() => Promise.resolve())
+const openStoredFile = vi.fn((_id: string, _name: string) => Promise.resolve())
 vi.mock('./api', () => ({ openStoredFile: (...args: unknown[]) => openStoredFile(...args as [string, string]) }))
 
 import { AttachmentChips, openAttachment } from './ui'

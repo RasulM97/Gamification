@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore } from '../store'
-import { Avatar, Empty, Panel, Seg, ago, downloadCsv, rowProps } from '../ui'
+import { Avatar, Empty, Panel, Seg, actMarker, ago, downloadCsv, rowProps } from '../ui'
 
 /* Activity: canonical human-readable business history — every event, no raw
    enums, economic effect and cycle shown where relevant. Exportable (N-B). */
@@ -38,19 +38,27 @@ export function ActivityView({ onOpenTask }: { onOpenTask: (id: string) => void 
           </div>
         }>
         {rows.length === 0 && <Empty title="No activity yet" />}
-        {rows.map(a => (
+        {rows.map(a => {
+          /* N1-D: the same compact transition markers as Task History, so a
+             state change reads identically everywhere it appears. */
+          const m = a.taskId ? actMarker(a.action) : null
+          return (
           <div className="aitem" key={a.id}
             {...(a.taskId ? { ...rowProps(() => onOpenTask(a.taskId!)), style: { cursor: 'pointer' } } : {})}>
             <Avatar name={user(a.actorId)?.name ?? '?'} size={22} />
             <div className="aa">
-              <span>{user(a.actorId)?.name} {a.action} </span><span className="obj">{a.object}</span>
+              <span>
+                {m && <span className={'bd hist-marker ' + m.cls}>{m.label}</span>}
+                {user(a.actorId)?.name} {a.action}{' '}
+              </span><span className="obj">{a.object}</span>
               {a.reason && <div className="rs">“{a.reason}”</div>}
             </div>
             {a.econ && <span className="num" style={{ fontSize: 11.5, color: 'var(--warn)', whiteSpace: 'nowrap' }}>{a.econ}</span>}
             {a.cycle != null && <span className="faint" style={{ fontSize: 11 }}>c{a.cycle}</span>}
             <span className="at">{ago(a.at)}</span>
           </div>
-        ))}
+          )
+        })}
       </Panel>
     </div>
   )
