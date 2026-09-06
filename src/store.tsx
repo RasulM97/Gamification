@@ -24,6 +24,7 @@ import { ApiError, api, getToken, setToken } from './api'
 import type { MeUser } from './api'
 import { recordEvent as uatRecord } from './uat'
 import type { UatResult } from './uat'
+import { startRefreshLoop } from './refresh'
 
 /* ── Test Lab helpers (M1-B) — action metadata only; payloads (notes,
    reasons, settings, file names) are never recorded. ── */
@@ -133,6 +134,17 @@ const STATE_VERSION = 2
 function migrate(s: State): State {
   if (!s.settings) s.settings = { ...DEFAULT_SETTINGS }
   if (!s.notifMuted) s.notifMuted = {}
+  /* N2-A: pre-eligibility persisted states default to EMPLOYEES — the
+     historical effective behavior, so nothing changes for existing users.
+     N2.1-B: the same defaulting guards ANY payload with a missing value —
+     fail closed, never invent manager access. */
+  s.rewards.forEach(r => {
+    r.eligibility = r.eligibility ?? 'EMPLOYEES'
+    /* N2.1-A2: pre-ownership persisted rewards were all admin-created
+       historically — attribute them to the company admin so a manager does
+       not suddenly gain edit authority over them. */
+    r.createdBy = r.createdBy ?? s.users.find(u => u.role === 'ADMIN')?.id ?? ''
+  })
   s.tasks.forEach(t => {
     t.attachments = (t.attachments ?? []).map(a =>
       typeof a === 'string' ? { name: a, size: 0, type: '' } : a)
@@ -164,6 +176,10 @@ interface Ctx {
   me: MeUser | null
   login: (email: string, password: string) => Promise<void>
   logout: () => void
+  /* N2.1-C/F: ask the authoritative source for a fresh bootstrap. Server
+     mode refetches through the serialized queue; demo mode is already live
+     and local, so this is a deliberate no-op there. */
+  refresh: () => void
 }
 
 const StoreCtx = createContext<Ctx | null>(null)
@@ -254,6 +270,9 @@ function useDemoStore(): Ctx {
     /* Server-only API surface — never invoked in demo mode. */
     login: async () => { throw new Error('login is only available in server mode') },
     logout: () => { /* demo mode has no session to end */ },
+    /* Demo state is live and local — nothing to refetch (N2.1-F: demo mode
+       remains completely offline, no polling ever starts here). */
+    refresh: () => { /* no-op by design */ },
   }), [state, meId, persistError])
 }
 
@@ -352,10 +371,16 @@ function useServerStore(): Ctx {
      so responses always apply in request order — no stale overwrite. */
   const queue = useRef<Promise<unknown>>(Promise.resolve())
 
+  /* N2.1-B: every authoritative payload passes the same defensive
+     normalization as demo persisted states (missing eligibility → EMPLOYEES,
+     missing reward ownership → admin) so a stale/partial backend response
+     can never fail open into manager access. Idempotent and display-safe. */
+  const applyState = (s: State | null) => { if (s) setState(migrate(s)) }
+
   const enqueue = (fn: () => Promise<State | null>) => {
     queue.current = queue.current.then(async () => {
       const s = await fn()
-      if (s) setState(s)
+      applyState(s)
       setPersistError(null)
     }).catch((e: unknown) => {
       if (e instanceof ApiError && e.status === 401) { logout(); return }
@@ -417,7 +442,7 @@ function useServerStore(): Ctx {
     try {
       const user = await api.me()
       setMe(user)
-      setState(await api.bootstrap())
+      applyState(await api.bootstrap())
       setAuth('ready')
     } catch {
       setToken(null)
@@ -427,19 +452,22 @@ function useServerStore(): Ctx {
 
   useEffect(() => { boot() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* Light polling so colleagues' actions appear without reload. Runs through
-     the same serialized queue; paused while a mutation is in flight by it. */
+  /* N2.1-F: lightweight near-real-time sync — refetch on window focus, on
+     visibility restore, and on a light interval while the tab is visible.
+     Everything runs through the same serialized queue: a refetch can never
+     overlap a mutation, and responses always apply in request order, so a
+     stale bootstrap can never overwrite fresher mutation state. Background
+     tabs pause. No WebSockets, no optimistic economy state. */
   useEffect(() => {
     if (auth !== 'ready') return
-    const t = setInterval(() => { refetch() }, 10_000)
-    return () => clearInterval(t)
+    return startRefreshLoop({ refresh: refetch })
   }, [auth]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const login = async (email: string, password: string) => {
     const r = await api.login(email, password)
     setToken(r.token)
     setMe(r.user)
-    setState(await api.bootstrap())
+    applyState(await api.bootstrap())
     setAuth('ready')
   }
 
@@ -470,6 +498,7 @@ function useServerStore(): Ctx {
       void enqueue(() => api.reseed())
     },
     auth, me, login, logout,
+    refresh: refetch,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [state, me, auth, persistError])
 }
