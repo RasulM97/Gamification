@@ -118,10 +118,55 @@ export interface LedgerEntry {
   id: string; at: number; userId: string; type: LedgerType
   amount: number; ref: string; taskId?: string; cycle?: number
 }
+/* N2-A: who may redeem a reward. EMPLOYEES / MANAGERS / BOTH — never ADMIN.
+   The smallest compatible representation with the existing Reward model:
+   one canonical field, persisted in demo state and (server mode) the
+   rewards.eligibility column. */
+export type RewardEligibility = 'EMPLOYEES' | 'MANAGERS' | 'BOTH'
 export interface Reward {
   id: string; name: string; description: string; cost: number
   stock: number | null; active: boolean; category: string
+  eligibility: RewardEligibility
+  /* N2.1-A2 / N2.1-R2: creator identity is kept for history/audit only.
+     Management authority does NOT derive from it — it follows the canonical
+     governance matrix below (canManageReward/canCreateReward). Persisted in
+     demo state and (server mode) rewards.created_by. Never editable. */
+  createdBy: string
 }
+/* Canonical eligibility check — a user may redeem iff their role is covered.
+   Admins are excluded outright: they run the economy but never receive
+   personal Coins or rewards (economy exclusion, M1-C / N2-A).
+   N2.1-B: unknown/missing eligibility fails CLOSED — never grant access on
+   data we cannot classify (a stale or partial payload must hide a reward,
+   not open it to managers). */
+export const rewardFits = (r: Pick<Reward, 'eligibility'>, u: Pick<User, 'role'>) =>
+  u.role === 'ADMIN' ? false
+  : r.eligibility === 'BOTH' ? u.role === 'EMPLOYEE' || u.role === 'MANAGER'
+  : r.eligibility === 'EMPLOYEES' ? u.role === 'EMPLOYEE'
+  : r.eligibility === 'MANAGERS' ? u.role === 'MANAGER'
+  : false
+/* Canonical reward governance matrix (N2.1-R2 founder directive) — this
+   REPLACES the earlier creator-ownership rule. Viewing never implies
+   redeeming or managing.
+
+   VIEW:    admin + manager see all three categories; employee sees
+            EMPLOYEES + BOTH only (fail-closed on unknown eligibility).
+   CREATE:  admin any; manager EMPLOYEES or BOTH (a manager-created BOTH
+            reward is company-wide, hence admin-managed from birth).
+   MANAGE:  admin any; manager EMPLOYEES-targeted only — even for rewards
+            the manager created. Creator identity never outranks the matrix.
+   REDEEM:  rewardFits (above) — admin never redeems.
+   DECIDE:  authority depends on the REDEEMER's role — admin decides all;
+            a manager decides only EMPLOYEE redemptions (never their own or
+            another manager's). */
+export const canSeeReward = (r: Pick<Reward, 'eligibility'>, u: Pick<User, 'role'>) =>
+  u.role === 'EMPLOYEE' ? rewardFits(r, u) : true
+export const canManageReward = (r: Pick<Reward, 'eligibility'>, u: Pick<User, 'role'>) =>
+  u.role === 'ADMIN' || (u.role === 'MANAGER' && r.eligibility === 'EMPLOYEES')
+export const canCreateReward = (eligibility: RewardEligibility, u: Pick<User, 'role'>) =>
+  u.role === 'ADMIN' || (u.role === 'MANAGER' && (eligibility === 'EMPLOYEES' || eligibility === 'BOTH'))
+export const canDecideRedemption = (redeemer: Pick<User, 'role'>, u: Pick<User, 'role'>) =>
+  u.role === 'ADMIN' || (u.role === 'MANAGER' && redeemer.role === 'EMPLOYEE')
 export interface Redemption {
   id: string; userId: string; rewardId: string; cost: number
   status: 'PENDING' | 'FULFILLED' | 'CANCELLED'; at: number; reason?: string
