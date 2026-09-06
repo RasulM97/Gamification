@@ -58,6 +58,92 @@ def test_cancel_redemption_exactly_once(client, auth):
     assert r.status_code in (403, 409)
 
 
+# ── N2 reward governance ─────────────────────────────────────────────────────
+
+
+def test_n2_eligibility_enforced_on_redeem(client, auth):
+    # rw-devsetup is MANAGERS-only — an employee is refused with FORBIDDEN,
+    # no debit, no stock change
+    state = client.get('/api/bootstrap', headers=auth['priya']).json()
+    stock = next(x for x in state['rewards'] if x['id'] == 'rw-devsetup')['stock']
+    rows = len(state['ledger'])
+    r = client.post('/api/redemptions', headers=auth['priya'], json={'rewardId': 'rw-devsetup'})
+    assert r.status_code == 403 and r.json()['code'] == 'FORBIDDEN'
+    state = client.get('/api/bootstrap', headers=auth['priya']).json()
+    assert len(state['ledger']) == rows
+    assert next(x for x in state['rewards'] if x['id'] == 'rw-devsetup')['stock'] == stock
+
+    # the admin is never an eligible recipient, regardless of eligibility
+    r = client.post('/api/redemptions', headers=auth['dana'], json={'rewardId': 'rw-lunch'})
+    assert r.status_code == 403
+    r = client.post('/api/redemptions', headers=auth['dana'], json={'rewardId': 'rw-devsetup'})
+    assert r.status_code == 403
+
+    # employee-only reward refuses a manager
+    r = client.post('/api/redemptions', headers=auth['marcus'], json={'rewardId': 'rw-lunch'})
+    assert r.status_code == 403 and r.json()['code'] == 'FORBIDDEN'
+
+    # manager redeems a manager-only reward: stock 2 → 1, PENDING created.
+    # Marcus's seeded balance is 0 (l10 +150 / l11 −150) — fund him first.
+    r = client.post('/api/admin/adjust', headers=auth['dana'],
+                    json={'userId': 'u-marcus', 'amount': 500, 'reason': 'test funds'})
+    assert r.status_code == 200
+    r = client.post('/api/redemptions', headers=auth['marcus'], json={'rewardId': 'rw-devsetup'})
+    assert r.status_code == 200
+    rw = next(x for x in r.json()['rewards'] if x['id'] == 'rw-devsetup')
+    assert rw['stock'] == 1
+    assert _balance(r.json(), 'u-marcus') == 350  # 0 seeded + 500 − 150
+
+    # BOTH rewards accept either side: Jonas (employee) on rw-hoodie is seeded
+    # (r1 FULFILLED); verify a BOTH reward stays redeemable by a manager too
+    r = client.post('/api/redemptions', headers=auth['marcus'], json={'rewardId': 'rw-hoodie'})
+    assert r.status_code == 200
+
+
+def test_n2_save_reward_eligibility_roundtrip_and_validation(client, auth):
+    # create with MANAGERS eligibility → serialized back
+    r = client.post('/api/rewards', headers=auth['dana'], json={
+        'name': 'Leadership workshop', 'description': 'd', 'cost': 80,
+        'stock': 5, 'active': True, 'category': 'Growth', 'eligibility': 'MANAGERS'})
+    assert r.status_code == 200
+    rw = next(x for x in r.json()['rewards'] if x['name'] == 'Leadership workshop')
+    assert rw['eligibility'] == 'MANAGERS'
+    # edit to BOTH persists
+    r = client.post('/api/rewards', headers=auth['dana'], json={
+        'id': rw['id'], 'name': 'Leadership workshop', 'description': 'd',
+        'cost': 80, 'stock': 5, 'active': True, 'category': 'Growth',
+        'eligibility': 'BOTH'})
+    assert r.status_code == 200
+    assert next(x for x in r.json()['rewards'] if x['id'] == rw['id'])['eligibility'] == 'BOTH'
+    # invalid values refused
+    r = client.post('/api/rewards', headers=auth['dana'], json={
+        'name': 'Bad reward', 'cost': 10, 'eligibility': 'ADMIN'})
+    assert r.status_code == 409
+    r = client.post('/api/rewards', headers=auth['dana'], json={
+        'name': 'Bad reward', 'cost': 10, 'eligibility': 'ADMINS'})
+    assert r.status_code == 409
+
+
+def test_n2_manager_redemption_decision_goes_to_other_managers(client, auth):
+    # Marcus redeems (MANAGERS reward) → Dana is notified, Marcus is NOT.
+    # Marcus's seeded balance is 0 — fund him first.
+    r = client.post('/api/admin/adjust', headers=auth['dana'],
+                    json={'userId': 'u-marcus', 'amount': 200, 'reason': 'test funds'})
+    assert r.status_code == 200
+    r = client.post('/api/redemptions', headers=auth['marcus'], json={'rewardId': 'rw-devsetup'})
+    assert r.status_code == 200
+    notices = r.json()['notices']
+    new_id = r.json()['redemptions'][0]['id']
+    # the seeded n8 already covers r3 (same reward, same redeemer) — match on
+    # the NEW redemption id so the assertion is about this redemption only
+    mine = [n for n in notices if n['userId'] == 'u-marcus'
+            and n.get('redemptionId') == new_id]
+    assert mine == []
+    danas = [n for n in notices if n['userId'] == 'u-dana'
+             and n.get('redemptionId') == new_id]
+    assert len(danas) == 1 and danas[0]['level'] == 'ACTION_REQUIRED'
+
+
 def test_admin_adjust_clamp_and_invariant(client, auth):
     bal = _balance(client.get('/api/bootstrap', headers=auth['dana']).json(), 'u-aisha')  # 20
     assert bal == 20
