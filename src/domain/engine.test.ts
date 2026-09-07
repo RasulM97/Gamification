@@ -232,7 +232,7 @@ describe('task cycles (§14)', () => {
     expect(t.cycles.slice(0, 2).map(c => c.paid)).toEqual(paidBefore)
     expect(s.ledger.length).toBe(ledgerBefore) // reopen mints nothing
     // old contributions still on record
-    expect(t.contributions).toHaveLength(2)
+    expect(t.contributions).toHaveLength(3)
   })
 
   it('cancel → reactivate starts a new cycle; double cancel refused', () => {
@@ -910,9 +910,11 @@ describe('immutable submission history', () => {
 
   it('seed coherence: historical owners keep their records', () => {
     const t = seed().tasks.find(x => x.id === 't-audit')!
-    expect(t.submissions.map(r => r.userId)).toEqual(['u-priya', 'u-jonas'])
-    expect(t.submissions[0].outcome).toBe('HANDED_OFF')
-    expect(t.submissions[1].outcome).toBe('APPROVED')
+    expect(t.submissions.map(r => r.userId)).toEqual(['u-jonas', 'u-priya', 'u-jonas'])
+    expect(t.submissions.map(r => r.cycle)).toEqual([1, 2, 2])
+    expect(t.submissions[0].outcome).toBe('APPROVED')
+    expect(t.submissions[1].outcome).toBe('HANDED_OFF')
+    expect(t.submissions[2].outcome).toBe('APPROVED')
     expect(t.submissions.every(r => r.attachments.length > 0)).toBe(true)
   })
 })
