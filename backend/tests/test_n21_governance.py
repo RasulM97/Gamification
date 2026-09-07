@@ -56,7 +56,7 @@ def test_n21_manager_cancels_own_task(client, auth):
     assert t['status'] == 'CANCELLED'
 
 
-# ── A2: canonical reward governance matrix (N2.1-R2) ────────────────────────
+# ── A2: canonical reward governance matrix (N2.1-R2) ─────────────────────────
 
 
 def _reward_payload(rw_id=None, eligibility='EMPLOYEES', name='X', cost=10):
