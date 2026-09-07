@@ -221,7 +221,7 @@ def test_n21_mark_all_read_clears_unread_everywhere(client, auth):
     assert len([n for n in state['notices'] if n['userId'] != 'u-marcus' and not n['read']]) == others_unread
 
 
-# ── N2.1-R2 UAT §2: canonical manager handoff routing ─────────────────────────
+# ── N2.1-R2 UAT §2: canonical manager handoff routing ────────────────────────
 
 
 def test_n21r2_manager_handoff_routes_to_employee_and_manager(client, auth):
