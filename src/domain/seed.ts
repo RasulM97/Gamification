@@ -25,10 +25,12 @@ export function seed(): State {
       submissionNote: null, attachments: [], rejectionReason: null, submittedAt: null,
       briefFiles: [{ name: 'warehouse-A-map.pdf', size: 890_000, type: 'application/pdf' }],
       submissions: [
+        { id: 's0', cycle: 1, userId: 'u-jonas', note: 'Full count completed and reconciled; signed variance report delivered.', attachments: [{ name: 'variance-report-cycle1.pdf', size: 980_000, type: 'application/pdf' }], reportedPct: 100, at: now - 34 * D, outcome: 'APPROVED', reviewerId: 'u-marcus', reviewNote: null },
         { id: 's1', cycle: 2, userId: 'u-priya', note: 'Aisles 1–6 counted and reconciled; variance sheet attached. Pulling me onto the client escalation — handing the rest over.', attachments: [{ name: 'variance-aisles-1-6.xlsx', size: 210_000, type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }], reportedPct: 45, at: now - 9 * D, outcome: 'HANDED_OFF', reviewerId: 'u-marcus', reviewNote: 'Pulled onto a client escalation mid-audit' },
         { id: 's2', cycle: 2, userId: 'u-jonas', note: 'Remaining aisles counted, root causes documented. Signed variance report attached.', attachments: [{ name: 'variance-report-signed.pdf', size: 1_100_000, type: 'application/pdf' }], reportedPct: 100, at: now - 5 * D, outcome: 'APPROVED', reviewerId: 'u-marcus', reviewNote: null },
       ],
       contributions: [
+        { id: 'c0', cycle: 1, employeeId: 'u-jonas', reportedPct: 100, acceptedPct: 100, payout: 40, decision: 'APPROVED', reason: 'Work approved', at: now - 34 * D },
         { id: 'c1', cycle: 2, employeeId: 'u-priya', reportedPct: 45, acceptedPct: 20, payout: 8, decision: 'HANDOFF', reason: 'Pulled onto a client escalation mid-audit', at: now - 9 * D },
         { id: 'c2', cycle: 2, employeeId: 'u-jonas', reportedPct: 100, acceptedPct: 80, payout: 32, decision: 'APPROVED', reason: 'Work approved', at: now - 5 * D },
       ],
@@ -108,7 +110,7 @@ export function seed(): State {
     },
     {
       id: 't-crm', title: 'Update CRM pipeline stages', reward: 15,
-      description: 'Migrate the sales pipeline to the new 5-stage model agreed in QBR. Remap open opportunities and archive stale ones older than 90 days.',
+      description: 'Migrate the sales pipeline to the new 5-stage model agreed in QBR (board: https://trello.example.com/b/q3-pipeline). Remap open opportunities and archive stale ones older than 90 days.',
       priority: 'NORMAL', deadline: dl(6), audience: 'EMPLOYEES',
       assignMode: 'SPECIFIC_EMPLOYEE', assigneeId: null,
       status: 'IN_PROGRESS', ownerId: 'u-jonas', cycle: 1, verified: 0, reported: 40, paid: 0,
@@ -240,6 +242,7 @@ export function seed(): State {
     { id: 'a3', at: now - 3 * D, actorId: 'u-marcus', action: 'handed off (20% accepted)', object: 'Quarterly commission reconciliation', taskId: 't-commission', reason: 'Deal-level extract done; field verification needed', econ: '+6 Coins', cycle: 1 },
     { id: 'a2', at: now - 5 * D, actorId: 'u-marcus', action: 'approved work', object: 'Q3 inventory audit', taskId: 't-audit', econ: '+32 Coins', cycle: 2 },
     { id: 'a1', at: now - 9 * D, actorId: 'u-marcus', action: 'handed off (20% accepted)', object: 'Q3 inventory audit', taskId: 't-audit', reason: 'Pulled onto a client escalation mid-audit', econ: '+8 Coins', cycle: 2 },
+    { id: 'a0', at: now - 34 * D, actorId: 'u-marcus', action: 'approved work', object: 'Q3 inventory audit', taskId: 't-audit', econ: '+40 Coins', cycle: 1 },
   ]
 
   return { company: 'Aster Dynamics', seq: 100, settings: { ...DEFAULT_SETTINGS }, users, tasks, ledger, rewards, redemptions, notices, activity, notifMuted: {} }
