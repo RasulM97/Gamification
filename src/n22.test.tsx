@@ -63,7 +63,7 @@ const qa = (sel: string) => [...host.querySelectorAll(sel)] as HTMLElement[]
 const click = async (el: Element | null) => { await act(async () => (el as HTMLElement).click()) }
 const task = (s: State, id: string) => s.tasks.find(t => t.id === id)!
 
-/* ── 1–3 · linkified user text ────────────────────────────────────── */
+/* ── 1–3 · linkified user text ─────────────────────────────────────────── */
 describe('linkify: user-generated task text', () => {
   it('task description URL is clickable with safe new-tab attributes', async () => {
     persona('u-marcus')
@@ -232,7 +232,7 @@ describe('cycle-scoped task history', () => {
   })
 })
 
-/* ── 11–15 · reward search + filter ─────────────────────────────────────────── */
+/* ── 11–15 · reward search + filter ────────────────────────────────────── */
 describe('reward search + filter (after role visibility)', () => {
   it('search by name finds the reward', async () => {
     persona('u-marcus')
