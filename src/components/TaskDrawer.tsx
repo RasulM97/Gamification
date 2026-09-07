@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { MAX_ACTIVE, activeCount, roleFits } from '../domain/engine'
 import type { Task } from '../domain/engine'
-import { AttachmentChips, Avatar, ClampedText, Coin, Drawer, PriBadge, Progress, StatusBadge, actMarker, ago, coins, deadlineInfo } from '../ui'
+import { rowProps } from '../ui'
+import { AttachmentChips, Avatar, ClampedText, Coin, LinkText, Drawer, PriBadge, Progress, StatusBadge, actMarker, ago, coins, deadlineInfo } from '../ui'
 import { SubmitModal, RejectModal, DeclineModal, CancelModal, ReturnModal, ReopenModal, ReactivateModal, EditTaskModal } from './TaskModals'
 import { HandoffWizard } from './HandoffWizard'
 
@@ -208,62 +209,14 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
         </div>
       )}
 
-      {/* 3b · PEOPLE HISTORY — every owner who touched the task gets a tab.
-          Their submissions (notes + files) and the review answers they
-          received never disappear, no matter how often the task moved. */}
-      {(t.submissions.length > 0 || t.contributions.length > 0) && (
-        <div className="dsec">
-          <span className="eyebrow">People history</span>
-          <PeopleHistory task={t} />
-        </div>
-      )}
-
-      {t.cycles.length > 1 && (
-        <div className="dsec">
-          <span className="eyebrow">Cycles</span>
-          <div className="summary" style={{ marginTop: 8 }}>
-            {[...t.cycles].reverse().map(c => (
-              <div className="srow" key={c.cycle}>
-                <span>Cycle {c.cycle}{c.closedAt ? '' : ' (current)'}</span>
-                <span className="dim">
-                  {c.outcome ?? 'in progress'} · {c.verified}% verified · <Coin n={c.paid} /> paid
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {taskActs.length > 0 && (
-        <div className="dsec">
-          <span className="eyebrow">History</span>
-          {/* N1-D: meaningful transitions carry a compact human-readable
-              marker (APPROVED / REJECTED / DECLINED / HANDOFF / REWORK /
-              ASSIGNED / CLAIMED / SUBMITTED / REOPENED / CANCELLED) so the
-              timeline scans at a glance. Routine events stay unmarked; raw
-              enums never render. Uses existing Activity data — no duplicate
-              history records. */}
-          <div style={{ marginTop: 6 }}>
-            {taskActs.slice(0, 12).map(a => {
-              const m = actMarker(a.action)
-              return (
-                <div className="aitem" key={a.id} style={{ padding: '7px 0' }}>
-                  <Avatar name={user(a.actorId)?.name ?? '?'} size={20} />
-                  <div className="aa">
-                    <span>
-                      {m && <span className={'bd hist-marker ' + m.cls} data-testid={`hist-marker-${m.label}`}>{m.label}</span>}
-                      {user(a.actorId)?.name} {a.action}{' '}
-                    </span>
-                    {a.reason && <div className="rs">“{a.reason}”</div>}
-                    {a.econ && <span className="num warn" style={{ fontSize: 11 }}>{a.econ}</span>}
-                  </div>
-                  <span className="at">{ago(a.at)}</span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      {/* 3b · CYCLE-SCOPED HISTORY (N2.1-R2). One container per Task Cycle:
+          each cycle holds its own People history and Task history. The flat
+          global "People history"/"History" sections are gone — records are
+          grouped by their existing `cycle` field (submissions, contributions
+          and activity all carry it — no schema change, no duplicated records),
+          so a 10-cycle task stays readable: current cycle open, past cycles
+          one click away, history immutable. */}
+      <CyclesHistory task={t} taskActs={taskActs} />
 
       {myHistory.length > 0 && !isMgr && (
         <div className="dsec">
@@ -293,26 +246,121 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
   )
 }
 
+/* ── cycle-scoped history (N2.1-R2) ──────────────────────────────────────
+   The Cycles section IS the history: every cycle is an expandable container
+   holding its own People history (contributors, their submissions, review
+   outcomes, exchanged files) and Task history (routed/claimed/progress/
+   submission/review/handoff/cancel/reopen events + economic markers).
+
+   Grouping is derived from data the records already carry — Submissions,
+   Contributions and Activity all have a reliable `cycle` field (stamped by
+   the engine at write time and persisted by the backend `activity.cycle`
+   column). Nothing is duplicated for UI grouping; historical cycles render
+   read-only from the immutable records. */
+import type { Act } from '../domain/engine'
+
+/* Legacy records written before cycle-stamping fall back to openedAt/closedAt
+   window inference — current data always has an explicit cycle. */
+function actCycle(a: Act, t: Task): number {
+  if (a.cycle != null) return a.cycle
+  const c = t.cycles.find(c => c.openedAt <= a.at && (c.closedAt == null || a.at <= c.closedAt))
+  return c?.cycle ?? t.cycle
+}
+
+function CyclesHistory({ task: t, taskActs }: { task: Task; taskActs: Act[] }) {
+  const cycles = t.cycles.length > 0 ? t.cycles : [{ cycle: t.cycle, openedAt: t.createdAt, closedAt: null, outcome: null, paid: t.paid, verified: t.verified }]
+  const [open, setOpen] = useState<number | null>(null)
+  const sel = open ?? t.cycle /* current cycle is the default-open one */
+  return (
+    <div className="dsec">
+      <span className="eyebrow">History by cycle</span>
+      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {[...cycles].reverse().map(c => {
+          const current = c.cycle === t.cycle && c.closedAt == null
+          const expanded = sel === c.cycle
+          return (
+            <div className="panel" key={c.cycle} data-testid={`cycle-${c.cycle}`} style={{ padding: 0, overflow: 'hidden' }}>
+              <div {...rowProps(() => setOpen(expanded ? -1 : c.cycle))}
+                style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 13px', cursor: 'pointer' }}>
+                <b style={{ fontSize: 12.5 }}>Cycle {c.cycle}</b>
+                {current && <span className="bd bd-open" data-testid="cycle-current">current</span>}
+                <span className="dim" style={{ fontSize: 11.5 }}>
+                  {c.outcome ?? 'in progress'} · {c.verified}% verified · {c.paid} Coins paid
+                </span>
+                <span className="faint" style={{ marginLeft: 'auto', fontSize: 12 }}>{expanded ? '▾' : '▸'}</span>
+              </div>
+              {expanded && <CycleBody task={t} cycle={c.cycle} acts={taskActs.filter(a => actCycle(a, t) === c.cycle)} />}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function CycleBody({ task: t, cycle, acts }: { task: Task; cycle: number; acts: Act[] }) {
+  const subs = t.submissions.filter(s => s.cycle === cycle)
+  const contribs = t.contributions.filter(c => c.cycle === cycle)
+  return (
+    <div style={{ borderTop: '1px solid var(--line)', padding: '10px 13px 13px' }}>
+      <span className="eyebrow" style={{ fontSize: 10 }}>People this cycle</span>
+      {subs.length === 0 && contribs.length === 0
+        ? <div className="faint" style={{ fontSize: 12, margin: '6px 0 10px' }}>Nobody worked this cycle yet.</div>
+        : <PeopleHistory task={t} cycle={cycle} />}
+      <span className="eyebrow" style={{ fontSize: 10, display: 'block', marginTop: 12 }}>Task history this cycle</span>
+      {acts.length === 0
+        ? <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>No recorded events in this cycle.</div>
+        : (
+          <div style={{ marginTop: 4 }}>
+            {acts.map(a => <HistoryItem key={a.id} a={a} />)}
+          </div>
+        )}
+    </div>
+  )
+}
+
+function HistoryItem({ a }: { a: Act }) {
+  const { state } = useStore()
+  const user = (id: string | null) => state.users.find(u => u.id === id)
+  const m = actMarker(a.action)
+  return (
+    <div className="aitem" style={{ padding: '7px 0' }}>
+      <Avatar name={user(a.actorId)?.name ?? '?'} size={20} />
+      <div className="aa">
+        <span>
+          {m && <span className={'bd hist-marker ' + m.cls} data-testid={`hist-marker-${m.label}`}>{m.label}</span>}
+          {user(a.actorId)?.name} {a.action}{' '}
+        </span>
+        {a.reason && <div className="rs"><LinkText text={`“${a.reason}”`} /></div>}
+        {a.econ && <span className="num warn" style={{ fontSize: 11 }}>{a.econ}</span>}
+      </div>
+      <span className="at">{ago(a.at)}</span>
+    </div>
+  )
+}
+
 /* ── per-owner history tabs ────────────────────────────────────────────── */
 const SUBMISSION_OUTCOME: Record<string, [string, string]> = {
   PENDING: ['st-review', 'Awaiting review'], APPROVED: ['st-done', 'Approved'],
   REJECTED: ['st-rej', 'Sent to rework'], HANDED_OFF: ['bd-important', 'Handed off'],
   CANCELLED: ['st-cancel', 'Cancelled'],
 }
-function PeopleHistory({ task: t }: { task: Task }) {
+function PeopleHistory({ task: t, cycle }: { task: Task; cycle?: number }) {
   const { state } = useStore()
   const user = (id: string | null) => state.users.find(u => u.id === id)
-  /* Everyone who ever owned or contributed, most recent first — the 4th
-     owner can open any predecessor's tab and see what was exchanged. */
+  /* Everyone who ever owned or contributed (in this cycle, when scoped) —
+     the 4th owner can open any predecessor's tab and see what was exchanged. */
+  const subs0 = cycle == null ? t.submissions : t.submissions.filter(s => s.cycle === cycle)
+  const contribs0 = cycle == null ? t.contributions : t.contributions.filter(c => c.cycle === cycle)
   const ids: string[] = []
-  ;[...t.submissions.map(s => ({ id: s.userId, at: s.at })),
-    ...t.contributions.map(c => ({ id: c.employeeId, at: c.at })),
+  ;[...subs0.map(s => ({ id: s.userId, at: s.at })),
+    ...contribs0.map(c => ({ id: c.employeeId, at: c.at })),
   ].sort((a, b) => b.at - a.at).forEach(e => { if (!ids.includes(e.id)) ids.push(e.id) })
   const [sel, setSel] = useState('')
   const selId = ids.includes(sel) ? sel : ids[0]
   if (!selId) return null
-  const subs = t.submissions.filter(s => s.userId === selId).sort((a, b) => b.at - a.at)
-  const contribs = t.contributions.filter(c => c.employeeId === selId).sort((a, b) => b.at - a.at)
+  const subs = subs0.filter(s => s.userId === selId).sort((a, b) => b.at - a.at)
+  const contribs = contribs0.filter(c => c.employeeId === selId).sort((a, b) => b.at - a.at)
   return (
     <div style={{ marginTop: 8 }}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -361,7 +409,7 @@ function PeopleHistory({ task: t }: { task: Task }) {
               </span>
               <span className="when" style={{ marginLeft: 'auto' }}>{ago(c.at)} · cycle {c.cycle}</span>
             </div>
-            <div className="why">{c.reason}</div>
+            <div className="why"><LinkText text={c.reason} /></div>
           </div>
         ))}
         {subs.length === 0 && contribs.length === 0 && (
