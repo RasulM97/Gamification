@@ -482,14 +482,19 @@ def handoff(db: Session, actor: User, task_id: str, *, accepted_pct: float,
     if t.owner_id == actor.id:
         raise DomainError('FORBIDDEN', 'Payout decisions need a second pair of eyes')
     cid = actor.company_id
-    admin_bypass = actor.role == 'ADMIN'
-    eff_audience = audience or t.audience
-    if eff_audience == 'PRIVATE' and next_kind != 'EMPLOYEE':
-        raise DomainError('VALIDATION', 'Private work stays one-to-one — pick a person')
+    # N2.1-R2 canonical routing (mirrors the demo engine exactly): the audience
+    # choice DEFINES eligibility; without an explicit audience the effective
+    # audience follows the target (employee → EMPLOYEES, manager → MANAGEMENT),
+    # for every authorized actor. The founder/admin never owns work; PRIVATE
+    # work stays one-to-one.
     nu = get_user(db, cid, next_id) if next_kind == 'EMPLOYEE' and next_id else None
     if nu is not None and nu.role == 'ADMIN':
         raise DomainError('FORBIDDEN', 'The founder/admin never owns work')
-    if nu is not None and not role_fits(eff_audience, nu.role) and not admin_bypass:
+    eff_audience = audience or (('EMPLOYEES' if nu.role == 'EMPLOYEE' else 'MANAGEMENT')
+                                if nu is not None else t.audience)
+    if eff_audience == 'PRIVATE' and next_kind != 'EMPLOYEE':
+        raise DomainError('VALIDATION', 'Private work stays one-to-one — pick a person')
+    if nu is not None and not role_fits(eff_audience, nu.role):
         raise DomainError('FORBIDDEN', 'The chosen person is not eligible for this audience')
     # remaining-reward suggestion + audited override, validated BEFORE mutation
     pct_probe = max(0, min(100 - t.verified, _round(accepted_pct)))
@@ -545,9 +550,7 @@ def handoff(db: Session, actor: User, task_id: str, *, accepted_pct: float,
          f'Handoff on “{t.title}” — {pct}% accepted'
          f'{f", {fmt_coins(payout)} credited" if payout > 0 else ", no payout"}.', t)
     if next_kind == 'EMPLOYEE' and nu is not None:
-        # cross-level admin handoff without an explicit audience: follow the new owner
-        if not audience and not role_fits(t.audience, nu.role):
-            t.audience = 'EMPLOYEES' if nu.role == 'EMPLOYEE' else 'MANAGEMENT'
+        # audience already resolved above (explicit choice or target-derived)
         t.assign_mode = 'SPECIFIC_EMPLOYEE'
         t.assignee_id = nu.id
         t.status = 'OPEN'
