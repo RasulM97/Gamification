@@ -56,7 +56,7 @@ def test_n21_manager_cancels_own_task(client, auth):
     assert t['status'] == 'CANCELLED'
 
 
-# ── A2: canonical reward governance matrix (N2.1-R2) ─────────────────────────
+# ── A2: canonical reward governance matrix (N2.1-R2) ────────────────────────
 
 
 def _reward_payload(rw_id=None, eligibility='EMPLOYEES', name='X', cost=10):
@@ -219,3 +219,56 @@ def test_n21_mark_all_read_clears_unread_everywhere(client, auth):
     state = client.get('/api/bootstrap', headers=auth['marcus']).json()
     assert all(n['read'] for n in state['notices'] if n['userId'] == 'u-marcus')
     assert len([n for n in state['notices'] if n['userId'] != 'u-marcus' and not n['read']]) == others_unread
+
+
+# ── N2.1-R2 UAT §2: canonical manager handoff routing ─────────────────────────
+
+
+def test_n21r2_manager_handoff_routes_to_employee_and_manager(client, auth):
+    """An authorized manager routes remaining work per the chosen audience —
+    employee targets (EMPLOYEES) and manager targets (MANAGEMENT) both work;
+    the audience follows the target when not given explicitly. The admin can
+    never become the worker."""
+    # t-commission: admin-created, EMPLOYEES audience, owned by u-jonas (IN_PROGRESS)
+    # 1. manager → employee, explicit EMPLOYEES audience
+    r = client.post('/api/tasks/t-commission/handoff', headers=auth['marcus'], data={
+        'acceptedPct': '0', 'reason': 'route to specialist',
+        'nextKind': 'EMPLOYEE', 'nextId': 'u-aisha', 'audience': 'EMPLOYEES'})
+    assert r.status_code == 200
+    t = next(x for x in r.json()['tasks'] if x['id'] == 't-commission')
+    assert t['status'] == 'OPEN' and t['assigneeId'] == 'u-aisha' and t['audience'] == 'EMPLOYEES'
+
+    # 2. manager → manager, with the management audience chosen explicitly
+    #    (the task sits OPEN after step 1, so an employee picks it up first)
+    r = client.post('/api/tasks/t-commission/claim', headers=auth['aisha'])
+    assert r.status_code == 200
+    r = client.post('/api/tasks/t-commission/handoff', headers=auth['dana'], data={
+        'acceptedPct': '0', 'reason': 'escalate to team lead',
+        'nextKind': 'EMPLOYEE', 'nextId': 'u-marcus', 'audience': 'MANAGEMENT'})
+    assert r.status_code == 200
+    t = next(x for x in r.json()['tasks'] if x['id'] == 't-commission')
+    assert t['assigneeId'] == 'u-marcus' and t['audience'] == 'MANAGEMENT'
+
+    # 3. the admin can NEVER become the handoff worker (implicit audience
+    #    derives from the target — admin is excluded before any mutation)
+    r = client.post('/api/tasks/t-commission/claim', headers=auth['marcus'])
+    assert r.status_code == 200
+    r = client.post('/api/tasks/t-commission/handoff', headers=auth['dana'], data={
+        'acceptedPct': '0', 'reason': 'take it myself',
+        'nextKind': 'EMPLOYEE', 'nextId': 'u-dana'})
+    assert r.status_code == 403
+    state = client.get('/api/bootstrap', headers=auth['dana']).json()
+    t = next(x for x in state['tasks'] if x['id'] == 't-commission')
+    assert t['ownerId'] == 'u-marcus'  # untouched — the handoff was refused
+
+
+def test_n21r2_manager_handoff_mismatched_audience_refused(client, auth):
+    """A target that does not fit the CHOSEN audience is refused for everyone."""
+    # employee task, explicit EMPLOYEES audience, manager target → 403
+    r = client.post('/api/tasks/t-commission/handoff', headers=auth['dana'], data={
+        'acceptedPct': '0', 'reason': 'x',
+        'nextKind': 'EMPLOYEE', 'nextId': 'u-marcus', 'audience': 'EMPLOYEES'})
+    assert r.status_code == 403
+    state = client.get('/api/bootstrap', headers=auth['dana']).json()
+    t = next(x for x in state['tasks'] if x['id'] == 't-commission')
+    assert t['ownerId'] == 'u-jonas'  # refused, untouched
