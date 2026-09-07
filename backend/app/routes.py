@@ -35,7 +35,7 @@ def _company(db: Session, actor: User) -> Company:
 
 
 def _state(db: Session, actor: User) -> dict:
-    return bootstrap(db, _company(db, actor))
+    return bootstrap(db, _company(db, actor), viewer=actor)
 
 
 def mutate(db: Session, actor: User, action: str, entity: str, fn,
@@ -338,11 +338,30 @@ def redeem(body: RedeemIn, actor: User = Depends(current_user),
                   lambda: svc.redeem(db, actor, body.rewardId))
 
 
+# N2.2 §5: approval is a separate endpoint from fulfillment — the two
+# powers are technically distinct routes, authorities and audit events.
+@router.post('/redemptions/{redemption_id}/approve')
+def approve_redemption(redemption_id: str, actor: User = Depends(current_user),
+                       db: Session = Depends(get_db)):
+    return mutate(db, actor, 'approve_redemption', redemption_id,
+                  lambda: svc.approve_redemption(db, actor, redemption_id))
+
+
+class FulfillIn(BaseModel):
+    # N2.2 §10: optional tracking details recorded with the delivery.
+    reference: Optional[str] = None
+    note: Optional[str] = None
+
+
 @router.post('/redemptions/{redemption_id}/fulfill')
-def fulfill(redemption_id: str, actor: User = Depends(current_user),
+def fulfill(redemption_id: str, body: FulfillIn | None = None,
+            actor: User = Depends(current_user),
             db: Session = Depends(get_db)):
+    body = body or FulfillIn()
     return mutate(db, actor, 'fulfill_redemption', redemption_id,
-                  lambda: svc.fulfill_redemption(db, actor, redemption_id))
+                  lambda: svc.fulfill_redemption(db, actor, redemption_id,
+                                                 reference=body.reference,
+                                                 note_text=body.note))
 
 
 @router.post('/redemptions/{redemption_id}/cancel')
@@ -373,8 +392,15 @@ class RewardIn(BaseModel):
     cost: float
     stock: Optional[int] = None
     active: bool = True
-    category: str = 'Perks'
+    category: str = 'Company Perks'
     eligibility: str = 'EMPLOYEES'  # N2-A: EMPLOYEES | MANAGERS | BOTH
+    # N2.2: per-user limit, availability window (UTC ms epoch), lifecycle,
+    # executor seats (admin-managed; ignored for non-admin actors).
+    perUserLimit: Optional[int] = None
+    availableFrom: Optional[float] = None
+    availableUntil: Optional[float] = None
+    archived: bool = False
+    executorIds: Optional[list[str]] = None
 
 
 @router.post('/rewards')
@@ -383,7 +409,30 @@ def save_reward(body: RewardIn, actor: User = Depends(current_user),
     return mutate(db, actor, 'save_reward', body.name, lambda: svc.save_reward(
         db, actor, reward_id=body.id, name=body.name, description=body.description,
         cost=body.cost, stock=body.stock, active=body.active, category=body.category,
-        eligibility=body.eligibility))
+        eligibility=body.eligibility, per_user_limit=body.perUserLimit,
+        available_from=body.availableFrom, available_until=body.availableUntil,
+        archived=body.archived, executor_ids=body.executorIds))
+
+
+class CategoryIn(BaseModel):
+    id: Optional[str] = None
+    name: str
+    active: bool = True
+
+
+@router.post('/reward-categories')
+def save_reward_category(body: CategoryIn, actor: User = Depends(current_user),
+                         db: Session = Depends(get_db)):
+    return mutate(db, actor, 'save_reward_category', body.name,
+                  lambda: svc.save_reward_category(db, actor, category_id=body.id,
+                                                   name=body.name, active=body.active))
+
+
+@router.post('/users/{user_id}/fulfill-permission')
+def toggle_fulfill_permission(user_id: str, actor: User = Depends(current_user),
+                              db: Session = Depends(get_db)):
+    return mutate(db, actor, 'toggle_fulfill_permission', user_id,
+                  lambda: svc.toggle_fulfill_permission(db, actor, user_id))
 
 
 # ── notices & preferences ───────────────────────────────────────────────────
