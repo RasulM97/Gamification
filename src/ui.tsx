@@ -60,9 +60,46 @@ export function downloadCsv(filename: string, header: string[], rows: (string | 
   URL.revokeObjectURL(url)
 }
 
+/* ── safe user-text rendering: linkify without any HTML injection ─────────
+   THE one canonical way to render user-entered text (descriptions,
+   submission notes, handoff reasons/instructions, review notes). URLs are
+   detected with a conservative pattern and become real links that always
+   open in a new tab with noopener/noreferrer. Everything is built from React
+   text nodes — no dangerouslySetInnerHTML anywhere — so raw HTML in the
+   input can never execute. Line breaks are preserved via pre-wrap CSS. */
+const URL_RE = /https?:\/\/[^\s<>"'()]+/g
+/* Trailing punctuation that a writer puts after a URL is sentence text,
+   not part of the address. */
+const TRAIL_RE = /[.,;:!?\]]+$/
+export function linkifyText(text: string): ReactNode[] {
+  const out: ReactNode[] = []
+  let last = 0, k = 0
+  for (const m of text.matchAll(URL_RE)) {
+    const idx = m.index
+    let url = m[0]
+    const trail = url.match(TRAIL_RE)?.[0] ?? ''
+    if (trail) url = url.slice(0, -trail.length)
+    if (idx > last) out.push(text.slice(last, idx))
+    out.push(
+      <a key={k++} href={url} target="_blank" rel="noopener noreferrer"
+        className="ulink" onClick={e => e.stopPropagation()}>{url}</a>
+    )
+    if (trail) out.push(trail)
+    last = idx + m[0].length
+  }
+  if (last < text.length) out.push(text.slice(last))
+  return out
+}
+export function LinkText({ text, style, className }: {
+  text: string; style?: CSSProperties; className?: string
+}) {
+  return <span className={className} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', ...style }}>{linkifyText(text)}</span>
+}
+
 /* ── long-form text: limited preview, explicit expand ────────────────────
    Nothing important is ever invisibly truncated: long content clamps to a
-   fixed number of lines with a Show more/less toggle (annotation round). */
+   fixed number of lines with a Show more/less toggle (annotation round).
+   URLs inside the text render as safe new-tab links (see linkifyText). */
 export function ClampedText({ text, lines = 4, style, className }: {
   text: string; lines?: number; style?: CSSProperties; className?: string
 }) {
@@ -76,7 +113,7 @@ export function ClampedText({ text, lines = 4, style, className }: {
           display: '-webkit-box', WebkitBoxOrient: 'vertical',
           WebkitLineClamp: lines, overflow: 'hidden',
         }),
-      }}>{text}</div>
+      }}>{linkifyText(text)}</div>
       {long && (
         <button className="linkish" style={{ background: 'none', border: 0, padding: 0, marginTop: 5, fontSize: 11.5, cursor: 'pointer' }}
           onClick={() => setOpen(o => !o)}>
