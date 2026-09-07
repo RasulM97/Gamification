@@ -91,6 +91,10 @@ def run(db: Session) -> None:
          created_at=now - 40 * D, updated_at=now - 5 * D, created_by='u-marcus')
     brief('t-audit', [('warehouse-A-map.pdf', 890_000, 'application/pdf')])
     db.add_all([
+        Submission(id='s0', company_id=co.id, task_id='t-audit', cycle=1, user_id='u-jonas',
+                   note='Full count completed and reconciled; signed variance report delivered.',
+                   reported_pct=100, at=now - 34 * D, outcome='APPROVED',
+                   reviewer_id='u-marcus', review_note=None, reviewed_at=now - 34 * D),
         Submission(id='s1', company_id=co.id, task_id='t-audit', cycle=2, user_id='u-priya',
                    note='Aisles 1–6 counted and reconciled; variance sheet attached. Pulling me onto the client escalation — handing the rest over.',
                    reported_pct=45, at=now - 9 * D, outcome='HANDED_OFF',
@@ -100,6 +104,9 @@ def run(db: Session) -> None:
                    note='Remaining aisles counted, root causes documented. Signed variance report attached.',
                    reported_pct=100, at=now - 5 * D, outcome='APPROVED',
                    reviewer_id='u-marcus', review_note=None, reviewed_at=now - 5 * D),
+        Contribution(id='c0', company_id=co.id, task_id='t-audit', cycle=1, employee_id='u-jonas',
+                     reported_pct=100, accepted_pct=100, payout=40, decision='APPROVED',
+                     reason='Work approved', at=now - 34 * D),
         Contribution(id='c1', company_id=co.id, task_id='t-audit', cycle=2, employee_id='u-priya',
                      reported_pct=45, accepted_pct=20, payout=8, decision='HANDOFF',
                      reason='Pulled onto a client escalation mid-audit', at=now - 9 * D),
@@ -111,6 +118,7 @@ def run(db: Session) -> None:
         TaskCycle(company_id=co.id, task_id='t-audit', cycle=2, opened_at=now - 12 * D,
                   closed_at=now - 5 * D, outcome='APPROVED', paid=40, verified=100),
     ])
+    sub_atts('s0', 't-audit', [('variance-report-cycle1.pdf', 980_000, 'application/pdf')], now - 34 * D)
     sub_atts('s1', 't-audit', [('variance-aisles-1-6.xlsx', 210_000,
              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')], now - 9 * D)
     sub_atts('s2', 't-audit', [('variance-report-signed.pdf', 1_100_000, 'application/pdf')], now - 5 * D)
@@ -183,7 +191,7 @@ def run(db: Session) -> None:
     sub_atts('s5', 't-leads', [('leads-cleaned.csv', 310_000, 'text/csv')], now - 26 * H)
 
     task(id='t-crm', title='Update CRM pipeline stages', reward=15,
-         description='Migrate the sales pipeline to the new 5-stage model agreed in QBR. Remap open opportunities and archive stale ones older than 90 days.',
+         description='Migrate the sales pipeline to the new 5-stage model agreed in QBR (board: https://trello.example.com/b/q3-pipeline). Remap open opportunities and archive stale ones older than 90 days.',
          priority='NORMAL', deadline=dl(6), audience='EMPLOYEES',
          assign_mode='SPECIFIC_EMPLOYEE', assignee_id=None, instructions=None,
          status='IN_PROGRESS', owner_id='u-jonas', cycle=1, verified=0, reported=40, paid=0,
@@ -282,5 +290,6 @@ def run(db: Session) -> None:
         Activity(id='a3', company_id=co.id, at=now - 3 * D, actor_id='u-marcus', action='handed off (20% accepted)', object='Quarterly commission reconciliation', task_id='t-commission', reason='Deal-level extract done; field verification needed', econ='+6 Coins', cycle=1),
         Activity(id='a2', company_id=co.id, at=now - 5 * D, actor_id='u-marcus', action='approved work', object='Q3 inventory audit', task_id='t-audit', econ='+32 Coins', cycle=2),
         Activity(id='a1', company_id=co.id, at=now - 9 * D, actor_id='u-marcus', action='handed off (20% accepted)', object='Q3 inventory audit', task_id='t-audit', reason='Pulled onto a client escalation mid-audit', econ='+8 Coins', cycle=2),
+        Activity(id='a0', company_id=co.id, at=now - 34 * D, actor_id='u-marcus', action='approved work', object='Q3 inventory audit', task_id='t-audit', econ='+40 Coins', cycle=1),
     ])
     db.flush()
