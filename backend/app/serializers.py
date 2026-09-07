@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 
 from .models import (
     Activity, Attachment, Company, CompanySettings, Contribution,
-    LedgerTransaction, Notification, Redemption, Reward, Submission, Task,
-    TaskCycle, User,
+    LedgerTransaction, Notification, Redemption, Reward, RewardCategory,
+    RewardExecutor, Submission, Task, TaskCycle, User,
 )
 from .services import settings_of
 
@@ -65,8 +65,11 @@ def _task(db: Session, t: Task) -> dict:
     }
 
 
-def bootstrap(db: Session, company: Company) -> dict:
+def bootstrap(db: Session, company: Company, viewer: User | None = None) -> dict:
     cid = company.id
+    # N2.2 §10: fulfillment notes are executor/management context — they are
+    # withheld from viewers who are neither (the redeemer never sees them).
+    see_notes = viewer is None or viewer.role != 'EMPLOYEE' or viewer.can_fulfill_rewards
     s = settings_of(db, cid)
     users = list(db.scalars(select(User).where(User.company_id == cid)))
     tasks = list(db.scalars(select(Task).where(Task.company_id == cid)
@@ -123,7 +126,21 @@ def bootstrap(db: Session, company: Company) -> dict:
              'cost': r.cost, 'status': r.status, 'at': r.at}
         if r.reason is not None:
             d['reason'] = r.reason
+        # N2.2 §5/§10: decision + execution traceability.
+        d['approvedBy'] = r.approved_by
+        d['approvedAt'] = r.approved_at
+        d['fulfilledBy'] = r.fulfilled_by
+        d['fulfilledAt'] = r.fulfilled_at
+        d['fulfillmentReference'] = r.fulfillment_reference
+        d['fulfillmentNote'] = r.fulfillment_note if see_notes else None
         return d
+
+    # N2.2 §7: executor seats per reward, from the join table.
+    exec_rows = db.query(RewardExecutor.reward_id, RewardExecutor.user_id).filter(
+        RewardExecutor.company_id == cid).all()
+    exec_by_reward: dict[str, list[str]] = {}
+    for rid, uid in exec_rows:
+        exec_by_reward.setdefault(rid, []).append(uid)
 
     return {
         'company': company.name,
@@ -131,9 +148,14 @@ def bootstrap(db: Session, company: Company) -> dict:
         'settings': {'maxFileSizeMb': s.max_file_size_mb,
                      'maxSubmissionTotalMb': s.max_submission_total_mb},
         'users': [{'id': u.id, 'name': u.name, 'role': u.role,
-                   'position': u.position} for u in users],
+                   'position': u.position,
+                   # N2.2 §6: REWARD_FULFILL capability — separate from role
+                   'canFulfillRewards': bool(u.can_fulfill_rewards)} for u in users],
         'tasks': [_task(db, t) for t in tasks],
         'ledger': [_ledger(l) for l in ledger_rows],
+        'rewardCategories': [{'id': c.id, 'name': c.name, 'active': c.active}
+                             for c in db.scalars(select(RewardCategory)
+                                                 .where(RewardCategory.company_id == cid))],
         'rewards': [{'id': r.id, 'name': r.name, 'description': r.description,
                      'cost': r.cost, 'stock': r.stock, 'active': r.active,
                      'category': r.category,
@@ -141,7 +163,13 @@ def bootstrap(db: Session, company: Company) -> dict:
                      'eligibility': r.eligibility or 'EMPLOYEES',
                      # N2.1-A2: ownership — pre-N2.1 rows were all admin-created
                      'createdBy': r.created_by or next(
-                         (u.id for u in users if u.role == 'ADMIN'), '')} for r in rewards],
+                         (u.id for u in users if u.role == 'ADMIN'), ''),
+                     # N2.2: limit / window / lifecycle / executor seats
+                     'perUserLimit': r.per_user_limit,
+                     'availableFrom': r.available_from,
+                     'availableUntil': r.available_until,
+                     'archived': bool(r.archived),
+                     'executorIds': exec_by_reward.get(r.id, [])} for r in rewards],
         'redemptions': [_redemption(r) for r in redemptions],
         'notices': [_notice(n) for n in notices],
         'activity': [_act(a) for a in activity],
