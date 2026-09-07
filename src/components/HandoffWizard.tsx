@@ -29,6 +29,21 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
   const [files, setFiles] = useState<Attachment[]>([])
   /* Larger orgs: the next-owner picker is searchable, not a wall of buttons. */
   const [pick, setPick] = useState('')
+  /* The wizard stays mounted between tasks (modal swap) — reset all step
+     state when a different task is opened, or a stale audience/mode from
+     the previous task would gate the wrong people (founder UAT: manager
+     handoff appeared to offer managers only). */
+  const [openedFor, setOpenedFor] = useState(task.id)
+  if (openedFor !== task.id) {
+    setOpenedFor(task.id)
+    setStep(0); setPct(0); setReason(''); setFiles([]); setPick('')
+    setAudience(task.audience)
+    setMode(task.audience === 'PRIVATE' ? 'SPECIFIC' : 'AVAILABLE')
+    setNext(task.audience === 'PRIVATE' ? '' : 'AVAILABLE')
+    setNewPriority(task.priority)
+    setNewDeadline(task.deadline ? task.deadline.slice(0, 10) : '')
+    setRewardOverride(null); setOverrideReason('')
+  }
 
   const owner = state.users.find(u => u.id === task.ownerId)
   /* Targets follow the chosen audience; admins are never assignable. */
@@ -152,7 +167,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
                 {shownTargets.map(u => (
                   <button key={u.id} className={next === u.id ? 'on' : ''} onClick={() => setNext(u.id)}>
                     <b>Assign to {u.name}</b>
-                    <small>{u.position} · {u.role.toLowerCase()} · {activeCount(state, u.id)} active task{activeCount(state, u.id) === 1 ? '' : 's'}
+                    <small>{u.position} · <b data-testid={`role-tag-${u.role.toLowerCase()}`}>{u.role === 'MANAGER' ? 'manager' : 'employee'}</b> · {activeCount(state, u.id)} active task{activeCount(state, u.id) === 1 ? '' : 's'}
                       {u.id === task.ownerId ? ' · previous contributor (allowed)' : ''}</small>
                   </button>
                 ))}
