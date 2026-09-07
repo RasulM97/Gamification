@@ -26,7 +26,7 @@ export function ReviewsView({ openId, onOpen, onClose }: {
               <div className="sub" title={t.submissionNote ?? ''}>{(t.submissionNote ?? '').slice(0, 90) || 'No submission note'}</div>
             </div>
             <span className="meta hide-m"><Avatar name={user(t.ownerId)?.name ?? '?'} size={22} />{user(t.ownerId)?.name}</span>
-            <span className="hide-m"><Progress verified={t.verified} reported={t.reported > t.reported ? t.reported : undefined} /></span>
+            <span className="hide-m"><Progress verified={t.verified} reported={t.reported > t.verified ? t.reported : undefined} /></span>
             <span className="meta neg hide-m" style={{ fontSize: 11.5 }}>waiting {ago(t.submittedAt!)}</span>
             <span className="meta"><Coin n={Math.max(0, t.reward - t.paid)} /></span>
             <span className="meta hide-m">
