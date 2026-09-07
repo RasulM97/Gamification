@@ -49,6 +49,11 @@ class User(Base):
     position: Mapped[str] = mapped_column(String(120), default='')
     password_hash: Mapped[str] = mapped_column(String(200))
     notif_muted: Mapped[list] = mapped_column(JSONB, default=list)  # muted NotifLevels
+    # N2.2 §6: the REWARD_FULFILL capability — separate from the system role,
+    # admin-granted, grants nothing but executor seats on rewards. Admins
+    # fulfill by office and never carry the flag.
+    can_fulfill_rewards: Mapped[bool] = mapped_column(Boolean, default=False,
+                                                      server_default='false')
 
 
 class CompanySettings(Base):
@@ -192,6 +197,37 @@ class Reward(Base):
     # this field. Existing rows backfilled to the company admin by migration.
     created_by: Mapped[str] = mapped_column(String(40), default='',
                                             server_default='')
+    # N2.2 §2: per-user redemption cap; NULL = unlimited. Only non-CANCELLED
+    # redemptions count — cancellation restores the quota.
+    per_user_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # N2.2 §3: optional availability window (ms epoch, UTC, backend-safe).
+    # NULL = open-ended on that side. Expired rewards are never auto-deleted.
+    available_from: Mapped[float | None] = mapped_column(Float, nullable=True)
+    available_until: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # N2.2 §4: archived = terminal management state. Never redeemable, stays
+    # visible to management, history intact. Referenced rewards are never
+    # hard-deleted — archive-only is the canonical retirement path.
+    archived: Mapped[bool] = mapped_column(Boolean, default=False,
+                                           server_default='false')
+
+
+class RewardCategory(Base):
+    """N2.2 §1: one flat category level, admin-managed. Rewards reference a
+    category by NAME; archiving a category never invalidates them."""
+    __tablename__ = 'reward_categories'
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id('rc'))
+    company_id: Mapped[str] = mapped_column(ForeignKey('companies.id'), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class RewardExecutor(Base):
+    """N2.2 §7: executor seats — admin-assigned per reward, only for users
+    holding the REWARD_FULFILL capability (enforced in services)."""
+    __tablename__ = 'reward_executors'
+    reward_id: Mapped[str] = mapped_column(ForeignKey('rewards.id'), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    company_id: Mapped[str] = mapped_column(ForeignKey('companies.id'), index=True)
 
 
 class Redemption(Base):
@@ -201,9 +237,18 @@ class Redemption(Base):
     user_id: Mapped[str] = mapped_column(String(40), index=True)
     reward_id: Mapped[str] = mapped_column(String(40))
     cost: Mapped[float] = mapped_column(Float)
-    status: Mapped[str] = mapped_column(String(12), default='PENDING')  # PENDING|FULFILLED|CANCELLED
+    # N2.2 §5/§9: PENDING (awaiting approval) | APPROVED (ready for
+    # fulfillment) | FULFILLED (delivered) | CANCELLED (refunded).
+    status: Mapped[str] = mapped_column(String(12), default='PENDING')
     at: Mapped[float] = mapped_column(Float, default=now_ms)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # N2.2: decision + execution traceability (§5, §10).
+    approved_by: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    approved_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fulfilled_by: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    fulfilled_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fulfillment_reference: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    fulfillment_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Notification(Base):
