@@ -53,7 +53,7 @@ def test_race_stock_one_reward_single_redeem(client):
     h_dana = login(client, 'dana@aster.demo')
     r = client.post('/api/rewards', headers=h_dana,
                     json={'name': 'Golden ticket', 'cost': 5, 'stock': 1,
-                          'active': True, 'category': 'Perks'})
+                          'active': True, 'category': 'Company Perks'})
     rid = next(x for x in r.json()['rewards'] if x['name'] == 'Golden ticket')['id']
     triple = _clients(client, 'priya@aster.demo', 'jonas@aster.demo', 'aisha@aster.demo')
     with ThreadPoolExecutor(3) as ex:
@@ -73,7 +73,7 @@ def test_race_spend_never_negative(client):
     h_dana = login(client, 'dana@aster.demo')
     r = client.post('/api/rewards', headers=h_dana,
                     json={'name': 'Snack', 'cost': 10, 'stock': None,
-                          'active': True, 'category': 'Perks'})
+                          'active': True, 'category': 'Company Perks'})
     rid = next(x for x in r.json()['rewards'] if x['name'] == 'Snack')['id']
     clients = [TestClient(client.app) for _ in range(4)]
     headers = [login(c, 'aisha@aster.demo') for c in clients]
@@ -88,16 +88,20 @@ def test_race_spend_never_negative(client):
 
 
 def test_race_fulfill_and_cancel_exactly_once(client):
-    # priya's pending r2: fulfill vs cancel race → exactly one wins,
-    # and a cancel-win refunds exactly once.
-    (c1, h1), (c2, h2) = _clients(client, 'marcus@aster.demo', 'dana@aster.demo')
+    # priya's r2, APPROVED first (N2.2 two-step flow): fulfill vs cancel race
+    # on an approved redemption → exactly one wins, and a cancel-win refunds
+    # exactly once.
+    (c1, h1), (c2, h2) = _clients(client, 'jonas@aster.demo', 'dana@aster.demo')
+    r = client.post('/api/redemptions/r2/approve', headers=h2)  # admin approves
+    assert r.status_code == 200
     with ThreadPoolExecutor(2) as ex:
         rs = [f.result() for f in
-              [ex.submit(lambda: c1.post('/api/redemptions/r2/fulfill', headers=h1)),
+              [ex.submit(lambda: c1.post('/api/redemptions/r2/fulfill', headers=h1,
+                                         json={})),  # jonas is the lunch executor
                ex.submit(lambda: c2.post('/api/redemptions/r2/cancel', headers=h2,
                                          json={'reason': 'race'}))]]
     assert sorted(r.status_code for r in rs) == [200, 409]
-    state = client.get('/api/bootstrap', headers=h1).json()
+    state = client.get('/api/bootstrap', headers=h2).json()
     rd = next(x for x in state['redemptions'] if x['id'] == 'r2')
     assert rd['status'] in ('FULFILLED', 'CANCELLED')
     refunds = [l for l in state['ledger'] if l['type'] == 'REFUND']

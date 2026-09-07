@@ -77,7 +77,8 @@ test('N2-C/D: redemption review shows work context and history before deciding',
   await expect(ctx).toContainText('Redemption history')
   await expect(ctx).toContainText('First redemption.')
   await expect(ctx).toContainText('Recent activity')
-  // Both decisions are available from the same review surface.
-  await expect(page.locator('.modal').getByRole('button', { name: 'Fulfill' })).toBeVisible()
+  // Both decisions are available from the same review surface (N2.2: the
+  // management decision is APPROVAL; delivery is a separate executor step).
+  await expect(page.locator('.modal').getByRole('button', { name: 'Approve' })).toBeVisible()
   await expect(page.locator('.modal').getByRole('button', { name: 'Cancel & refund…' })).toBeVisible()
 })
