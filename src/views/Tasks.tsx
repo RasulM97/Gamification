@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useStore, useMe } from '../store'
 import { canonicalSort, activeCount, canSeeTask, roleFits, MAX_ACTIVE } from '../domain/engine'
 import type { Priority, Task } from '../domain/engine'
-import { Avatar, Coin, Empty, Panel, PriBadge, Progress, Seg, StatusBadge, ago, deadlineInfo, rowProps } from '../ui'
+import { Avatar, Coin, Empty, LinkText, Panel, PriBadge, Progress, Seg, StatusBadge, ago, deadlineInfo, rowProps } from '../ui'
 
 type Scope = 'all' | 'mine' | 'available'
 
@@ -124,8 +124,9 @@ function TaskRow({ t, meId, onOpen }: { t: Task; meId: string; onOpen: (id: stri
           <span className="t" title={t.title}>{t.title}</span>
         </div>
         {/* The description must catch the eye — one preview line, never more
-            than a clamp; the drawer shows it fully with an expand toggle. */}
-        <div className="sub desc" title={t.description}>{t.description}</div>
+            than a clamp; the drawer shows it fully with an expand toggle.
+            URLs inside are clickable (safe new-tab links, N2.1-R2 fix). */}
+        <div className="sub desc" title={t.description}><LinkText text={t.description} /></div>
         <div className="sub">
           {owner ? `${owner.name}` : t.assigneeId ? `→ ${user(t.assigneeId)?.name}` : t.audience === 'MANAGEMENT' ? 'Management pool' : 'Marketplace'}
           {t.cycle > 1 ? ` · cycle ${t.cycle}` : ''}

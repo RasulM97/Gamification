@@ -28,6 +28,26 @@ export function RewardsView() {
      the Redeem button below is keyed to rewardFits, management to the
      governance matrix. */
   const catalog = state.rewards.filter(r => canSeeReward(r, me))
+  /* N2.1-R2 §4: search + filter run strictly AFTER role visibility — a user
+     can never discover a reward they are not authorized to see. */
+  const [q, setQ] = useState('')
+  const [catF, setCatF] = useState('ALL')
+  const [eligF, setEligF] = useState<'ALL' | RewardEligibility>('ALL')
+  const [activeF, setActiveF] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL')
+  const [stockF, setStockF] = useState<'ALL' | 'IN' | 'OUT'>('ALL')
+  const cats = [...new Set(catalog.map(r => r.category))].sort()
+  const shown = catalog.filter(r => {
+    if (q.trim()) {
+      const needle = q.trim().toLowerCase()
+      if (!`${r.name} ${r.description} ${r.category}`.toLowerCase().includes(needle)) return false
+    }
+    if (catF !== 'ALL' && r.category !== catF) return false
+    if (eligF !== 'ALL' && r.eligibility !== eligF) return false
+    if (isMgr && activeF !== 'ALL' && (activeF === 'ACTIVE') !== r.active) return false
+    if (stockF === 'IN' && (r.stock !== null && r.stock <= 0)) return false
+    if (stockF === 'OUT' && !(r.stock !== null && r.stock <= 0)) return false
+    return true
+  })
 
   return (
     <div className="wrap">
@@ -41,9 +61,41 @@ export function RewardsView() {
         {isMgr && <button className="btn primary" onClick={() => setCreating(true)}>+ New reward</button>}
       </div>
 
-      {catalog.length === 0 && <Panel><Empty title="No rewards yet" /></Panel>}
+      <div className="toolbar" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <input type="search" value={q} onChange={e => setQ(e.target.value)}
+          placeholder="Search rewards…" aria-label="Search rewards" style={{ width: 190 }} />
+        {cats.length > 1 && (
+          <select value={catF} onChange={e => setCatF(e.target.value)} aria-label="Filter by category">
+            <option value="ALL">All categories</option>
+            {cats.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
+        {isMgr && (
+          <select value={eligF} onChange={e => setEligF(e.target.value as typeof eligF)} aria-label="Filter by eligibility">
+            <option value="ALL">Every audience</option>
+            <option value="EMPLOYEES">Employees</option>
+            <option value="MANAGERS">Managers</option>
+            <option value="BOTH">Everyone eligible</option>
+          </select>
+        )}
+        {isMgr && (
+          <select value={activeF} onChange={e => setActiveF(e.target.value as typeof activeF)} aria-label="Filter by active state">
+            <option value="ALL">Active + inactive</option>
+            <option value="ACTIVE">Active only</option>
+            <option value="INACTIVE">Inactive only</option>
+          </select>
+        )}
+        <select value={stockF} onChange={e => setStockF(e.target.value as typeof stockF)} aria-label="Filter by stock">
+          <option value="ALL">Any stock</option>
+          <option value="IN">In stock</option>
+          <option value="OUT">Out of stock</option>
+        </select>
+        <span className="count">{shown.length} reward{shown.length === 1 ? '' : 's'}</span>
+      </div>
+
+      {shown.length === 0 && <Panel><Empty title="No rewards match" hint="Adjust the search or filters." /></Panel>}
       <div className="rw-grid">
-        {catalog.map(r => {
+        {shown.map(r => {
           const out = r.stock !== null && r.stock <= 0
           const afford = bal >= r.cost
           const eligible = rewardFits(r, me)

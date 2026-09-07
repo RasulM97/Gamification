@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import type { Task } from '../domain/engine'
-import { AttachmentChips, Avatar, ClampedText, Coin, Drawer, Empty, Field, Panel, PriBadge, Progress, ago, coins, rowProps } from '../ui'
+import { AttachmentChips, Avatar, ClampedText, Coin, LinkText, Drawer, Empty, Field, Panel, PriBadge, Progress, ago, coins, rowProps } from '../ui'
 import { HandoffWizard } from '../components/HandoffWizard'
 import { CancelModal } from '../components/TaskModals'
 
@@ -26,7 +26,7 @@ export function ReviewsView({ openId, onOpen, onClose }: {
               <div className="sub" title={t.submissionNote ?? ''}>{(t.submissionNote ?? '').slice(0, 90) || 'No submission note'}</div>
             </div>
             <span className="meta hide-m"><Avatar name={user(t.ownerId)?.name ?? '?'} size={22} />{user(t.ownerId)?.name}</span>
-            <span className="hide-m"><Progress verified={t.verified} reported={t.reported > t.verified ? t.reported : undefined} /></span>
+            <span className="hide-m"><Progress verified={t.verified} reported={t.reported > t.reported ? t.reported : undefined} /></span>
             <span className="meta neg hide-m" style={{ fontSize: 11.5 }}>waiting {ago(t.submittedAt!)}</span>
             <span className="meta"><Coin n={Math.max(0, t.reward - t.paid)} /></span>
             <span className="meta hide-m">
@@ -128,7 +128,7 @@ function ReviewDrawer({ task: t, onClose }: { task: Task | null; onClose: () => 
                   {c.payout > 0 && <Coin n={c.payout} />}
                   <span className="bd bd-important">{c.decision === 'APPROVED' ? 'Approved' : 'Handoff'}</span>
                 </div>
-                <div className="why">{c.reason}</div>
+                <div className="why"><LinkText text={c.reason} /></div>
               </div>
             ))}
           </div>
