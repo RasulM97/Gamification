@@ -1,7 +1,7 @@
 import { test, expect, Page, Route } from '@playwright/test'
 import { seed } from '../src/domain/seed'
 import { reducer } from '../src/domain/reducer'
-import type { State } from '../src/domain/model'
+import type { Audience, State } from '../src/domain/model'
 
 /* Phase N2.1-R2 — DEMO ↔ SERVER PARITY verification (server dev runtime,
    vite --mode server on port 4321). The sandbox cannot run PostgreSQL, so
@@ -87,6 +87,26 @@ async function mockApi(page: Page) {
     }
     if (req.method() === 'POST' && path === '/notices/read-all') {
       state = reducer(state, { type: 'MARK_ALL_READ', userId: me.id })
+      return json(state)
+    }
+    const hm = path.match(/^\/tasks\/(.+)\/handoff$/)
+    if (req.method() === 'POST' && hm) {
+      /* handoff travels as multipart form (see store.tsx HANDOFF adapter) —
+         decode the fields and apply the REAL reducer, exactly what
+         backend/app/services.py does against PostgreSQL */
+      const boundary = (req.headers()['content-type'] ?? '').split('boundary=')[1] ?? ''
+      const f: Record<string, string> = {}
+      for (const part of (req.postData() ?? '').split('--' + boundary)) {
+        const pm = part.match(/name="([^"]+)"\r?\n\r?\n([\s\S]*?)\r?\n?$/)
+        if (pm) f[pm[1]] = pm[2].replace(/\r?\n$/, '')
+      }
+      state = reducer(state, {
+        type: 'HANDOFF', taskId: hm[1], managerId: me.id,
+        acceptedPct: +f.acceptedPct, reason: f.reason,
+        next: f.nextKind === 'EMPLOYEE' ? { kind: 'EMPLOYEE', id: f.nextId } : { kind: 'AVAILABLE' },
+        ...(f.audience ? { audience: f.audience as Audience } : {}),
+        attachments: [],
+      })
       return json(state)
     }
     m = path.match(/^\/notices\/(.+)\/read$/)
@@ -219,5 +239,33 @@ test.describe('N2.1-R2 — server-mode parity', () => {
     await page.locator('.att-row', { hasText: 'Parking spot' })
       .getByRole('button', { name: 'Review & decide' }).click()
     await expect(page.getByTestId('rr-balance')).toHaveText('104')
+  })
+
+  test('28 · manager handoff → employee routes through the real wire in server mode', async ({ page }) => {
+    const { calls, getState } = await mockApi(page)
+    await uiLogin(page, 'marcus@aster.demo')
+    await navBtn(page, 'Tasks').click()
+    await page.locator('.seg').getByRole('button', { name: 'All', exact: true }).click()
+    await page.locator('.trow', { hasText: 'Quarterly commission reconciliation' }).first().click()
+    await page.locator('.drawer').getByRole('button', { name: 'Handoff…' }).click()
+    const modal = page.locator('.modal')
+    await modal.getByRole('button', { name: 'Continue' }).click() // 0 → contribution decision
+    await modal.locator('textarea').fill('Route remaining reconciliation to a specialist')
+    await modal.getByRole('button', { name: 'Continue' }).click() // 1 → reason given
+    await modal.locator('.choice button', { hasText: 'Specific employee' }).click()
+    await modal.locator('.choicelist button', { hasText: 'Aisha' }).click()
+    await modal.getByRole('button', { name: 'Continue' }).click() // 2 → next ownership set
+    await modal.getByRole('button', { name: 'Continue' }).click() // 3 → remaining work kept
+    await modal.getByRole('button', { name: 'Confirm handoff' }).click()
+    // the mutation went over the wire as multipart form
+    expect(calls.some(c => c.endsWith('/tasks/t-commission/handoff'))).toBe(true)
+    // the authoritative post-mutation bootstrap routes the task to Aisha
+    const t = getState().tasks.find(t => t.id === 't-commission')!
+    expect(t.status).toBe('OPEN')
+    expect(t.assigneeId).toBe('u-aisha')
+    expect(t.audience).toBe('EMPLOYEES')
+    expect(t.ownerId).toBeNull()
+    // and the UI reflects the returned state
+    await expect(page.locator('.drawer')).toContainText('Aisha')
   })
 })
