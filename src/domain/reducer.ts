@@ -316,13 +316,23 @@ export function reducer(prev: State, a: Action): State {
       /* The handoff can re-decide who the work is for (audience), like the
          create form — priorities change per task and situation. The founder/
          admin never owns work, and PRIVATE work stays one-to-one. */
-      const adminBypass = user(a.managerId).role === 'ADMIN'
-      const effAudience: Audience = a.audience ?? t.audience
-      if (effAudience === 'PRIVATE' && a.next.kind !== 'EMPLOYEE') break
+      /* N2.1-R2 canonical routing: the audience picker DEFINES eligibility.
+         A specific target must fit the chosen audience — when no explicit
+         audience is given, the effective audience is derived from the target
+         (employee → EMPLOYEES, manager → MANAGEMENT), so routing "follows
+         the new owner" for EVERY authorized actor, not just the admin. The
+         founder/admin never owns work; PRIVATE work stays one-to-one. (The
+         pre-fix engine carried an admin-only bypass that was both too strict
+         for managers — no cross-audience routing — and too loose for the
+         admin — a manager could land in an EMPLOYEES audience task.) */
       const nu0 = a.next.kind === 'EMPLOYEE' ? user(a.next.id) : null
       if (nu0 && nu0.role === 'ADMIN') break
+      const effAudience: Audience = a.audience ?? (nu0
+        ? (nu0.role === 'EMPLOYEE' ? 'EMPLOYEES' : 'MANAGEMENT')
+        : t.audience)
+      if (effAudience === 'PRIVATE' && a.next.kind !== 'EMPLOYEE') break
       const fitsNew = nu0 ? roleFits({ ...t, audience: effAudience }, nu0) : true
-      if (nu0 && !fitsNew && !adminBypass) break
+      if (nu0 && !fitsNew) break
       if (a.attachments?.length && validateAttachments(a.attachments, s.settings).length > 0) break
       /* Remaining-reward reconfiguration is allowed, but deviating from the
          canonical suggestion (segment reward − accepted payout) requires an
@@ -372,10 +382,8 @@ export function reducer(prev: State, a: Action): State {
       })
       note(from, 'IMPORTANT', 'Economy', `Handoff on “${t.title}” — ${pct}% accepted${payout > 0 ? `, ${fmtCoins(payout)} credited` : ', no payout'}.`, t.id)
       if (a.next.kind === 'EMPLOYEE') {
-        /* Cross-level admin handoff without an explicit audience choice: the
-           audience follows the new owner so visibility stays coherent. */
-        const nu = user(a.next.id)
-        if (!a.audience && !roleFits(t, nu)) t.audience = nu.role === 'EMPLOYEE' ? 'EMPLOYEES' : 'MANAGEMENT'
+        /* Audience was already resolved (explicit choice, or derived from the
+           target) before any mutation — assignment only sets the route. */
         t.assignMode = 'SPECIFIC_EMPLOYEE'; t.assigneeId = a.next.id; t.status = 'OPEN'
         note(a.next.id, 'ACTION_REQUIRED', 'Assignments', `Handoff assignment — ${t.title} (${t.verified}% verified, ${Math.max(0, t.reward - t.paid)} Coins remaining) from ${user(a.managerId).name}. Instructions: ${a.reason} Accept or decline.`, t.id)
       } else {
