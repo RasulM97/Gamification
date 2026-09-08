@@ -99,7 +99,7 @@ export function AdminView() {
       <Panel pad={false} title="People & wallets" right={<span className="eyebrow">{state.company}</span>}>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Person</th><th>System role</th><th>Position</th><th className="n">Balance</th><th className="n"></th></tr></thead>
+            <thead><tr><th>Person</th><th>System role</th><th>Position</th><th>Reward fulfillment</th><th className="n">Balance</th><th className="n"></th></tr></thead>
             <tbody>
               {state.users.map(u => {
                 const admin = u.role === 'ADMIN'
@@ -110,6 +110,19 @@ export function AdminView() {
                     <Avatar name={u.name} size={22} /><b>{u.name}</b></span></td>
                   <td><span className="bd bd-normal">{u.role}</span></td>
                   <td className="dim">{u.position}</td>
+                  {/* N2.2 §6: REWARD_FULFILL is a capability, separate from
+                      the system Role — admin-granted to employees/managers,
+                      it unlocks nothing but executor seats on rewards.
+                      Admins fulfill by office and never carry the flag. */}
+                  <td onClick={e => e.stopPropagation()}>
+                    {admin ? <span className="dim" style={{ fontSize: 11.5 }}>by office</span> : (
+                      <button className="btn" style={{ fontSize: 11.5, padding: '3px 10px' }}
+                        aria-label={`Toggle reward fulfillment for ${u.name}`}
+                        onClick={() => dispatch({ type: 'TOGGLE_FULFILL_PERMISSION', by: me.id, userId: u.id })}>
+                        {u.canFulfillRewards ? 'Granted — revoke' : 'Grant'}
+                      </button>
+                    )}
+                  </td>
                   {/* Admins manage the economy but do not participate in it —
                       no spendable wallet, no Adjust action (M1-C A1). */}
                   <td className="n">{admin ? <span className="dim" style={{ fontSize: 11.5 }}>— n/a</span> : <Coin n={balanceOf(state, u.id)} />}</td>
