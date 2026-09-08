@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
 import { useStore, useMe } from '../store'
-import { MAX_ACTIVE, activeCount, balanceOf, canSeeTask, rewardFits, coinsInCirculation, canonicalSort } from '../domain/engine'
+import { MAX_ACTIVE, activeCount, balanceOf, canSeeTask, rewardFits, rewardOpen, coinsInCirculation, canonicalSort } from '../domain/engine'
 import { Avatar, Coin, Empty, Panel, PriBadge, Progress, StatusBadge, ago, coins, rowProps } from '../ui'
 
 function css(v: string) { return getComputedStyle(document.documentElement).getPropertyValue('--' + v).trim() }
@@ -68,6 +68,9 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
   const unclaimedHot = state.tasks.filter(t => t.status === 'OPEN' && t.assignMode === 'ALL_EMPLOYEES'
     && (t.priority === 'URGENT' || t.priority === 'IMPORTANT'))
   const pendingRedemptions = state.redemptions.filter(r => r.status === 'PENDING')
+  /* N2.2 §8: the admin (fulfills by office) also gets the fulfillment queue
+     in the attention strip; managers see approvals only. */
+  const fulfillQueue = isAdmin ? state.redemptions.filter(r => r.status === 'APPROVED') : []
   const active = state.tasks.filter(t => ['OPEN', 'IN_PROGRESS', 'SUBMITTED', 'REJECTED'].includes(t.status))
   const avgVerified = active.length ? Math.round(active.reduce((a, t) => a + t.verified, 0) / active.length) : 0
   const recentActs = state.activity.slice(0, 7)
@@ -83,7 +86,7 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
     + state.tasks.filter(t => t.status === 'OPEN' && t.assignMode === 'SPECIFIC_EMPLOYEE' && !t.assigneeId).length
   /* N2-B: a working manager also sees their own reward picture. */
   const myBal = balanceOf(state, me.id)
-  const myAffordable = state.rewards.filter(r => r.active && rewardFits(r, me) && r.cost <= myBal && (r.stock === null || r.stock > 0))
+  const myAffordable = state.rewards.filter(r => rewardOpen(r, Date.now()) && rewardFits(r, me) && r.cost <= myBal)
 
   const statusMix: echarts.EChartsOption = {
     tooltip: { trigger: 'item' },
@@ -122,8 +125,8 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
   return (
     <div className="wrap">
       <WelcomeCard />
-      {(pendingReviews.length + pendingRedemptions.length + unclaimedHot.length + rework.length) > 0 && (
-        <Panel title="Needs your attention" right={<span className="eyebrow">{pendingReviews.length + pendingRedemptions.length + unclaimedHot.length + rework.length} items</span>}>
+      {(pendingReviews.length + pendingRedemptions.length + fulfillQueue.length + unclaimedHot.length + rework.length) > 0 && (
+        <Panel title="Needs your attention" right={<span className="eyebrow">{pendingReviews.length + pendingRedemptions.length + fulfillQueue.length + unclaimedHot.length + rework.length} items</span>}>
           <div className="attn">
             {pendingReviews.map(t => (
               <div className="attn-item crit" key={t.id} {...rowProps(() => onGo('reviews', t.id))}>
@@ -137,7 +140,16 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
               return (
                 <div className="attn-item warn" key={r.id} {...rowProps(() => onGo('redemptions'))}>
                   <span>◈</span>
-                  <div className="x"><b>Reward fulfillment</b> — {rw.name} for {user(r.userId)?.name}<small>requested {ago(r.at)} · {coins(r.cost)} Coins</small></div>
+                  <div className="x"><b>Reward approval</b> — {rw.name} for {user(r.userId)?.name}<small>requested {ago(r.at)} · {coins(r.cost)} Coins</small></div>
+                </div>
+              )
+            })}
+            {fulfillQueue.map(r => {
+              const rw = state.rewards.find(x => x.id === r.rewardId)!
+              return (
+                <div className="attn-item info" key={r.id} {...rowProps(() => onGo('redemptions'))}>
+                  <span>◈</span>
+                  <div className="x"><b>Ready for fulfillment</b> — {rw.name} for {user(r.userId)?.name}<small>approved {r.approvedAt ? ago(r.approvedAt) : ago(r.at)} · {coins(r.cost)} Coins</small></div>
                 </div>
               )
             })}
@@ -183,7 +195,7 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
         <div className="kpi2"><div className="l">Avg verified progress</div><div className="v">{avgVerified}<u>%</u></div><div className="s">manager-verified only</div></div>
         <div className="kpi2"><div className="l">Coins circulating</div><div className="v">{coins(coinsInCirculation(state))}</div><div className="s">Σ employee balances</div></div>
         <div className="kpi2"><div className="l">Coins issued</div><div className="v">{coins(state.ledger.filter(l => l.amount > 0).reduce((a, l) => a + l.amount, 0))}</div><div className="s">append-only ledger</div></div>
-        <div className="kpi2"><div className="l">Pending redemptions</div><div className="v">{pendingRedemptions.length}</div><div className="s">rewards to fulfill</div></div>
+        <div className="kpi2"><div className="l">Pending redemptions</div><div className="v">{pendingRedemptions.length}</div><div className="s">awaiting approval</div></div>
       </div>
 
       {/* Team operations: per-person workload and economy at a glance, so a
@@ -265,7 +277,7 @@ function EmployeeOverview({ onGo }: { onGo: (view: string, taskId?: string) => v
   const earned = state.ledger.filter(l => l.userId === me.id && l.amount > 0).reduce((a, l) => a + l.amount, 0)
   /* N2-B: affordability respects eligibility — a manager-only reward never
      surfaces to an employee, and vice versa. */
-  const affordable = state.rewards.filter(r => r.active && rewardFits(r, me) && r.cost <= bal && (r.stock === null || r.stock > 0))
+  const affordable = state.rewards.filter(r => rewardOpen(r, Date.now()) && rewardFits(r, me) && r.cost <= bal)
   /* N1-C: active/pending reward status is part of the work-status picture. */
   const myPendingRewards = state.redemptions.filter(r => r.userId === me.id && r.status === 'PENDING')
 
