@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { StoreProvider, useStore, useMe, IS_DEMO } from './store'
 import { DEV_TOOLS } from './runtime'
-import { balanceOf, canSeeTask, sortNotices, visibleNotices } from './domain/engine'
+import { balanceOf, canFulfillReward, canSeeTask, sortNotices, visibleNotices } from './domain/engine'
 import { Avatar, Coin, NotifBadge, ago, noticeTab } from './ui'
 import { LoginScreen } from './components/Login'
 import { DevAccountSwitcher } from './components/DevSwitch'
@@ -82,11 +82,16 @@ function Shell() {
   const reviewCount = state.tasks.filter(t => t.status === 'SUBMITTED').length
   const attentionCount = state.tasks.filter(t => t.status === 'REJECTED').length
     + state.tasks.filter(t => t.status === 'OPEN' && t.assignMode === 'SPECIFIC_EMPLOYEE' && !t.assigneeId).length
-  /* N2.2 §8: the badge counts what THIS user can act on — management sees
-     pending approvals; the admin (fulfills by office) also sees approved
-     items waiting for fulfillment. */
+  /* N2.2 §8 + N2.3 §1/§9: the badge counts what THIS user can act on —
+     management sees pending approvals; whoever holds fulfillment authority
+     over an approved item (admin by office, management fallback when no
+     executor is configured, or an assigned executor) also counts it. */
   const redemptionCount = state.redemptions.filter(r => r.status === 'PENDING').length
-    + (me.role === 'ADMIN' ? state.redemptions.filter(r => r.status === 'APPROVED').length : 0)
+    + state.redemptions.filter(r => {
+        if (r.status !== 'APPROVED') return false
+        const w = state.rewards.find(x => x.id === r.rewardId)
+        return !!w && canFulfillReward(me, w)
+      }).length
   const bal = balanceOf(state, me.id)
 
   /* role-aware navigation; when switching persona, land on overview */
@@ -172,8 +177,8 @@ function Shell() {
              to them. Capability grants nothing else. */
           { v: 'redemptions', label: 'My Redemptions', icon: '⇄', badge: state.redemptions.filter(r =>
               (r.status === 'PENDING' && r.userId === me.id)
-              || (r.status === 'APPROVED' && me.canFulfillRewards
-                  && state.rewards.find(w => w.id === r.rewardId)?.executorIds.includes(me.id))).length },
+              || (r.status === 'APPROVED' && (w => !!w && canFulfillReward(me, w))
+                  (state.rewards.find(w => w.id === r.rewardId)))).length },
           { v: 'wallet', label: 'Wallet', icon: '◉' },
         ],
       }, {
