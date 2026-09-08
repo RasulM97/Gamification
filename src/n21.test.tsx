@@ -186,7 +186,9 @@ describe('A2 — canonical reward governance matrix (N2.1-R2)', () => {
     let s = seed()
     const mk = (eligibility: 'EMPLOYEES' | 'MANAGERS' | 'BOTH') => ({
       id: '', name: `New ${eligibility}`, description: '', cost: 10, stock: null,
-      active: true, category: 'Perks', eligibility, createdBy: '',
+      active: true, category: 'Company Perks', eligibility, createdBy: '',
+      perUserLimit: null, availableFrom: null, availableUntil: null,
+      archived: false, executorIds: [] as string[],
     })
     // admin creates all three
     for (const e of ['EMPLOYEES', 'MANAGERS', 'BOTH'] as const) {
@@ -252,10 +254,16 @@ describe('A3 — redemption decision authority follows the REDEEMER role (N2.1-R
   const pendingOf = (s: ReturnType<typeof seed>, userId: string) =>
     s.redemptions.find(r => r.status === 'PENDING' && r.userId === userId)!
 
-  it('18+19 (engine) · a manager fulfills and cancels EMPLOYEE redemptions', () => {
+  it('18+19 (engine) · a manager approves and cancels EMPLOYEE redemptions', () => {
     let s = setup()
     const empRd = pendingOf(s, 'u-priya')
+    /* N2.2 §5: the manager's power ends at approval — delivery is executor
+       work (rw-coffee has no executor seat → the admin fulfills by office). */
+    s = reducer(s, { type: 'APPROVE_REDEMPTION', id: empRd.id, by: 'u-marcus' })
+    expect(s.redemptions.find(r => r.id === empRd.id)!.status).toBe('APPROVED')
     s = reducer(s, { type: 'FULFILL_REDEMPTION', id: empRd.id, by: 'u-marcus' })
+    expect(s.redemptions.find(r => r.id === empRd.id)!.status).toBe('APPROVED') // not an executor — refused
+    s = reducer(s, { type: 'FULFILL_REDEMPTION', id: empRd.id, by: 'u-dana' })
     expect(s.redemptions.find(r => r.id === empRd.id)!.status).toBe('FULFILLED')
     s = reducer(s, { type: 'REDEEM', userId: 'u-priya', rewardId: 'rw-coffee' })
     const empRd2 = pendingOf(s, 'u-priya')
@@ -265,7 +273,7 @@ describe('A3 — redemption decision authority follows the REDEEMER role (N2.1-R
     expect(balanceOf(s, 'u-priya')).toBe(balBefore + empRd2.cost) // refunded
   })
 
-  it('20+21 (engine) · a manager NEVER decides their own or another manager\u2019s redemption', () => {
+  it('20+21 (engine) · a manager NEVER decides their own or another manager’s redemption', () => {
     let s = setup()
     const mgrRd = pendingOf(s, 'u-marcus')
     s = reducer(s, { type: 'FULFILL_REDEMPTION', id: mgrRd.id, by: 'u-marcus' })
@@ -282,13 +290,17 @@ describe('A3 — redemption decision authority follows the REDEEMER role (N2.1-R
     let s = setup()
     const empRd = pendingOf(s, 'u-priya')
     const mgrRd = pendingOf(s, 'u-marcus')
+    /* N2.2 §5: decide (approve) → deliver (fulfill) — the admin holds both
+       powers, as separate transitions. */
+    s = reducer(s, { type: 'APPROVE_REDEMPTION', id: empRd.id, by: 'u-dana' })
     s = reducer(s, { type: 'FULFILL_REDEMPTION', id: empRd.id, by: 'u-dana' })
     expect(s.redemptions.find(r => r.id === empRd.id)!.status).toBe('FULFILLED')
+    s = reducer(s, { type: 'APPROVE_REDEMPTION', id: mgrRd.id, by: 'u-dana' })
     s = reducer(s, { type: 'FULFILL_REDEMPTION', id: mgrRd.id, by: 'u-dana' })
     expect(s.redemptions.find(r => r.id === mgrRd.id)!.status).toBe('FULFILLED')
   })
 
-  it('20 (UI) · a manager reviewing a manager\u2019s redemption sees context but NO decision buttons', async () => {
+  it('20 (UI) · a manager reviewing a manager’s redemption sees context but NO decision buttons', async () => {
     persona('u-marcus')
     await render(h('div', null, h(Capture), h(RedemptionsView)))
     await dispatch({ type: 'ADMIN_ADJUST', by: 'u-dana', userId: 'u-marcus', amount: 200, reason: 'funds' })
@@ -300,7 +312,7 @@ describe('A3 — redemption decision authority follows the REDEEMER role (N2.1-R
     })
     const modal = host.querySelector('.modal')!
     expect(modal.textContent).toContain('only be decided by the admin')
-    expect([...modal.querySelectorAll('button')].some(b => b.textContent === 'Fulfill')).toBe(false)
+    expect([...modal.querySelectorAll('button')].some(b => b.textContent === 'Approve')).toBe(false)
     expect([...modal.querySelectorAll('button')].some(b => /Cancel &/.test(b.textContent ?? ''))).toBe(false)
   })
 })
