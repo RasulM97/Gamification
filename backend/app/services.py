@@ -715,9 +715,15 @@ def reactivate_task(db: Session, actor: User, task_id: str, *, reason: str,
 # ── economy: redemptions & adjustments ──────────────────────────────────────
 
 
-# N2.2 §6/§7: fulfillment authority — admins fulfill by office; anyone else
-# needs BOTH the REWARD_FULFILL capability AND an executor seat on that
-# reward. Approval authority (can_decide below) never implies fulfillment.
+# N2.2 §6/§7 + N2.3 §1 canonical fulfillment authority (mirrors the frontend
+# canFulfillReward exactly): admins fulfill by office; a reward with NO
+# executor seats falls back to MANAGEMENT (managers) so an approved
+# redemption can never get stuck for lack of a configured executor; otherwise
+# BOTH the REWARD_FULFILL capability AND a seat on that reward are required.
+# Authorization resolves from the CURRENT executor list at fulfill time
+# (N2.3 §2): removing an executor or revoking the capability takes effect
+# immediately; fulfilled history is never rewritten.
+# Approval authority (can_decide below) never implies fulfillment.
 def _executor_ids(db: Session, reward_id: str) -> list[str]:
     return [x for (x,) in db.query(RewardExecutor.user_id)
             .filter(RewardExecutor.reward_id == reward_id).all()]
@@ -726,8 +732,12 @@ def _executor_ids(db: Session, reward_id: str) -> list[str]:
 def _can_fulfill(db: Session, actor: User, r: Reward) -> bool:
     if actor.role == 'ADMIN':
         return True
-    return (actor.can_fulfill_rewards
-            and actor.id in _executor_ids(db, r.id))
+    seats = _executor_ids(db, r.id)
+    if not seats:
+        # N2.3 §1 management fallback — no executor configured, so management
+        # must still be able to deliver the approved reward.
+        return actor.role == 'MANAGER'
+    return actor.can_fulfill_rewards and actor.id in seats
 
 
 # N2.1-R2 canonical decision matrix (verbatim): the admin decides all; a
@@ -986,6 +996,7 @@ def save_reward(db: Session, actor: User, *, reward_id: Optional[str], name: str
         if actor.role == 'MANAGER' and (r.eligibility != 'EMPLOYEES' or eligibility == 'MANAGERS'):
             raise DomainError('FORBIDDEN', 'Managers manage employee-targeted rewards only')
         prev_category, prev_active, prev_archived = r.category, r.active, r.archived
+        prev_executors = _executor_ids(db, r.id)
         r.name, r.description, r.cost = name, description, cost
         r.stock, r.active, r.category = stock, active, category
         r.eligibility = eligibility
@@ -1002,6 +1013,12 @@ def save_reward(db: Session, actor: User, *, reward_id: Optional[str], name: str
             changes.append('activated' if active else 'deactivated')
         if prev_archived != archived:
             changes.append('archived' if archived else 'unarchived')
+        # N2.3 §13: executor reassignment is governance-relevant — recorded
+        # in words, never as a raw id list.
+        now_executors = _executor_ids(db, r.id)
+        if prev_executors != now_executors:
+            changes.append('fulfillment executors cleared — management fallback applies'
+                           if not now_executors else 'fulfillment executors updated')
         act(db, actor.company_id, actor.id, 'updated reward', name,
             reason=' · '.join(changes) or None)
         return r
