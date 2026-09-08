@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
-import { balanceOf, canDecideRedemption } from '../domain/engine'
+import { balanceOf, canDecideRedemption, canFulfillReward } from '../domain/engine'
 import type { Redemption, Reward } from '../domain/engine'
 import { Avatar, Coin, Empty, Field, Modal, Panel, ago, coins } from '../ui'
 
@@ -22,9 +22,15 @@ export function RedemptionsView() {
   const reward = (id: string) => state.rewards.find(r => r.id === id)
   const isMgr = me.role !== 'EMPLOYEE'
 
-  /* N2.2 §6/§7 mirrored for UI only — the engine enforces the same rule. */
-  const canFulfill = (r: Reward | undefined) =>
-    !!r && (me.role === 'ADMIN' || (me.canFulfillRewards && r.executorIds.includes(me.id)))
+  /* N2.2 §6/§7 + N2.3 §1 mirrored for UI only — the canonical rule lives in
+     canFulfillReward and the engine/backend enforce it independently. */
+  const canFulfill = (r: Reward | undefined) => !!r && canFulfillReward(me, r)
+  /* N2.3 §1/§10: who is expected to deliver — the assigned executor names,
+     or the explicit management fallback when no executor is configured.
+     Never a silent auto-assignment. */
+  const fulfillmentLabel = (r: Reward | undefined) =>
+    !r ? '' : r.executorIds.length === 0 ? 'Management fulfillment'
+    : r.executorIds.map(id => user(id)?.name).filter(Boolean).join(', ')
 
   /* N2.1-C: opening a review asks for authoritative state first — in server
      mode the bootstrap refetch lands through the serialized queue and the
@@ -93,7 +99,9 @@ export function RedemptionsView() {
                 <Avatar name={user(r.userId)?.name ?? '?'} size={22} />
                 <span style={{ flex: 1 }}>
                   <b>{rw?.name}</b>
-                  <span className="dim"> — {user(r.userId)?.name} · approved {r.approvedAt ? ago(r.approvedAt) : ago(r.at)}</span>
+                  <span className="dim"> — {user(r.userId)?.name} · approved{r.approvedBy ? ` by ${user(r.approvedBy)?.name}` : ''} {r.approvedAt ? ago(r.approvedAt) : ago(r.at)}</span>
+                  {/* N2.3 §10: operational context — who delivers this item. */}
+                  <span className="faint" data-testid="fulfillment-owner"> · {fulfillmentLabel(rw)}</span>
                 </span>
                 <Coin n={r.cost} />
                 {canFulfill(rw) && (
