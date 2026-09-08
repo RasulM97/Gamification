@@ -2,12 +2,12 @@
  * for the canonical rule list). Pure: structuredClone in, new State out. */
 import type {
   Act, Attachment, AssignMode, Audience, LedgerType, NotifCategory, NotifLevel,
-  Priority, Redemption, Reward, Settings, State, Task,
+  Priority, Redemption, Reward, RewardCategory, Settings, State, Task,
 } from './model'
 import {
   MAX_ACTIVE, MUTABLE_LEVELS, activeCount, balanceOf, canCreateReward, canDecideRedemption,
   canManageReward, claimPenalty,
-  fmtCoins, normalizeDeadline, partialPayout, rewardFits, roleFits, validateAttachments,
+  fmtCoins, normalizeDeadline, partialPayout, remainingQuota, rewardFits, rewardOpen, roleFits, validateAttachments,
 } from './model'
 /* ── reducer ───────────────────────────────────────────────────────────── */
 export type Action =
@@ -30,8 +30,14 @@ export type Action =
   | { type: 'CANCEL_TASK'; taskId: string; by: string; reason: string; acceptedPct?: number }
   | { type: 'REACTIVATE'; taskId: string; by: string; reason: string; description?: string; attachments?: Attachment[]; audience?: Audience; assigneeId?: string | null }
   | { type: 'REDEEM'; userId: string; rewardId: string }
-  | { type: 'FULFILL_REDEMPTION'; id: string; by: string }
+  /* N2.2 §5: approval and fulfillment are separate transitions — approval
+     follows the N2.1-R2 decision matrix; fulfillment is executor work on an
+     already-APPROVED redemption and carries optional tracking details. */
+  | { type: 'APPROVE_REDEMPTION'; id: string; by: string }
+  | { type: 'FULFILL_REDEMPTION'; id: string; by: string; reference?: string; note?: string }
   | { type: 'CANCEL_REDEMPTION'; id: string; by: string; reason: string }
+  | { type: 'SAVE_REWARD_CATEGORY'; by: string; category: RewardCategory }
+  | { type: 'TOGGLE_FULFILL_PERMISSION'; by: string; userId: string }
   | { type: 'ADMIN_ADJUST'; by: string; userId: string; amount: number; reason: string }
   | { type: 'SAVE_REWARD'; by: string; reward: Reward }
   | { type: 'MARK_READ'; id: string }
@@ -53,6 +59,13 @@ export function reducer(prev: State, a: Action): State {
      on UI gating for permissions. */
   const isMgmt = (id: string) => user(id).role !== 'EMPLOYEE'
   const isAdmin = (id: string) => user(id).role === 'ADMIN'
+  /* N2.2 §6/§7: fulfillment authority — admins always fulfill; anyone else
+     needs BOTH the REWARD_FULFILL capability AND an executor assignment on
+     that reward. Capability alone grants nothing (and vice versa). */
+  const canFulfill = (id: string, r: Reward) => {
+    const u = user(id)
+    return u.role === 'ADMIN' || (u.canFulfillRewards && r.executorIds.includes(id))
+  }
   /* Immutable submission history: SUBMIT_WORK appends a PENDING record;
      review outcomes (approve/reject/handoff/cancel) close it in place.
      Records never disappear — they are the per-owner audit trail. */
@@ -495,8 +508,18 @@ export function reducer(prev: State, a: Action): State {
       if (u.role === 'ADMIN') break // economy exclusion (M1-C): admins never redeem
       const r = s.rewards.find(x => x.id === a.rewardId)!
       if (!rewardFits(r, u)) break // N2-A: eligibility is enforced in the engine, never only in UI
-      if (!r.active || (r.stock !== null && r.stock <= 0)) break
+      /* N2.2 §3/§4: the reward must be open right now — active, not archived,
+         inside its availability window, in stock. UPCOMING/EXPIRED/ARCHIVED
+         rewards stay visible to management but can never be redeemed. */
+      if (!rewardOpen(r, now)) break
+      /* N2.2 §2: per-user limit — only non-CANCELLED redemptions count, so a
+         cancellation restores quota and a FULFILLED one keeps it consumed. */
+      if (remainingQuota(r, s, a.userId) === 0) break
       if (balanceOf(s, a.userId) < r.cost) break
+      /* Economy timing (N2.2 §9, documented): Coins are debited and stock is
+         decremented at REQUEST time; both are refunded/restored exactly once
+         if the redemption is cancelled from PENDING or APPROVED; a FULFILLED
+         redemption keeps them consumed. No double-debit, no double-restore. */
       if (r.stock !== null) r.stock -= 1
       ledger(a.userId, 'REDEMPTION', -r.cost, `Reward redemption — ${r.name}`)
       s.redemptions.unshift({ id: nid('r'), userId: a.userId, rewardId: r.id, cost: r.cost, status: 'PENDING', at: now })
@@ -506,37 +529,56 @@ export function reducer(prev: State, a: Action): State {
          management; a manager's redemption asks admins only (managers may
          never decide a manager's redemption, not even another's). */
       managers().filter(m => canDecideRedemption(u, m))
-        .forEach(m => note(m.id, 'ACTION_REQUIRED', 'Rewards', `Reward fulfillment needed — ${r.name} for ${u.name} (${r.cost} Coins).`, undefined, s.redemptions[0].id))
+        .forEach(m => note(m.id, 'ACTION_REQUIRED', 'Rewards', `Reward approval needed — ${r.name} for ${u.name} (${r.cost} Coins).`, undefined, s.redemptions[0].id))
+      break
+    }
+
+    case 'APPROVE_REDEMPTION': {
+      const rd = s.redemptions.find(x => x.id === a.id)!
+      if (rd.status !== 'PENDING') break // decided already — double approvals are refused
+      /* N2.1-R2 decision matrix, unchanged: admin decides all; a manager
+         decides EMPLOYEE redemptions only (never their own or another
+         manager's). Employees never decide. */
+      if (!canDecideRedemption(user(rd.userId), user(a.by))) break
+      rd.status = 'APPROVED'; rd.approvedBy = a.by; rd.approvedAt = now
+      const r = s.rewards.find(x => x.id === rd.rewardId)!
+      act(a.by, 'approved redemption', `${r.name} — ${user(rd.userId).name}`)
+      note(rd.userId, 'INFORMATIONAL', 'Rewards', `Approved — ${r.name}. It now waits for fulfillment.`, undefined, rd.id)
+      /* N2.2 §12: the reward's executors are told the item is ready for
+         fulfillment. Admin holds fulfillment authority by office, so admins
+         are notified too; non-assigned users are not. */
+      s.users.filter(x => canFulfill(x.id, r))
+        .forEach(x => note(x.id, 'ACTION_REQUIRED', 'Rewards', `Ready for fulfillment — ${r.name} for ${user(rd.userId).name} (${r.cost} Coins).`, undefined, rd.id))
       break
     }
 
     case 'FULFILL_REDEMPTION': {
       const rd = s.redemptions.find(x => x.id === a.id)!
-      if (rd.status !== 'PENDING') break
-      /* N2.1-R2: decision authority depends on the REDEEMER's role — admin
-         decides all; a manager decides EMPLOYEE redemptions only (never
-         their own or another manager's). Employees never decide. */
-      if (!canDecideRedemption(user(rd.userId), user(a.by))) break
-      rd.status = 'FULFILLED'
+      /* N2.2 §5/§8: fulfillment executes on APPROVED items only, by an
+         executor of that reward (or an admin). Approval authority alone does
+         NOT fulfill — decision and execution stay technically separate. The
+         APPROVED gate makes double fulfills and fulfill-vs-cancel races
+         single-outcome. */
+      if (rd.status !== 'APPROVED') break
       const r = s.rewards.find(x => x.id === rd.rewardId)!
+      if (!canFulfill(a.by, r)) break
+      rd.status = 'FULFILLED'; rd.fulfilledBy = a.by; rd.fulfilledAt = now
+      rd.fulfillmentReference = a.reference?.trim() || null
+      rd.fulfillmentNote = a.note?.trim() || null
       act(a.by, 'fulfilled redemption', `${r.name} — ${user(rd.userId).name}`)
       note(rd.userId, 'INFORMATIONAL', 'Rewards', `Fulfilled — ${r.name}. Enjoy!`, undefined, rd.id)
-      /* N2-D: if the redeemer is a manager, the OTHER manager-level users
-         decide — they get the decision event too, so every authorized
-         reviewer can see who fulfilled it. Employees never see these. */
-      if (user(rd.userId).role === 'MANAGER')
-        managers().filter(m => m.id !== a.by)
-          .forEach(m => note(m.id, 'INFORMATIONAL', 'Rewards', `Redemption fulfilled — ${r.name} for ${user(rd.userId).name} (${r.cost} Coins), by ${user(a.by).name}.`, undefined, rd.id))
       break
     }
 
     case 'CANCEL_REDEMPTION': {
       const rd = s.redemptions.find(x => x.id === a.id)!
-      /* Domain authorization: an employee may cancel only their own pending
+      /* Domain authorization: an employee may cancel only their own open
          redemption; management decisions follow the N2.1-R2 matrix — admin
-         decides all, a manager decides EMPLOYEE redemptions only. The
-         PENDING gate guarantees refund and stock restore each happen once. */
-      if (rd.status !== 'PENDING') break
+         decides all, a manager decides EMPLOYEE redemptions only. N2.2 §9:
+         cancellation is allowed from PENDING or APPROVED (never FULFILLED);
+         the status gate guarantees refund and stock restore each happen
+         exactly once, even against a concurrent fulfill. */
+      if (rd.status !== 'PENDING' && rd.status !== 'APPROVED') break
       if (user(a.by).role === 'EMPLOYEE' && rd.userId !== a.by) break
       if (user(a.by).role !== 'EMPLOYEE' && !canDecideRedemption(user(rd.userId), user(a.by))) break
       rd.status = 'CANCELLED'; rd.reason = a.reason
@@ -570,6 +612,12 @@ export function reducer(prev: State, a: Action): State {
 
     case 'SAVE_REWARD': {
       if (!isMgmt(a.by)) break
+      /* N2.2 §7: executor assignment is admin-only and must reference users
+         who actually hold the REWARD_FULFILL capability — a manager's edit
+         keeps the existing assignments untouched. */
+      const cleanExecutors = (ids: string[] | undefined, fallback: string[]) =>
+        !isAdmin(a.by) ? fallback
+        : (ids ?? []).filter(id => { const x = s.users.find(u => u.id === id); return !!x && x.role !== 'ADMIN' && x.canFulfillRewards })
       const i = s.rewards.findIndex(x => x.id === a.reward.id)
       if (i >= 0) {
         /* Canonical governance matrix (N2.1-R2): a manager manages only
@@ -579,16 +627,56 @@ export function reducer(prev: State, a: Action): State {
            immutable: an edit can never transfer or launder it. */
         if (!canManageReward(s.rewards[i], user(a.by))) break
         if (!isAdmin(a.by) && a.reward.eligibility === 'MANAGERS') break
-        s.rewards[i] = { ...a.reward, id: s.rewards[i].id, createdBy: s.rewards[i].createdBy }
-        act(a.by, 'updated reward', a.reward.name)
+        const prev = s.rewards[i]
+        const next: Reward = { ...a.reward, id: prev.id, createdBy: prev.createdBy, executorIds: cleanExecutors(a.reward.executorIds, prev.executorIds) }
+        s.rewards[i] = next
+        /* N2.2 §13: human-readable audit detail for the governance-relevant
+           changes (category / availability / lifecycle), no raw enums. */
+        const changes: string[] = []
+        if (prev.category !== next.category) changes.push(`category changed to ${next.category}`)
+        if (prev.active !== next.active) changes.push(next.active ? 'activated' : 'deactivated')
+        if (prev.archived !== next.archived) changes.push(next.archived ? 'archived' : 'unarchived')
+        act(a.by, 'updated reward', next.name, { reason: changes.join(' · ') || undefined })
       } else {
         /* Create follows the matrix too: a manager may create EMPLOYEES or
            BOTH rewards (a BOTH reward is company-wide → admin-managed from
            birth), never a MANAGERS-targeted one. */
         if (!canCreateReward(a.reward.eligibility, user(a.by))) break
-        s.rewards.push({ ...a.reward, id: nid('rw'), createdBy: a.by })
+        s.rewards.push({ ...a.reward, id: nid('rw'), createdBy: a.by, executorIds: cleanExecutors(a.reward.executorIds, []) })
         act(a.by, 'created reward', a.reward.name)
       }
+      break
+    }
+
+    case 'SAVE_REWARD_CATEGORY': {
+      /* N2.2 §1: one flat category level, admin-managed. Archiving a category
+         never invalidates historical rewards — they keep the name string. */
+      if (!isAdmin(a.by)) break
+      const name = a.category.name.trim()
+      if (!name) break
+      const i = s.rewardCategories.findIndex(c => c.id === a.category.id)
+      if (i >= 0) {
+        const prev = s.rewardCategories[i]
+        s.rewardCategories[i] = { ...prev, name, active: a.category.active }
+        act(a.by, prev.active !== a.category.active && !a.category.active ? 'archived reward category' : 'updated reward category', name)
+      } else if (s.rewardCategories.some(c => c.name.toLowerCase() === name.toLowerCase())) break
+      else {
+        s.rewardCategories.push({ id: nid('rc'), name, active: a.category.active })
+        act(a.by, 'created reward category', name)
+      }
+      break
+    }
+
+    case 'TOGGLE_FULFILL_PERMISSION': {
+      /* N2.2 §6: the REWARD_FULFILL capability is admin-granted, separate
+         from the system Role, and grants nothing else. Admins never carry it
+         (they fulfill by office). Revoking it also strips executor seats. */
+      if (!isAdmin(a.by)) break
+      const u = user(a.userId)
+      if (u.role === 'ADMIN') break
+      u.canFulfillRewards = !u.canFulfillRewards
+      if (!u.canFulfillRewards) s.rewards.forEach(r => { r.executorIds = r.executorIds.filter(id => id !== u.id) })
+      act(a.by, u.canFulfillRewards ? 'granted reward fulfillment permission' : 'revoked reward fulfillment permission', u.name)
       break
     }
 
