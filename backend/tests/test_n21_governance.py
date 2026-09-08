@@ -61,7 +61,7 @@ def test_n21_manager_cancels_own_task(client, auth):
 
 def _reward_payload(rw_id=None, eligibility='EMPLOYEES', name='X', cost=10):
     body = {'name': name, 'description': 'd', 'cost': cost, 'stock': None,
-            'active': True, 'category': 'Perks', 'eligibility': eligibility}
+            'active': True, 'category': 'Company Perks', 'eligibility': eligibility}
     if rw_id:
         body['id'] = rw_id
     return body
@@ -148,11 +148,16 @@ def _redeem(client, auth, persona, reward_id):
 
 
 def test_n21_r2_manager_decides_employee_redemptions(client, auth):
-    # matrix 18+19: a manager fulfills and cancels EMPLOYEE redemptions
+    # matrix 18+19 (N2.2: decision = APPROVAL; delivery is executor work):
+    # a manager approves and cancels EMPLOYEE redemptions
     _fund(client, auth, 'u-priya')
-    rd_fulfill = _redeem(client, auth, 'priya', 'rw-coffee')
-    r = client.post(f'/api/redemptions/{rd_fulfill}/fulfill', headers=auth['marcus'])
+    rd_approve = _redeem(client, auth, 'priya', 'rw-coffee')
+    r = client.post(f'/api/redemptions/{rd_approve}/approve', headers=auth['marcus'])
     assert r.status_code == 200
+    assert next(x for x in r.json()['redemptions'] if x['id'] == rd_approve)['status'] == 'APPROVED'
+    # fulfillment is NOT part of the manager's decision power (no executor seat)
+    r = client.post(f'/api/redemptions/{rd_approve}/fulfill', headers=auth['marcus'], json={})
+    assert r.status_code == 403 and r.json()['code'] == 'FORBIDDEN'
     rd_cancel = _redeem(client, auth, 'priya', 'rw-coffee')
     r = client.post(f'/api/redemptions/{rd_cancel}/cancel', headers=auth['marcus'],
                     json={'reason': 'out of stock'})
@@ -165,7 +170,7 @@ def test_n21_r2_manager_never_decides_manager_redemptions(client, auth):
     # matrix 20+21: never their own, never another manager's
     _fund(client, auth, 'u-marcus')
     own = _redeem(client, auth, 'marcus', 'rw-devsetup')
-    r = client.post(f'/api/redemptions/{own}/fulfill', headers=auth['marcus'])
+    r = client.post(f'/api/redemptions/{own}/approve', headers=auth['marcus'])
     assert r.status_code == 403 and r.json()['code'] == 'FORBIDDEN'
     r = client.post(f'/api/redemptions/{own}/cancel', headers=auth['marcus'],
                     json={'reason': 'changed my mind'})
@@ -179,7 +184,7 @@ def test_n21_r2_manager_never_decides_manager_redemptions(client, auth):
     role_of = {u['id']: u['role'] for u in state['users']}
     assert all(role_of[n['userId']] == 'ADMIN' for n in asks)
     # matrix 23: the admin decides a manager's redemption
-    r = client.post(f'/api/redemptions/{own}/fulfill', headers=auth['dana'])
+    r = client.post(f'/api/redemptions/{own}/approve', headers=auth['dana'])
     assert r.status_code == 200
 
 
@@ -187,7 +192,7 @@ def test_n21_r2_admin_decides_employee_redemption(client, auth):
     # matrix 22
     _fund(client, auth, 'u-priya')
     rd = _redeem(client, auth, 'priya', 'rw-coffee')
-    r = client.post(f'/api/redemptions/{rd}/fulfill', headers=auth['dana'])
+    r = client.post(f'/api/redemptions/{rd}/approve', headers=auth['dana'])
     assert r.status_code == 200
 
 
