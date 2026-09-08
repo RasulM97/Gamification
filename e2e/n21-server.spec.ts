@@ -70,9 +70,25 @@ async function mockApi(page: Page) {
       state = reducer(state, { type: 'REDEEM', userId: me.id, rewardId: body().rewardId })
       return json(state)
     }
-    let m = path.match(/^\/redemptions\/(.+)\/fulfill$/)
+    // N2.2 §5: approval and fulfillment are separate endpoints
+    let m = path.match(/^\/redemptions\/(.+)\/approve$/)
     if (req.method() === 'POST' && m) {
-      state = reducer(state, { type: 'FULFILL_REDEMPTION', id: m[1], by: me.id })
+      state = reducer(state, { type: 'APPROVE_REDEMPTION', id: m[1], by: me.id })
+      return json(state)
+    }
+    m = path.match(/^\/redemptions\/(.+)\/fulfill$/)
+    if (req.method() === 'POST' && m) {
+      const b = body()
+      state = reducer(state, { type: 'FULFILL_REDEMPTION', id: m[1], by: me.id, reference: b.reference ?? undefined, note: b.note ?? undefined })
+      return json(state)
+    }
+    if (req.method() === 'POST' && path === '/reward-categories') {
+      state = reducer(state, { type: 'SAVE_REWARD_CATEGORY', by: me.id, category: body() })
+      return json(state)
+    }
+    m = path.match(/^\/users\/(.+)\/fulfill-permission$/)
+    if (req.method() === 'POST' && m) {
+      state = reducer(state, { type: 'TOGGLE_FULFILL_PERMISSION', by: me.id, userId: m[1] })
       return json(state)
     }
     m = path.match(/^\/redemptions\/(.+)\/cancel$/)
