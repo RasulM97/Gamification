@@ -38,9 +38,10 @@ const UAT_ALWAYS_INFO = new Set<Action['type']>([
 function entityTypeOf(a: Action): string | null {
   switch (a.type) {
     case 'REDEEM': return 'reward'
-    case 'FULFILL_REDEMPTION': case 'CANCEL_REDEMPTION': return 'redemption'
-    case 'ADMIN_ADJUST': return 'user'
+    case 'APPROVE_REDEMPTION': case 'FULFILL_REDEMPTION': case 'CANCEL_REDEMPTION': return 'redemption'
+    case 'ADMIN_ADJUST': case 'TOGGLE_FULFILL_PERMISSION': return 'user'
     case 'SAVE_REWARD': return 'reward'
+    case 'SAVE_REWARD_CATEGORY': return 'reward-category'
     case 'MARK_READ': case 'ARCHIVE_NOTICE': return 'notice'
     case 'UPDATE_SETTINGS': return 'settings'
     case 'MARK_ALL_READ': case 'ARCHIVE_ALL_READ': case 'TOGGLE_NOTIF_MUTE': return null
@@ -78,10 +79,13 @@ export function endpointOf(a: Action): { method: string; path: string } | null {
     case 'CANCEL_TASK': return { method: 'POST', path: `/tasks/${id}/cancel` }
     case 'REACTIVATE': return { method: 'POST', path: `/tasks/${id}/reactivate` }
     case 'REDEEM': return { method: 'POST', path: '/redemptions' }
+    case 'APPROVE_REDEMPTION': return { method: 'POST', path: `/redemptions/${id}/approve` }
     case 'FULFILL_REDEMPTION': return { method: 'POST', path: `/redemptions/${id}/fulfill` }
     case 'CANCEL_REDEMPTION': return { method: 'POST', path: `/redemptions/${id}/cancel` }
     case 'ADMIN_ADJUST': return { method: 'POST', path: '/admin/adjust' }
     case 'SAVE_REWARD': return { method: 'POST', path: '/rewards' }
+    case 'SAVE_REWARD_CATEGORY': return { method: 'POST', path: '/reward-categories' }
+    case 'TOGGLE_FULFILL_PERMISSION': return { method: 'POST', path: `/users/${id}/fulfill-permission` }
     case 'MARK_READ': return { method: 'POST', path: `/notices/${id}/read` }
     case 'MARK_ALL_READ': return { method: 'POST', path: '/notices/read-all' }
     case 'ARCHIVE_NOTICE': return { method: 'POST', path: `/notices/${id}/archive` }
@@ -144,7 +148,19 @@ function migrate(s: State): State {
        historically — attribute them to the company admin so a manager does
        not suddenly gain edit authority over them. */
     r.createdBy = r.createdBy ?? s.users.find(u => u.role === 'ADMIN')?.id ?? ''
+    /* N2.2: pre-N2.2 persisted rewards had no limits, no availability
+       window, no archive state and no executors — default to the historical
+       behavior (unlimited, always open, unarchived, admin-fulfilled). */
+    r.perUserLimit = r.perUserLimit ?? null
+    r.availableFrom = r.availableFrom ?? null
+    r.availableUntil = r.availableUntil ?? null
+    r.archived = r.archived ?? false
+    r.executorIds = r.executorIds ?? []
   })
+  /* N2.2 §6: pre-capability persisted users never held REWARD_FULFILL. */
+  s.users.forEach(u => { u.canFulfillRewards = u.canFulfillRewards ?? false })
+  /* N2.2 §1: pre-category persisted states get the canonical flat list. */
+  if (!s.rewardCategories) s.rewardCategories = seed().rewardCategories
   s.tasks.forEach(t => {
     t.attachments = (t.attachments ?? []).map(a =>
       typeof a === 'string' ? { name: a, size: 0, type: '' } : a)
@@ -347,11 +363,14 @@ async function send(a: Action): Promise<State | null> {
         ...(a.assigneeId ? { assigneeId: a.assigneeId } : {}),
       }, a.attachments))
     case 'REDEEM': return api.post('/redemptions', { rewardId: a.rewardId })
-    case 'FULFILL_REDEMPTION': return api.post(`/redemptions/${a.id}/fulfill`)
+    case 'APPROVE_REDEMPTION': return api.post(`/redemptions/${a.id}/approve`)
+    case 'FULFILL_REDEMPTION': return api.post(`/redemptions/${a.id}/fulfill`, { reference: a.reference ?? null, note: a.note ?? null })
     case 'CANCEL_REDEMPTION': return api.post(`/redemptions/${a.id}/cancel`, { reason: a.reason })
     case 'ADMIN_ADJUST':
       return api.post('/admin/adjust', { userId: a.userId, amount: a.amount, reason: a.reason })
     case 'SAVE_REWARD': return api.post('/rewards', a.reward)
+    case 'SAVE_REWARD_CATEGORY': return api.post('/reward-categories', a.category)
+    case 'TOGGLE_FULFILL_PERMISSION': return api.post(`/users/${a.userId}/fulfill-permission`)
     case 'MARK_READ': return api.post(`/notices/${a.id}/read`)
     case 'MARK_ALL_READ': return api.post('/notices/read-all')
     case 'ARCHIVE_NOTICE': return api.post(`/notices/${a.id}/archive`)
