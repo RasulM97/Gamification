@@ -75,9 +75,11 @@ def upgrade() -> None:
     op.add_column('redemptions', sa.Column('fulfillment_note', sa.Text(), nullable=True))
 
     # Seed the canonical flat categories for every existing company.
+    # (v.name must be schema-qualified — companies.name would make the bare
+    # reference ambiguous and the statement would fail on ANY database.)
     op.execute("""
         INSERT INTO reward_categories (id, company_id, name, active)
-        SELECT 'rc-' || lower(replace(name, ' ', '')) || '-' || c.id, c.id, name, true
+        SELECT 'rc-' || lower(replace(v.name, ' ', '')) || '-' || c.id, c.id, v.name, true
         FROM companies c
         CROSS JOIN (VALUES ('Food'), ('Entertainment'), ('Transportation'),
                            ('Wellness'), ('Merchandise'), ('Company Perks')) AS v(name)
