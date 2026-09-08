@@ -36,7 +36,14 @@ export type LedgerType =
 export type NotifLevel = 'ACTION_REQUIRED' | 'IMPORTANT' | 'INFORMATIONAL' | 'AUDIT_ONLY'
 export type NotifCategory = 'Tasks' | 'Reviews' | 'Assignments' | 'Rewards' | 'Economy'
 
-export interface User { id: string; name: string; role: Role; position: string }
+export interface User { id: string; name: string; role: Role; position: string
+  /* N2.2 §6: the REWARD_FULFILL capability — the smallest clean permission
+     representation (no enterprise permission-builder). Separate from the
+     system Role: an employee or manager with this flag may EXECUTE assigned
+     reward fulfillments. It grants nothing else — no task management, no
+     reward catalog management, no redemption approval, no wallet authority.
+     Admin retains administrative authority and can always fulfill. */
+  canFulfillRewards: boolean }
 
 /* `id` is set by the backend for stored files (used to download bytes via
    /api/files/{id} in server mode); `file` exists only transiently in UI
@@ -123,6 +130,12 @@ export interface LedgerEntry {
    one canonical field, persisted in demo state and (server mode) the
    rewards.eligibility column. */
 export type RewardEligibility = 'EMPLOYEES' | 'MANAGERS' | 'BOTH'
+/* N2.2 §1: one flat level of Admin-managed reward categories. Managers pick
+   existing categories for their eligible rewards; employees only consume
+   them through browsing/filtering. No trees. Archival never invalidates
+   historical rewards — a reward keeps its last-known category name even if
+   the category is later archived. */
+export interface RewardCategory { id: string; name: string; active: boolean }
 export interface Reward {
   id: string; name: string; description: string; cost: number
   stock: number | null; active: boolean; category: string
@@ -132,6 +145,22 @@ export interface Reward {
      governance matrix below (canManageReward/canCreateReward). Persisted in
      demo state and (server mode) rewards.created_by. Never editable. */
   createdBy: string
+  /* N2.2 §2: optional per-user redemption quantity limit. null = unlimited;
+     a positive integer caps how many non-CANCELLED redemptions of this
+     reward one eligible user may hold. */
+  perUserLimit: number | null
+  /* N2.2 §3: optional activity window (canonical UTC ms timestamps; display
+     formatting is frontend-only). null = unbounded on that side. */
+  availableFrom: number | null
+  availableUntil: number | null
+  /* N2.2 §4: lifecycle. `active` stays the on/off switch; `archived` is the
+     terminal management state for rewards that must keep their history —
+     never redeemable again, always inspectable by management. */
+  archived: boolean
+  /* N2.2 §7: assigned fulfillment executors (user ids). Only users holding
+     REWARD_FULFILL may be assigned; only they (and the admin) may execute an
+     approved redemption of this reward. */
+  executorIds: string[]
 }
 /* Canonical eligibility check — a user may redeem iff their role is covered.
    Admins are excluded outright: they run the economy but never receive
@@ -167,9 +196,38 @@ export const canCreateReward = (eligibility: RewardEligibility, u: Pick<User, 'r
   u.role === 'ADMIN' || (u.role === 'MANAGER' && (eligibility === 'EMPLOYEES' || eligibility === 'BOTH'))
 export const canDecideRedemption = (redeemer: Pick<User, 'role'>, u: Pick<User, 'role'>) =>
   u.role === 'ADMIN' || (u.role === 'MANAGER' && redeemer.role === 'EMPLOYEE')
+/* N2.2 §3: availability window state. UPCOMING/EXPIRED rewards stay visible
+   to management and keep their history; they are never redeemable. */
+export type RewardAvailability = 'AVAILABLE' | 'UPCOMING' | 'EXPIRED'
+export const rewardAvailability = (r: Pick<Reward, 'availableFrom' | 'availableUntil'>, now: number): RewardAvailability =>
+  r.availableFrom !== null && now < r.availableFrom ? 'UPCOMING'
+  : r.availableUntil !== null && now > r.availableUntil ? 'EXPIRED'
+  : 'AVAILABLE'
+/* Every gate a NEW redemption must pass except eligibility/balance (those
+   stay with the caller): lifecycle + window + stock. */
+export const rewardOpen = (r: Reward, now: number) =>
+  r.active && !r.archived && rewardAvailability(r, now) === 'AVAILABLE' && (r.stock === null || r.stock > 0)
+/* N2.2 §2 canonical quota rule: only non-CANCELLED redemptions consume the
+   per-user limit (PENDING, APPROVED and FULFILLED all count); a cancelled/
+   refunded redemption restores the user's available quota. */
+export const userRedemptionCount = (s: Pick<State, 'redemptions'>, userId: string, rewardId: string) =>
+  s.redemptions.filter(x => x.userId === userId && x.rewardId === rewardId && x.status !== 'CANCELLED').length
+export const remainingQuota = (r: Pick<Reward, 'id' | 'perUserLimit'>, s: Pick<State, 'redemptions'>, userId: string) =>
+  r.perUserLimit === null ? null : Math.max(0, r.perUserLimit - userRedemptionCount(s, userId, r.id))
+/* N2.2 §5/§9: a redemption decision (approval) and the physical execution
+   (fulfillment) are NOT the same thing. PENDING awaits an approval decision;
+   APPROVED is ready for the assigned fulfillment executors; FULFILLED is
+   delivered; CANCELLED is refunded (only from PENDING/APPROVED — a fulfilled
+   redemption is never retro-cancelled). */
+export type RedemptionStatus = 'PENDING' | 'APPROVED' | 'FULFILLED' | 'CANCELLED'
 export interface Redemption {
   id: string; userId: string; rewardId: string; cost: number
-  status: 'PENDING' | 'FULFILLED' | 'CANCELLED'; at: number; reason?: string
+  status: RedemptionStatus; at: number; reason?: string
+  /* N2.2 §10: approval + fulfillment facts. fulfilledBy/fulfilledAt are the
+     required tracking fields; reference/note are optional operator input. */
+  approvedBy?: string | null; approvedAt?: number | null
+  fulfilledBy?: string | null; fulfilledAt?: number | null
+  fulfillmentReference?: string | null; fulfillmentNote?: string | null
 }
 export interface Notice {
   id: string; userId: string; level: NotifLevel; category: NotifCategory
@@ -184,6 +242,7 @@ export interface Act {
 export interface State {
   company: string; seq: number; settings: Settings
   users: User[]; tasks: Task[]; ledger: LedgerEntry[]
+  rewardCategories: RewardCategory[] /* N2.2 §1 — flat admin-managed reward categories */
   rewards: Reward[]; redemptions: Redemption[]
   notices: Notice[]; activity: Act[]
   /* Per-user notification mute preferences (Phase N-B basics). Only
