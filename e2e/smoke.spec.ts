@@ -196,9 +196,12 @@ test.describe('admin', () => {
   test('fulfill a redemption as manager-facing op', async ({ page }) => {
     await startAs(page, 'dana')
     await nav(page, 'Redemptions')
-    // N2-C: decisions are made from the review surface, not directly on the row.
+    // N2-C/N2.2: approval is decided from the review surface; the approved
+    // item then moves to Ready for fulfillment for the executor step.
     await page.locator('.att-row', { hasText: 'Lunch voucher' }).getByRole('button', { name: 'Review & decide' }).click()
-    await page.locator('.modal').getByRole('button', { name: 'Fulfill' }).click()
+    await page.locator('.modal').getByRole('button', { name: 'Approve' }).click()
+    await page.locator('.att-row', { hasText: 'Lunch voucher' }).getByRole('button', { name: 'Fulfill' }).click()
+    await page.locator('.modal').getByRole('button', { name: 'Confirm fulfillment' }).click()
     await expect(page.locator('.att-row', { hasText: 'Lunch voucher' }).filter({ hasText: 'Fulfilled' })).toBeVisible()
   })
 })
