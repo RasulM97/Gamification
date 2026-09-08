@@ -1,5 +1,5 @@
 /* Demo seed — the Aster Dynamics pilot scenario (Phase N-C acceptance data). */
-import type { Act, LedgerEntry, Notice, Redemption, Reward, State, Task, User } from './model'
+import type { Act, LedgerEntry, Notice, Redemption, Reward, RewardCategory, State, Task, User } from './model'
 import { DEFAULT_SETTINGS } from './model'
 /* ── seed ──────────────────────────────────────────────────────────────── */
 const H = 3600e3, D = 24 * H
@@ -7,11 +7,13 @@ const H = 3600e3, D = 24 * H
 export function seed(): State {
   const now = Date.now()
   const users: User[] = [
-    { id: 'u-dana', name: 'Dana Cole', role: 'ADMIN', position: 'Operations Director' },
-    { id: 'u-marcus', name: 'Marcus Webb', role: 'MANAGER', position: 'Sales Team Lead' },
-    { id: 'u-priya', name: 'Priya Nair', role: 'EMPLOYEE', position: 'Sales Associate' },
-    { id: 'u-jonas', name: 'Jonas Berg', role: 'EMPLOYEE', position: 'Field Coordinator' },
-    { id: 'u-aisha', name: 'Aisha Khan', role: 'EMPLOYEE', position: 'Business Analyst' },
+    /* N2.2 §6: Jonas holds the REWARD_FULFILL capability — an employee who
+       runs reward fulfillment, with no extra authority beyond that. */
+    { id: 'u-dana', name: 'Dana Cole', role: 'ADMIN', position: 'Operations Director', canFulfillRewards: false },
+    { id: 'u-marcus', name: 'Marcus Webb', role: 'MANAGER', position: 'Sales Team Lead', canFulfillRewards: false },
+    { id: 'u-priya', name: 'Priya Nair', role: 'EMPLOYEE', position: 'Sales Associate', canFulfillRewards: false },
+    { id: 'u-jonas', name: 'Jonas Berg', role: 'EMPLOYEE', position: 'Field Coordinator', canFulfillRewards: true },
+    { id: 'u-aisha', name: 'Aisha Khan', role: 'EMPLOYEE', position: 'Business Analyst', canFulfillRewards: false },
   ]
   const dl = (d: number) => new Date(now + d * D).toISOString().slice(0, 10)
 
@@ -115,7 +117,6 @@ export function seed(): State {
       assignMode: 'SPECIFIC_EMPLOYEE', assigneeId: null,
       status: 'IN_PROGRESS', ownerId: 'u-jonas', cycle: 1, verified: 0, reported: 40, paid: 0,
       submissionNote: null, attachments: [], rejectionReason: null, submittedAt: null,
-      instructions: null,
       briefFiles: [], submissions: [],
       contributions: [], cycles: [{ cycle: 1, openedAt: now - 3 * D, closedAt: null, outcome: null, paid: 0, verified: 0 }],
       createdAt: now - 3 * D, updatedAt: now - 9 * H, createdBy: 'u-marcus',
@@ -191,18 +192,36 @@ export function seed(): State {
     { id: 'l1', at: now - 33 * D, userId: 'u-jonas', type: 'TASK_REWARD', amount: 40, ref: 'Task reward — Q3 inventory audit (cycle 1)', taskId: 't-audit', cycle: 1 },
   ]
 
+  /* N2.2 §1: the canonical flat category list — admin-managed, one level. */
+  const rewardCategories: RewardCategory[] = [
+    { id: 'rc-food', name: 'Food', active: true },
+    { id: 'rc-entertainment', name: 'Entertainment', active: true },
+    { id: 'rc-transportation', name: 'Transportation', active: true },
+    { id: 'rc-wellness', name: 'Wellness', active: true },
+    { id: 'rc-merchandise', name: 'Merchandise', active: true },
+    { id: 'rc-perks', name: 'Company Perks', active: true },
+  ]
+
   /* N2-A: every reward declares who may redeem it. `rw-devsetup` is
-     manager-only — employees never see it (N2-B visibility). */
+     manager-only — employees never see it (N2-B visibility). N2.2: rewards
+     carry per-user limits, availability windows, lifecycle and executor
+     seats; rw-yoga (upcoming), rw-metro (expired) and rw-picnic (archived)
+     demonstrate the lifecycle for UAT. */
   const rewards: Reward[] = [
-    { id: 'rw-lunch', name: 'Lunch voucher', description: '€25 voucher for the bistro downstairs. Valid any weekday.', cost: 30, stock: 10, active: true, category: 'Perks', eligibility: 'EMPLOYEES', createdBy: 'u-dana' },
-    { id: 'rw-hoodie', name: 'Company hoodie', description: 'The good one — heavyweight, embroidered logo. All sizes.', cost: 60, stock: 4, active: true, category: 'Swag', eligibility: 'BOTH', createdBy: 'u-dana' },
-    { id: 'rw-coffee', name: 'Coffee subscription — 1 month', description: 'One month of the good beans, delivered to your desk.', cost: 45, stock: null, active: true, category: 'Perks', eligibility: 'EMPLOYEES', createdBy: 'u-dana' },
-    { id: 'rw-parking', name: 'Parking spot — 1 week', description: 'The reserved spot by the entrance, for a full week.', cost: 25, stock: 2, active: true, category: 'Perks', eligibility: 'EMPLOYEES', createdBy: 'u-dana' },
-    { id: 'rw-halfday', name: 'Half-day off', description: 'An afternoon on the house. Coordinate with your manager.', cost: 120, stock: 3, active: true, category: 'Time', eligibility: 'EMPLOYEES', createdBy: 'u-dana' },
-    { id: 'rw-conf', name: 'Conference ticket', description: 'Ticket to the annual industry summit, travel not included.', cost: 300, stock: 1, active: false, category: 'Growth', eligibility: 'BOTH', createdBy: 'u-dana' },
+    { id: 'rw-lunch', name: 'Lunch voucher', description: '€25 voucher for the bistro downstairs. Valid any weekday.', cost: 30, stock: 10, active: true, category: 'Food', eligibility: 'EMPLOYEES', createdBy: 'u-dana', perUserLimit: 2, availableFrom: null, availableUntil: null, archived: false, executorIds: ['u-jonas'] },
+    { id: 'rw-hoodie', name: 'Company hoodie', description: 'The good one — heavyweight, embroidered logo. All sizes.', cost: 60, stock: 4, active: true, category: 'Merchandise', eligibility: 'BOTH', createdBy: 'u-dana', perUserLimit: 1, availableFrom: null, availableUntil: null, archived: false, executorIds: ['u-jonas'] },
+    { id: 'rw-coffee', name: 'Coffee subscription — 1 month', description: 'One month of the good beans, delivered to your desk.', cost: 45, stock: null, active: true, category: 'Food', eligibility: 'EMPLOYEES', createdBy: 'u-dana', perUserLimit: null, availableFrom: null, availableUntil: null, archived: false, executorIds: [] },
+    { id: 'rw-parking', name: 'Parking spot — 1 week', description: 'The reserved spot by the entrance, for a full week.', cost: 25, stock: 2, active: true, category: 'Transportation', eligibility: 'EMPLOYEES', createdBy: 'u-dana', perUserLimit: null, availableFrom: null, availableUntil: null, archived: false, executorIds: ['u-jonas'] },
+    { id: 'rw-halfday', name: 'Half-day off', description: 'An afternoon on the house. Coordinate with your manager.', cost: 120, stock: 3, active: true, category: 'Company Perks', eligibility: 'EMPLOYEES', createdBy: 'u-dana', perUserLimit: 1, availableFrom: null, availableUntil: null, archived: false, executorIds: ['u-jonas'] },
+    { id: 'rw-conf', name: 'Conference ticket', description: 'Ticket to the annual industry summit, travel not included.', cost: 300, stock: 1, active: false, category: 'Entertainment', eligibility: 'BOTH', createdBy: 'u-dana', perUserLimit: null, availableFrom: null, availableUntil: null, archived: false, executorIds: [] },
     /* N2.1-A2: one manager-created reward so the demo shows both sides of
        reward ownership — Marcus manages his own, never the admin's. */
-    { id: 'rw-devsetup', name: 'Ergonomic home-office upgrade', description: '€150 budget for your home-office setup — chair, stand, lighting. Management only.', cost: 150, stock: 2, active: true, category: 'Growth', eligibility: 'MANAGERS', createdBy: 'u-marcus' },
+    { id: 'rw-devsetup', name: 'Ergonomic home-office upgrade', description: '€150 budget for your home-office setup — chair, stand, lighting. Management only.', cost: 150, stock: 2, active: true, category: 'Company Perks', eligibility: 'MANAGERS', createdBy: 'u-marcus', perUserLimit: null, availableFrom: null, availableUntil: null, archived: false, executorIds: [] },
+    /* N2.2 §3/§4 lifecycle examples for the pilot: upcoming (not yet open),
+       expired (window closed, never auto-deleted) and archived. */
+    { id: 'rw-yoga', name: 'Yoga class pass — 10 sessions', description: 'Ten sessions at the studio around the corner. Starts with the new quarter.', cost: 80, stock: 5, active: true, category: 'Wellness', eligibility: 'BOTH', createdBy: 'u-dana', perUserLimit: 1, availableFrom: now + 14 * D, availableUntil: null, archived: false, executorIds: ['u-jonas'] },
+    { id: 'rw-metro', name: 'Transit pass — summer promo', description: 'Monthly transit pass from the summer promotion. The promo window has closed.', cost: 40, stock: 6, active: true, category: 'Transportation', eligibility: 'EMPLOYEES', createdBy: 'u-dana', perUserLimit: null, availableFrom: null, availableUntil: now - 7 * D, archived: false, executorIds: [] },
+    { id: 'rw-picnic', name: 'Team picnic basket', description: 'Last year’s team-day basket. Kept for the record — no longer offered.', cost: 90, stock: 0, active: true, category: 'Food', eligibility: 'BOTH', createdBy: 'u-dana', perUserLimit: null, availableFrom: null, availableUntil: null, archived: true, executorIds: [] },
   ]
 
   const redemptions: Redemption[] = [
@@ -211,16 +230,17 @@ export function seed(): State {
        pending request exercises the N2-C review context end to end. */
     { id: 'r3', userId: 'u-marcus', rewardId: 'rw-devsetup', cost: 150, status: 'PENDING', at: now - 2 * H },
     { id: 'r2', userId: 'u-priya', rewardId: 'rw-lunch', cost: 30, status: 'PENDING', at: now - 5 * H },
-    { id: 'r1', userId: 'u-jonas', rewardId: 'rw-hoodie', cost: 60, status: 'FULFILLED', at: now - 1 * D },
+    /* N2.2 §10: fulfilled redemptions record who delivered them and when. */
+    { id: 'r1', userId: 'u-jonas', rewardId: 'rw-hoodie', cost: 60, status: 'FULFILLED', at: now - 1 * D, approvedBy: 'u-dana', approvedAt: now - 23 * H, fulfilledBy: 'u-dana', fulfilledAt: now - 20 * H },
   ]
 
   const notices: Notice[] = [
     /* N2: a manager's redemption is decided by the OTHER manager-level users
        — here Dana (admin). Mirrors exactly what REDEEM emits for managers. */
-    { id: 'n8', userId: 'u-dana', level: 'ACTION_REQUIRED', category: 'Rewards', text: 'Reward fulfillment needed — Ergonomic home-office upgrade for Marcus Webb (150 Coins).', at: now - 2 * H, read: false, archived: false, redemptionId: 'r3' },
+    { id: 'n8', userId: 'u-dana', level: 'ACTION_REQUIRED', category: 'Rewards', text: 'Reward approval needed — Ergonomic home-office upgrade for Marcus Webb (150 Coins).', at: now - 2 * H, read: false, archived: false, redemptionId: 'r3' },
     { id: 'n7', userId: 'u-marcus', level: 'ACTION_REQUIRED', category: 'Assignments', text: 'New assignment — Q4 sales incentive plan (worth 50 Coins). Accept or decline.', taskId: 't-incentive', pri: 'IMPORTANT', at: now - 3 * 3600e3, read: false, archived: false },
     { id: 'n6', userId: 'u-marcus', level: 'ACTION_REQUIRED', category: 'Reviews', text: 'Submission ready for review — Client onboarding pack — Northstar Labs by Priya Nair.', taskId: 't-northstar', at: now - 5 * H, read: false, archived: false },
-    { id: 'n5', userId: 'u-marcus', level: 'ACTION_REQUIRED', category: 'Rewards', text: 'Reward fulfillment needed — Lunch voucher for Priya Nair (30 Coins).', at: now - 5 * H, read: false, archived: false, redemptionId: 'r2' },
+    { id: 'n5', userId: 'u-marcus', level: 'ACTION_REQUIRED', category: 'Rewards', text: 'Reward approval needed — Lunch voucher for Priya Nair (30 Coins).', at: now - 5 * H, read: false, archived: false, redemptionId: 'r2' },
     { id: 'n5b', userId: 'u-dana', level: 'ACTION_REQUIRED', category: 'Reviews', text: 'Submission ready for review — Client onboarding pack — Northstar Labs by Priya Nair.', taskId: 't-northstar', at: now - 5 * H, read: false, archived: false },
     /* Matches exactly what CREATE_TASK emits for an urgent public task —
        urgent/important work pings every eligible employee (L.2-C). */
@@ -245,5 +265,5 @@ export function seed(): State {
     { id: 'a0', at: now - 34 * D, actorId: 'u-marcus', action: 'approved work', object: 'Q3 inventory audit', taskId: 't-audit', econ: '+40 Coins', cycle: 1 },
   ]
 
-  return { company: 'Aster Dynamics', seq: 100, settings: { ...DEFAULT_SETTINGS }, users, tasks, ledger, rewards, redemptions, notices, activity, notifMuted: {} }
+  return { company: 'Aster Dynamics', seq: 100, settings: { ...DEFAULT_SETTINGS }, users, tasks, ledger, rewardCategories, rewards, redemptions, notices, activity, notifMuted: {} }
 }
