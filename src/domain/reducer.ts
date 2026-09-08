@@ -6,7 +6,7 @@ import type {
 } from './model'
 import {
   MAX_ACTIVE, MUTABLE_LEVELS, activeCount, balanceOf, canCreateReward, canDecideRedemption,
-  canManageReward, claimPenalty,
+  canFulfillReward, canManageReward, claimPenalty,
   fmtCoins, normalizeDeadline, partialPayout, remainingQuota, rewardFits, rewardOpen, roleFits, validateAttachments,
 } from './model'
 /* ── reducer ───────────────────────────────────────────────────────────── */
@@ -59,13 +59,12 @@ export function reducer(prev: State, a: Action): State {
      on UI gating for permissions. */
   const isMgmt = (id: string) => user(id).role !== 'EMPLOYEE'
   const isAdmin = (id: string) => user(id).role === 'ADMIN'
-  /* N2.2 §6/§7: fulfillment authority — admins always fulfill; anyone else
-     needs BOTH the REWARD_FULFILL capability AND an executor assignment on
-     that reward. Capability alone grants nothing (and vice versa). */
-  const canFulfill = (id: string, r: Reward) => {
-    const u = user(id)
-    return u.role === 'ADMIN' || (u.canFulfillRewards && r.executorIds.includes(id))
-  }
+  /* N2.2 §6/§7 + N2.3 §1: fulfillment authority is the canonical
+     canFulfillReward rule — admins fulfill by office; a reward with NO
+     executor seats falls back to management so an approved redemption can
+     never get stuck; otherwise BOTH the REWARD_FULFILL capability AND an
+     executor seat are required. Capability alone grants nothing. */
+  const canFulfill = (id: string, r: Reward) => canFulfillReward(user(id), r)
   /* Immutable submission history: SUBMIT_WORK appends a PENDING record;
      review outcomes (approve/reject/handoff/cancel) close it in place.
      Records never disappear — they are the per-owner audit trail. */
@@ -636,6 +635,12 @@ export function reducer(prev: State, a: Action): State {
         if (prev.category !== next.category) changes.push(`category changed to ${next.category}`)
         if (prev.active !== next.active) changes.push(next.active ? 'activated' : 'deactivated')
         if (prev.archived !== next.archived) changes.push(next.archived ? 'archived' : 'unarchived')
+        /* N2.3 §13: executor reassignment is a governance-relevant change —
+           the audit shows it in words, never as a raw id list. */
+        if (prev.executorIds.join(',') !== next.executorIds.join(','))
+          changes.push(next.executorIds.length === 0
+            ? 'fulfillment executors cleared — management fallback applies'
+            : 'fulfillment executors updated')
         act(a.by, 'updated reward', next.name, { reason: changes.join(' · ') || undefined })
       } else {
         /* Create follows the matrix too: a manager may create EMPLOYEES or
