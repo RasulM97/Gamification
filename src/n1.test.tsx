@@ -123,7 +123,7 @@ describe('N1-C — dashboard work status', () => {
 
 describe('N1-B — notification tabs', () => {
   /* Marcus's seeded inbox: 2 unread task notices (assignment + review) and
-     1 unread reward notice (fulfillment needed). */
+     1 unread reward notice (approval needed). */
   it('4 · Tasks tab contains the task notifications', async () => {
     persona('u-marcus')
     await render(h(NotificationsView, { onOpenTask: () => {}, onOpenRedemption: () => {} }))
@@ -136,7 +136,7 @@ describe('N1-B — notification tabs', () => {
     await render(h(NotificationsView, { onOpenTask: () => {}, onOpenRedemption: () => {} }))
     await act(async () => { segButton('Rewards').click() })
     expect(text()).toContain('Lunch voucher')
-    expect(text()).toContain('Reward fulfillment needed')
+    expect(text()).toContain('Reward approval needed')
   })
 
   it('6 · each tab shows its own unread count', async () => {
