@@ -260,7 +260,11 @@ describe('N2 — economy invariants unchanged', () => {
     await render(h('div', null, h(Capture), h(RedemptionsView)))
     const balBefore = balanceOf(stateRef(), 'u-priya')
     const stockBefore = stateRef().rewards.find(r => r.id === 'rw-lunch')!.stock!
-    await act(async () => { dispatchRef!({ type: 'FULFILL_REDEMPTION', id: 'r2', by: 'u-marcus' }) })
+    /* N2.2 §5: approval (manager decides employee redemptions) → fulfillment
+       (executor work; the admin fulfills by office). */
+    await act(async () => { dispatchRef!({ type: 'APPROVE_REDEMPTION', id: 'r2', by: 'u-marcus' }) })
+    expect(stateRef().redemptions.find(r => r.id === 'r2')!.status).toBe('APPROVED')
+    await act(async () => { dispatchRef!({ type: 'FULFILL_REDEMPTION', id: 'r2', by: 'u-dana' }) })
     // fulfillment writes no ledger entries and never touches stock
     expect(stateRef().rewards.find(r => r.id === 'rw-lunch')!.stock).toBe(stockBefore)
     expect(balanceOf(stateRef(), 'u-priya')).toBe(balBefore)
@@ -287,6 +291,9 @@ describe('N2 — economy invariants unchanged', () => {
   it('manager redemption fulfillment notifies the other managers (N2-D)', async () => {
     persona('u-dana')
     await render(h('div', null, h(Capture), h(RedemptionsView)))
+    /* N2.2 §5: the admin approves the manager's redemption first (decision),
+       then fulfills it (execution). */
+    await act(async () => { dispatchRef!({ type: 'APPROVE_REDEMPTION', id: 'r3', by: 'u-dana' }) })
     await act(async () => { dispatchRef!({ type: 'FULFILL_REDEMPTION', id: 'r3', by: 'u-dana' }) })
     const n = stateRef().notices.filter(x => x.redemptionId === 'r3' && x.userId === 'u-marcus')
     expect(n.some(x => x.text.startsWith('Fulfilled'))).toBe(true)
@@ -306,8 +313,9 @@ describe('14 · demo mode still makes zero API requests', () => {
       await act(async () => {
         dispatchRef!({
           type: 'SAVE_REWARD', by: 'u-dana',
-          reward: { id: '', name: 'Test perk', description: '', cost: 5, stock: 1, active: true, category: 'Perks', eligibility: 'BOTH', createdBy: 'u-dana' },
+          reward: { id: '', name: 'Test perk', description: '', cost: 5, stock: 1, active: true, category: 'Food', eligibility: 'BOTH', createdBy: 'u-dana', perUserLimit: null, availableFrom: null, availableUntil: null, archived: false, executorIds: [] },
         })
+        dispatchRef!({ type: 'APPROVE_REDEMPTION', id: 'r3', by: 'u-dana' })
         dispatchRef!({ type: 'FULFILL_REDEMPTION', id: 'r3', by: 'u-dana' })
         dispatchRef!({ type: 'CANCEL_REDEMPTION', id: 'r2', by: 'u-dana', reason: 'test' })
       })
