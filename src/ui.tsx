@@ -67,7 +67,17 @@ export function downloadCsv(filename: string, header: string[], rows: (string | 
    open in a new tab with noopener/noreferrer. Everything is built from React
    text nodes — no dangerouslySetInnerHTML anywhere — so raw HTML in the
    input can never execute. Line breaks are preserved via pre-wrap CSS. */
-const URL_RE = /https?:\/\/[^\s<>"'()]+/g
+/* N2.3 §18 canonical link forms: full http(s) URLs, www.-prefixed domains,
+   and bare domains — but ONLY bare domains ending in a known public TLD, so
+   arbitrary dotted text ("v1.2.3", "file.py", "note.txt") never becomes a
+   link. Scheme-less matches get an https:// href; the visible text stays
+   exactly what the user wrote. */
+const BARE_TLD = '(?:com|org|net|edu|gov|mil|io|ai|app|dev|co|me|info|biz|name|xyz|site|online|shop|store|cloud|tech|eu|uk|de|fr|es|it|nl|se|no|fi|dk|be|ch|at|ie|pt|pl|cz|sk|hr|hu|ro|lt|lv|ee|is|us|ca|au|nz|jp|kr|cn|in|sg|hk|tw|mx|br|za|ae|il|tr|gr|ru)'
+const URL_RE = new RegExp(
+  'https?://[^\\s<>"\'()]+'                                   // full URL
+  + '|www\\.[a-z0-9][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+(?:/[^\\s<>"\'()]*)?'  // www.domain…
+  + '|\\b[a-z0-9][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)*\\.' + BARE_TLD + '\\b(?:/[^\\s<>"\'()]*)?', // bare domain, known TLD only
+  'gi')
 /* Trailing punctuation that a writer puts after a URL is sentence text,
    not part of the address. */
 const TRAIL_RE = /[.,;:!?\]]+$/
@@ -79,9 +89,12 @@ export function linkifyText(text: string): ReactNode[] {
     let url = m[0]
     const trail = url.match(TRAIL_RE)?.[0] ?? ''
     if (trail) url = url.slice(0, -trail.length)
+    /* Scheme-less forms (www.… / bare domain) normalize to https:// — the
+       href never inherits a page-relative or javascript: interpretation. */
+    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`
     if (idx > last) out.push(text.slice(last, idx))
     out.push(
-      <a key={k++} href={url} target="_blank" rel="noopener noreferrer"
+      <a key={k++} href={href} target="_blank" rel="noopener noreferrer"
         className="ulink" onClick={e => e.stopPropagation()}>{url}</a>
     )
     if (trail) out.push(trail)
