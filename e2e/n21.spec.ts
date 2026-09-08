@@ -79,20 +79,22 @@ test('A3: manager sees no decision buttons on a manager redemption', async ({ pa
     .getByRole('button', { name: 'Redeem' }).click()
   await page.locator('.modal').getByRole('button', { name: 'Confirm redemption' }).click()
   await navBtn(page, 'Redemptions').click()
-  // newest pending first — ours is row one (the seed carries an older one)
+  // newest pending first — ours is row one (the seed carries an older one);
+  // a non-decider gets the context-only Review entry, never the decision one
   await page.locator('.att-row', { hasText: 'Ergonomic home-office upgrade' }).first()
-    .getByRole('button', { name: 'Review & decide' }).click()
+    .getByRole('button', { name: 'Review', exact: true }).click()
   const modal = page.locator('.modal')
   await expect(modal).toContainText('only be decided by the admin')
-  await expect(modal.getByRole('button', { name: 'Fulfill' })).toHaveCount(0)
+  await expect(modal.getByRole('button', { name: 'Approve' })).toHaveCount(0)
   await expect(modal.getByRole('button', { name: /Cancel &/ })).toHaveCount(0)
-  // the admin CAN decide it
+  // the admin CAN decide it (N2.2: the decision is approval; delivery is a
+  // separate executor step)
   await modal.getByRole('button', { name: 'Close' }).click()
   await viewAs(page, 'Dana Cole')
   await navBtn(page, 'Redemptions').click()
   await page.locator('.att-row', { hasText: 'Ergonomic home-office upgrade' }).first()
     .getByRole('button', { name: 'Review & decide' }).click()
-  await expect(page.locator('.modal').getByRole('button', { name: 'Fulfill' })).toBeVisible()
+  await expect(page.locator('.modal').getByRole('button', { name: 'Approve' })).toBeVisible()
 })
 
 test('D: bell popover has Tasks/Rewards tabs with counts and filtering', async ({ page }) => {
