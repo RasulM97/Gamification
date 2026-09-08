@@ -117,6 +117,7 @@ export function seed(): State {
       assignMode: 'SPECIFIC_EMPLOYEE', assigneeId: null,
       status: 'IN_PROGRESS', ownerId: 'u-jonas', cycle: 1, verified: 0, reported: 40, paid: 0,
       submissionNote: null, attachments: [], rejectionReason: null, submittedAt: null,
+      instructions: null,
       briefFiles: [], submissions: [],
       contributions: [], cycles: [{ cycle: 1, openedAt: now - 3 * D, closedAt: null, outcome: null, paid: 0, verified: 0 }],
       createdAt: now - 3 * D, updatedAt: now - 9 * H, createdBy: 'u-marcus',
