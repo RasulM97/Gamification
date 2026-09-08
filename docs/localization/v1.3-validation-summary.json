@@ -1,0 +1,148 @@
+{
+  "rewrites": {
+    "zh-CN": 85,
+    "ar": 90,
+    "ja": 87,
+    "tr": 95,
+    "ru": 75,
+    "he": 105,
+    "ko": 85,
+    "hi": 106
+  },
+  "results": {
+    "zh-CN": {
+      "total": 344,
+      "parse": true,
+      "keys": true,
+      "missing": 0,
+      "extra": 0,
+      "empty": 0,
+      "ph": true,
+      "ph_bad": [],
+      "leak": [],
+      "prefix": [],
+      "enum": []
+    },
+    "ar": {
+      "total": 344,
+      "parse": true,
+      "keys": true,
+      "missing": 0,
+      "extra": 0,
+      "empty": 0,
+      "ph": true,
+      "ph_bad": [],
+      "leak": [],
+      "prefix": [],
+      "enum": []
+    },
+    "ja": {
+      "total": 344,
+      "parse": true,
+      "keys": true,
+      "missing": 0,
+      "extra": 0,
+      "empty": 0,
+      "ph": true,
+      "ph_bad": [],
+      "leak": [],
+      "prefix": [],
+      "enum": []
+    },
+    "tr": {
+      "total": 344,
+      "parse": true,
+      "keys": true,
+      "missing": 0,
+      "extra": 0,
+      "empty": 0,
+      "ph": true,
+      "ph_bad": [],
+      "leak": [],
+      "prefix": [],
+      "enum": []
+    },
+    "ru": {
+      "total": 344,
+      "parse": true,
+      "keys": true,
+      "missing": 0,
+      "extra": 0,
+      "empty": 0,
+      "ph": true,
+      "ph_bad": [],
+      "leak": [],
+      "prefix": [],
+      "enum": []
+    },
+    "he": {
+      "total": 344,
+      "parse": true,
+      "keys": true,
+      "missing": 0,
+      "extra": 0,
+      "empty": 0,
+      "ph": true,
+      "ph_bad": [],
+      "leak": [],
+      "prefix": [],
+      "enum": []
+    },
+    "ko": {
+      "total": 344,
+      "parse": true,
+      "keys": true,
+      "missing": 0,
+      "extra": 0,
+      "empty": 0,
+      "ph": true,
+      "ph_bad": [],
+      "leak": [],
+      "prefix": [],
+      "enum": []
+    },
+    "hi": {
+      "total": 344,
+      "parse": true,
+      "keys": true,
+      "missing": 0,
+      "extra": 0,
+      "empty": 0,
+      "ph": true,
+      "ph_bad": [],
+      "leak": [],
+      "prefix": [],
+      "enum": []
+    },
+    "en": {
+      "total": 344,
+      "parse": true,
+      "keys": true,
+      "missing": 0,
+      "extra": 0,
+      "empty": 0,
+      "ph": true,
+      "ph_bad": [],
+      "leak": [],
+      "prefix": [],
+      "enum": []
+    },
+    "fa": {
+      "total": 344,
+      "parse": true,
+      "keys": true,
+      "missing": 0,
+      "extra": 0,
+      "empty": 0,
+      "ph": true,
+      "ph_bad": [],
+      "leak": [],
+      "prefix": [],
+      "enum": []
+    }
+  },
+  "unchanged": {
+    "en": true,
+    "fa": true
+  }
+}

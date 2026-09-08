@@ -1,0 +1,132 @@
+{
+  "en": {
+    "code": "en",
+    "nativeName": "English",
+    "englishName": "English",
+    "defaultDirection": "ltr",
+    "supportedDirections": [
+      "auto",
+      "ltr",
+      "rtl"
+    ],
+    "intlLocale": "en-GB",
+    "fallback": "en"
+  },
+  "zh-CN": {
+    "code": "zh-CN",
+    "nativeName": "简体中文",
+    "englishName": "Simplified Chinese",
+    "defaultDirection": "ltr",
+    "supportedDirections": [
+      "auto",
+      "ltr",
+      "rtl"
+    ],
+    "intlLocale": "zh-CN",
+    "fallback": "en"
+  },
+  "ru": {
+    "code": "ru",
+    "nativeName": "Русский",
+    "englishName": "Russian",
+    "defaultDirection": "ltr",
+    "supportedDirections": [
+      "auto",
+      "ltr",
+      "rtl"
+    ],
+    "intlLocale": "ru-RU",
+    "fallback": "en"
+  },
+  "hi": {
+    "code": "hi",
+    "nativeName": "हिन्दी",
+    "englishName": "Hindi",
+    "defaultDirection": "ltr",
+    "supportedDirections": [
+      "auto",
+      "ltr",
+      "rtl"
+    ],
+    "intlLocale": "hi-IN",
+    "fallback": "en"
+  },
+  "fa": {
+    "code": "fa",
+    "nativeName": "فارسی",
+    "englishName": "Persian",
+    "defaultDirection": "rtl",
+    "supportedDirections": [
+      "auto",
+      "ltr",
+      "rtl"
+    ],
+    "intlLocale": "fa-IR",
+    "fallback": "en"
+  },
+  "ar": {
+    "code": "ar",
+    "nativeName": "العربية",
+    "englishName": "Arabic",
+    "defaultDirection": "rtl",
+    "supportedDirections": [
+      "auto",
+      "ltr",
+      "rtl"
+    ],
+    "intlLocale": "ar-SA",
+    "fallback": "en"
+  },
+  "he": {
+    "code": "he",
+    "nativeName": "עברית",
+    "englishName": "Hebrew",
+    "defaultDirection": "rtl",
+    "supportedDirections": [
+      "auto",
+      "ltr",
+      "rtl"
+    ],
+    "intlLocale": "he-IL",
+    "fallback": "en"
+  },
+  "tr": {
+    "code": "tr",
+    "nativeName": "Türkçe",
+    "englishName": "Turkish",
+    "defaultDirection": "ltr",
+    "supportedDirections": [
+      "auto",
+      "ltr",
+      "rtl"
+    ],
+    "intlLocale": "tr-TR",
+    "fallback": "en"
+  },
+  "ko": {
+    "code": "ko",
+    "nativeName": "한국어",
+    "englishName": "Korean",
+    "defaultDirection": "ltr",
+    "supportedDirections": [
+      "auto",
+      "ltr",
+      "rtl"
+    ],
+    "intlLocale": "ko-KR",
+    "fallback": "en"
+  },
+  "ja": {
+    "code": "ja",
+    "nativeName": "日本語",
+    "englishName": "Japanese",
+    "defaultDirection": "ltr",
+    "supportedDirections": [
+      "auto",
+      "ltr",
+      "rtl"
+    ],
+    "intlLocale": "ja-JP",
+    "fallback": "en"
+  }
+}

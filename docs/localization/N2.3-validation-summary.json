@@ -1,0 +1,93 @@
+{
+  "phase": "N2.3 localization resource update",
+  "newKeysAdded": 4,
+  "totalKeys": 348,
+  "keyParity": true,
+  "jsonParse": true,
+  "placeholders": true,
+  "emptyValues": 0,
+  "englishLeakage": 0,
+  "locales": {
+    "en": {
+      "totalKeys": 348,
+      "missing": [],
+      "extra": [],
+      "empty": [],
+      "placeholderMismatches": [],
+      "englishLeakage": []
+    },
+    "zh-CN": {
+      "totalKeys": 348,
+      "missing": [],
+      "extra": [],
+      "empty": [],
+      "placeholderMismatches": [],
+      "englishLeakage": []
+    },
+    "ru": {
+      "totalKeys": 348,
+      "missing": [],
+      "extra": [],
+      "empty": [],
+      "placeholderMismatches": [],
+      "englishLeakage": []
+    },
+    "hi": {
+      "totalKeys": 348,
+      "missing": [],
+      "extra": [],
+      "empty": [],
+      "placeholderMismatches": [],
+      "englishLeakage": []
+    },
+    "fa": {
+      "totalKeys": 348,
+      "missing": [],
+      "extra": [],
+      "empty": [],
+      "placeholderMismatches": [],
+      "englishLeakage": []
+    },
+    "ar": {
+      "totalKeys": 348,
+      "missing": [],
+      "extra": [],
+      "empty": [],
+      "placeholderMismatches": [],
+      "englishLeakage": []
+    },
+    "he": {
+      "totalKeys": 348,
+      "missing": [],
+      "extra": [],
+      "empty": [],
+      "placeholderMismatches": [],
+      "englishLeakage": []
+    },
+    "tr": {
+      "totalKeys": 348,
+      "missing": [],
+      "extra": [],
+      "empty": [],
+      "placeholderMismatches": [],
+      "englishLeakage": []
+    },
+    "ko": {
+      "totalKeys": 348,
+      "missing": [],
+      "extra": [],
+      "empty": [],
+      "placeholderMismatches": [],
+      "englishLeakage": []
+    },
+    "ja": {
+      "totalKeys": 348,
+      "missing": [],
+      "extra": [],
+      "empty": [],
+      "placeholderMismatches": [],
+      "englishLeakage": []
+    }
+  },
+  "existingReviewedValuesPreserved": true
+}
