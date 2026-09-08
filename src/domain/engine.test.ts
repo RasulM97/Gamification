@@ -322,7 +322,12 @@ describe('redemption economy (§16)', () => {
   it('fulfill marks redemption without touching the ledger', () => {
     let s = seed()
     const rows = s.ledger.length
-    s = reducer(s, { type: 'FULFILL_REDEMPTION', id: 'r2', by: MGR })
+    /* N2.2 §5: approve (management decision) → fulfill (executor delivery).
+       r2 is Priya's lunch redemption; rw-lunch's executor is Jonas — the
+       admin fulfills by office. */
+    s = reducer(s, { type: 'APPROVE_REDEMPTION', id: 'r2', by: MGR })
+    expect(s.redemptions.find(r => r.id === 'r2')!.status).toBe('APPROVED')
+    s = reducer(s, { type: 'FULFILL_REDEMPTION', id: 'r2', by: ADMIN })
     expect(s.redemptions.find(r => r.id === 'r2')!.status).toBe('FULFILLED')
     expect(s.ledger.length).toBe(rows)
   })
@@ -1245,8 +1250,12 @@ describe('CANCEL_REDEMPTION authorization (M0-B)', () => {
   })
 
   it('employees cannot fulfill redemptions', () => {
-    const s = reducer(seed(), { type: 'FULFILL_REDEMPTION', id: 'r2', by: PRIYA })
-    expect(s.redemptions.find(r => r.id === 'r2')!.status).toBe('PENDING')
+    let s = seed()
+    s = reducer(s, { type: 'APPROVE_REDEMPTION', id: 'r2', by: MGR })
+    /* N2.2 §6: Priya holds no REWARD_FULFILL capability and no executor
+       seat — the fulfillment is refused, the item stays APPROVED. */
+    s = reducer(s, { type: 'FULFILL_REDEMPTION', id: 'r2', by: PRIYA })
+    expect(s.redemptions.find(r => r.id === 'r2')!.status).toBe('APPROVED')
   })
 })
 
