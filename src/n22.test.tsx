@@ -263,11 +263,13 @@ describe('reward search + filter (after role visibility)', () => {
     await render(h(RewardsView))
     const sel = qa('select').find(s => s.getAttribute('aria-label') === 'Filter by category') as HTMLSelectElement
     const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')!.set!
-    await act(async () => { setter.call(sel, 'Perks'); sel.dispatchEvent(new Event('change', { bubbles: true })) })
+    // N2.2 §1: filter options come from the canonical category list (Food…),
+    // not from ad-hoc strings on rewards.
+    await act(async () => { setter.call(sel, 'Food'); sel.dispatchEvent(new Event('change', { bubbles: true })) })
     const cards = qa('.rw-card .nm').map(n => n.textContent)
     expect(cards.length).toBeGreaterThan(0)
-    expect(cards.some(n => n?.includes('Lunch voucher'))).toBe(true) // Perks
-    expect(cards.every(n => !n?.includes('Ergonomic home-office upgrade'))).toBe(true) // Growth
+    expect(cards.some(n => n?.includes('Lunch voucher'))).toBe(true) // Food
+    expect(cards.every(n => !n?.includes('Ergonomic home-office upgrade'))).toBe(true) // Company Perks
   })
 
   it('manager can filter by active state', async () => {
@@ -276,11 +278,18 @@ describe('reward search + filter (after role visibility)', () => {
     const sel = qa('select').find(s => s.getAttribute('aria-label') === 'Filter by active state') as HTMLSelectElement
     expect(sel).toBeTruthy()
     const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')!.set!
+    // N2.2 §15: the lifecycle filter covers active / inactive / archived.
     await act(async () => { setter.call(sel, 'ACTIVE'); sel.dispatchEvent(new Event('change', { bubbles: true })) })
-    expect(qa('.rw-card.off').length).toBe(0)
+    let names = qa('.rw-card .nm').map(n => n.textContent)
+    expect(names.length).toBeGreaterThan(0)
+    expect(names.some(n => n?.includes('Conference ticket'))).toBe(false)   // inactive
+    expect(names.some(n => n?.includes('Team picnic basket'))).toBe(false)  // archived
     await act(async () => { setter.call(sel, 'INACTIVE'); sel.dispatchEvent(new Event('change', { bubbles: true })) })
-    expect(qa('.rw-card').length).toBeGreaterThan(0)
-    expect(qa('.rw-card').every(c => c.classList.contains('off'))).toBe(true)
+    names = qa('.rw-card .nm').map(n => n.textContent)
+    expect(names).toEqual(['Conference ticket'])
+    await act(async () => { setter.call(sel, 'ARCHIVED'); sel.dispatchEvent(new Event('change', { bubbles: true })) })
+    names = qa('.rw-card .nm').map(n => n.textContent)
+    expect(names).toEqual(['Team picnic basket'])
   })
 
   it('an employee can never surface a MANAGERS-only reward through search', async () => {
