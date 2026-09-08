@@ -104,14 +104,14 @@ def test_n2_save_reward_eligibility_roundtrip_and_validation(client, auth):
     # create with MANAGERS eligibility → serialized back
     r = client.post('/api/rewards', headers=auth['dana'], json={
         'name': 'Leadership workshop', 'description': 'd', 'cost': 80,
-        'stock': 5, 'active': True, 'category': 'Growth', 'eligibility': 'MANAGERS'})
+        'stock': 5, 'active': True, 'category': 'Company Perks', 'eligibility': 'MANAGERS'})
     assert r.status_code == 200
     rw = next(x for x in r.json()['rewards'] if x['name'] == 'Leadership workshop')
     assert rw['eligibility'] == 'MANAGERS'
     # edit to BOTH persists
     r = client.post('/api/rewards', headers=auth['dana'], json={
         'id': rw['id'], 'name': 'Leadership workshop', 'description': 'd',
-        'cost': 80, 'stock': 5, 'active': True, 'category': 'Growth',
+        'cost': 80, 'stock': 5, 'active': True, 'category': 'Company Perks',
         'eligibility': 'BOTH'})
     assert r.status_code == 200
     assert next(x for x in r.json()['rewards'] if x['id'] == rw['id'])['eligibility'] == 'BOTH'
