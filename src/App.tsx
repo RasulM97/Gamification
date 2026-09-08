@@ -82,7 +82,11 @@ function Shell() {
   const reviewCount = state.tasks.filter(t => t.status === 'SUBMITTED').length
   const attentionCount = state.tasks.filter(t => t.status === 'REJECTED').length
     + state.tasks.filter(t => t.status === 'OPEN' && t.assignMode === 'SPECIFIC_EMPLOYEE' && !t.assigneeId).length
+  /* N2.2 §8: the badge counts what THIS user can act on — management sees
+     pending approvals; the admin (fulfills by office) also sees approved
+     items waiting for fulfillment. */
   const redemptionCount = state.redemptions.filter(r => r.status === 'PENDING').length
+    + (me.role === 'ADMIN' ? state.redemptions.filter(r => r.status === 'APPROVED').length : 0)
   const bal = balanceOf(state, me.id)
 
   /* role-aware navigation; when switching persona, land on overview */
@@ -163,7 +167,13 @@ function Shell() {
       }, {
         group: 'Economy', items: [
           { v: 'rewards', label: 'Rewards', icon: '◈' },
-          { v: 'redemptions', label: 'My Redemptions', icon: '⇄', badge: state.redemptions.filter(r => r.status === 'PENDING' && r.userId === me.id).length },
+          /* N2.2 §8: an employee with the REWARD_FULFILL capability also sees
+             their executor queue — approved redemptions on rewards assigned
+             to them. Capability grants nothing else. */
+          { v: 'redemptions', label: 'My Redemptions', icon: '⇄', badge: state.redemptions.filter(r =>
+              (r.status === 'PENDING' && r.userId === me.id)
+              || (r.status === 'APPROVED' && me.canFulfillRewards
+                  && state.rewards.find(w => w.id === r.rewardId)?.executorIds.includes(me.id))).length },
           { v: 'wallet', label: 'Wallet', icon: '◉' },
         ],
       }, {
