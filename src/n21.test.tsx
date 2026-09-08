@@ -257,14 +257,23 @@ describe('A3 — redemption decision authority follows the REDEEMER role (N2.1-R
   it('18+19 (engine) · a manager approves and cancels EMPLOYEE redemptions', () => {
     let s = setup()
     const empRd = pendingOf(s, 'u-priya')
-    /* N2.2 §5: the manager's power ends at approval — delivery is executor
-       work (rw-coffee has no executor seat → the admin fulfills by office). */
+    /* N2.2 §5 + N2.3 §1: approval stays a separate step; delivery is
+       executor work — but rw-coffee has NO executor seats, so the canonical
+       management fallback lets the manager fulfill it directly (an approved
+       redemption can never get stuck for lack of a configured executor). */
     s = reducer(s, { type: 'APPROVE_REDEMPTION', id: empRd.id, by: 'u-marcus' })
     expect(s.redemptions.find(r => r.id === empRd.id)!.status).toBe('APPROVED')
     s = reducer(s, { type: 'FULFILL_REDEMPTION', id: empRd.id, by: 'u-marcus' })
-    expect(s.redemptions.find(r => r.id === empRd.id)!.status).toBe('APPROVED') // not an executor — refused
-    s = reducer(s, { type: 'FULFILL_REDEMPTION', id: empRd.id, by: 'u-dana' })
-    expect(s.redemptions.find(r => r.id === empRd.id)!.status).toBe('FULFILLED')
+    expect(s.redemptions.find(r => r.id === empRd.id)!.status).toBe('FULFILLED') // management fallback
+    /* …while a SEATED reward gives the manager no such fallback (regression
+       guard for the executor seat meaning something): */
+    s = reducer(s, { type: 'REDEEM', userId: 'u-priya', rewardId: 'rw-lunch' })
+    const lunchRd = pendingOf(s, 'u-priya')
+    s = reducer(s, { type: 'APPROVE_REDEMPTION', id: lunchRd.id, by: 'u-marcus' })
+    s = reducer(s, { type: 'FULFILL_REDEMPTION', id: lunchRd.id, by: 'u-marcus' })
+    expect(s.redemptions.find(r => r.id === lunchRd.id)!.status).toBe('APPROVED') // seat: u-jonas — refused
+    s = reducer(s, { type: 'FULFILL_REDEMPTION', id: lunchRd.id, by: 'u-jonas' })
+    expect(s.redemptions.find(r => r.id === lunchRd.id)!.status).toBe('FULFILLED')
     s = reducer(s, { type: 'REDEEM', userId: 'u-priya', rewardId: 'rw-coffee' })
     const empRd2 = pendingOf(s, 'u-priya')
     const balBefore = balanceOf(s, 'u-priya')
