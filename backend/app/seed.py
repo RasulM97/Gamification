@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 
 from .models import (
     Activity, Attachment, Company, CompanySettings, Contribution,
-    LedgerTransaction, Notification, Redemption, Reward, Submission, Task,
-    TaskCycle, User, now_ms,
+    LedgerTransaction, Notification, Redemption, Reward, RewardCategory,
+    RewardExecutor, Submission, Task, TaskCycle, User, now_ms,
 )
 from .security import hash_password
 from .storage import storage
@@ -49,17 +49,19 @@ def run(db: Session) -> None:
 
     pw_hash = hash_password(DEMO_PASSWORD)  # one real bcrypt hash, shared by demo users
 
-    def user(id, name, role, position):
+    def user(id, name, role, position, can_fulfill=False):
         return User(id=id, company_id=co.id, name=name,
                     email=f'{name.split()[0].lower()}@aster.demo', role=role,
                     position=position, password_hash=pw_hash,
-                    notif_muted=[])
+                    notif_muted=[], can_fulfill_rewards=can_fulfill)
 
     db.add_all([
         user('u-dana', 'Dana Cole', 'ADMIN', 'Operations Director'),
         user('u-marcus', 'Marcus Webb', 'MANAGER', 'Sales Team Lead'),
         user('u-priya', 'Priya Nair', 'EMPLOYEE', 'Sales Associate'),
-        user('u-jonas', 'Jonas Berg', 'EMPLOYEE', 'Field Coordinator'),
+        # N2.2 §6: Jonas holds the REWARD_FULFILL capability — an employee who
+        # runs reward fulfillment, with no extra authority beyond that.
+        user('u-jonas', 'Jonas Berg', 'EMPLOYEE', 'Field Coordinator', can_fulfill=True),
         user('u-aisha', 'Aisha Khan', 'EMPLOYEE', 'Business Analyst'),
     ])
 
@@ -250,34 +252,58 @@ def run(db: Session) -> None:
     ])
 
     # ── rewards & redemptions ────────────────────────────────────────────
-    # N2-A: eligibility per reward; rw-devsetup is manager-only.
+    # N2.2 §1: the canonical flat category list — admin-managed, one level.
     db.add_all([
-        Reward(id='rw-lunch', company_id=co.id, name='Lunch voucher', description='€25 voucher for the bistro downstairs. Valid any weekday.', cost=30, stock=10, active=True, category='Perks', eligibility='EMPLOYEES', created_by='u-dana'),
-        Reward(id='rw-hoodie', company_id=co.id, name='Company hoodie', description='The good one — heavyweight, embroidered logo. All sizes.', cost=60, stock=4, active=True, category='Swag', eligibility='BOTH', created_by='u-dana'),
-        Reward(id='rw-coffee', company_id=co.id, name='Coffee subscription — 1 month', description='One month of the good beans, delivered to your desk.', cost=45, stock=None, active=True, category='Perks', eligibility='EMPLOYEES', created_by='u-dana'),
-        Reward(id='rw-parking', company_id=co.id, name='Parking spot — 1 week', description='The reserved spot by the entrance, for a full week.', cost=25, stock=2, active=True, category='Perks', eligibility='EMPLOYEES', created_by='u-dana'),
-        Reward(id='rw-halfday', company_id=co.id, name='Half-day off', description='An afternoon on the house. Coordinate with your manager.', cost=120, stock=3, active=True, category='Time', eligibility='EMPLOYEES', created_by='u-dana'),
-        Reward(id='rw-conf', company_id=co.id, name='Conference ticket', description='Ticket to the annual industry summit, travel not included.', cost=300, stock=1, active=False, category='Growth', eligibility='BOTH', created_by='u-dana'),
-        Reward(id='rw-devsetup', company_id=co.id, name='Ergonomic home-office upgrade', description='€150 budget for your home-office setup — chair, stand, lighting. Management only.', cost=150, stock=2, active=True, category='Growth', eligibility='MANAGERS', created_by='u-marcus'),
+        RewardCategory(id='rc-food', company_id=co.id, name='Food', active=True),
+        RewardCategory(id='rc-entertainment', company_id=co.id, name='Entertainment', active=True),
+        RewardCategory(id='rc-transportation', company_id=co.id, name='Transportation', active=True),
+        RewardCategory(id='rc-wellness', company_id=co.id, name='Wellness', active=True),
+        RewardCategory(id='rc-merchandise', company_id=co.id, name='Merchandise', active=True),
+        RewardCategory(id='rc-perks', company_id=co.id, name='Company Perks', active=True),
+    ])
+    # N2-A: eligibility per reward; rw-devsetup is manager-only. N2.2: per-user
+    # limits, availability windows, lifecycle and executor seats; rw-yoga
+    # (upcoming), rw-metro (expired) and rw-picnic (archived) demonstrate the
+    # lifecycle for UAT.
+    db.add_all([
+        Reward(id='rw-lunch', company_id=co.id, name='Lunch voucher', description='€25 voucher for the bistro downstairs. Valid any weekday.', cost=30, stock=10, active=True, category='Food', eligibility='EMPLOYEES', created_by='u-dana', per_user_limit=2),
+        Reward(id='rw-hoodie', company_id=co.id, name='Company hoodie', description='The good one — heavyweight, embroidered logo. All sizes.', cost=60, stock=4, active=True, category='Merchandise', eligibility='BOTH', created_by='u-dana', per_user_limit=1),
+        Reward(id='rw-coffee', company_id=co.id, name='Coffee subscription — 1 month', description='One month of the good beans, delivered to your desk.', cost=45, stock=None, active=True, category='Food', eligibility='EMPLOYEES', created_by='u-dana'),
+        Reward(id='rw-parking', company_id=co.id, name='Parking spot — 1 week', description='The reserved spot by the entrance, for a full week.', cost=25, stock=2, active=True, category='Transportation', eligibility='EMPLOYEES', created_by='u-dana'),
+        Reward(id='rw-halfday', company_id=co.id, name='Half-day off', description='An afternoon on the house. Coordinate with your manager.', cost=120, stock=3, active=True, category='Company Perks', eligibility='EMPLOYEES', created_by='u-dana', per_user_limit=1),
+        Reward(id='rw-conf', company_id=co.id, name='Conference ticket', description='Ticket to the annual industry summit, travel not included.', cost=300, stock=1, active=False, category='Entertainment', eligibility='BOTH', created_by='u-dana'),
+        Reward(id='rw-devsetup', company_id=co.id, name='Ergonomic home-office upgrade', description='€150 budget for your home-office setup — chair, stand, lighting. Management only.', cost=150, stock=2, active=True, category='Company Perks', eligibility='MANAGERS', created_by='u-marcus'),
+        Reward(id='rw-yoga', company_id=co.id, name='Yoga class pass — 10 sessions', description='Ten sessions at the studio around the corner. Starts with the new quarter.', cost=80, stock=5, active=True, category='Wellness', eligibility='BOTH', created_by='u-dana', per_user_limit=1, available_from=now + 14 * D),
+        Reward(id='rw-metro', company_id=co.id, name='Transit pass — summer promo', description='Monthly transit pass from the summer promotion. The promo window has closed.', cost=40, stock=6, active=True, category='Transportation', eligibility='EMPLOYEES', created_by='u-dana', available_until=now - 7 * D),
+        Reward(id='rw-picnic', company_id=co.id, name='Team picnic basket', description='Last year’s team-day basket. Kept for the record — no longer offered.', cost=90, stock=0, active=True, category='Food', eligibility='BOTH', created_by='u-dana', archived=True),
         Redemption(id='r3', company_id=co.id, user_id='u-marcus', reward_id='rw-devsetup', cost=150, status='PENDING', at=now - 2 * H),
         Redemption(id='r2', company_id=co.id, user_id='u-priya', reward_id='rw-lunch', cost=30, status='PENDING', at=now - 5 * H),
-        Redemption(id='r1', company_id=co.id, user_id='u-jonas', reward_id='rw-hoodie', cost=60, status='FULFILLED', at=now - 1 * D),
+        # N2.2 §10: fulfilled redemptions record who delivered them and when.
+        Redemption(id='r1', company_id=co.id, user_id='u-jonas', reward_id='rw-hoodie', cost=60, status='FULFILLED', at=now - 1 * D, approved_by='u-dana', approved_at=now - 23 * H, fulfilled_by='u-dana', fulfilled_at=now - 20 * H),
+    ])
+    # N2.2 §7: executor seats — Jonas fulfills the day-to-day rewards.
+    db.add_all([
+        RewardExecutor(reward_id='rw-lunch', user_id='u-jonas', company_id=co.id),
+        RewardExecutor(reward_id='rw-hoodie', user_id='u-jonas', company_id=co.id),
+        RewardExecutor(reward_id='rw-parking', user_id='u-jonas', company_id=co.id),
+        RewardExecutor(reward_id='rw-halfday', user_id='u-jonas', company_id=co.id),
+        RewardExecutor(reward_id='rw-yoga', user_id='u-jonas', company_id=co.id),
     ])
 
     # ── notices & activity ───────────────────────────────────────────────
     db.add_all([
         Notification(id='n7', company_id=co.id, user_id='u-marcus', level='ACTION_REQUIRED', category='Assignments', text='New assignment — Q4 sales incentive plan (worth 50 Coins). Accept or decline.', task_id='t-incentive', pri='IMPORTANT', at=now - 3 * H),
         Notification(id='n6', company_id=co.id, user_id='u-marcus', level='ACTION_REQUIRED', category='Reviews', text='Submission ready for review — Client onboarding pack — Northstar Labs by Priya Nair.', task_id='t-northstar', at=now - 5 * H),
-        Notification(id='n5', company_id=co.id, user_id='u-marcus', level='ACTION_REQUIRED', category='Rewards', text='Reward fulfillment needed — Lunch voucher for Priya Nair (30 Coins).', at=now - 5 * H, redemption_id='r2'),
+        Notification(id='n5', company_id=co.id, user_id='u-marcus', level='ACTION_REQUIRED', category='Rewards', text='Reward approval needed — Lunch voucher for Priya Nair (30 Coins).', at=now - 5 * H, redemption_id='r2'),
         Notification(id='n5b', company_id=co.id, user_id='u-dana', level='ACTION_REQUIRED', category='Reviews', text='Submission ready for review — Client onboarding pack — Northstar Labs by Priya Nair.', task_id='t-northstar', at=now - 5 * H),
         Notification(id='n4', company_id=co.id, user_id='u-aisha', level='IMPORTANT', category='Tasks', text='Urgent task available — Urgent inventory recount — Warehouse B (worth 25 Coins), posted by Dana Cole. First valid claim wins.', task_id='t-recount', pri='URGENT', at=now - 7 * H),
         Notification(id='n3', company_id=co.id, user_id='u-priya', level='ACTION_REQUIRED', category='Assignments', text='New assignment — Expense policy one-pager (worth 10 Coins). Accept or decline.', task_id='t-policy', at=now - 8 * H),
         Notification(id='n2', company_id=co.id, user_id='u-aisha', level='ACTION_REQUIRED', category='Tasks', text='Rework required — Trade-show lead list cleanup. Reason: duplicates remain in rows 200–260…', task_id='t-leads', at=now - 26 * H, read=True),
         Notification(id='n1', company_id=co.id, user_id='u-jonas', level='IMPORTANT', category='Economy', text='Approved — Q3 inventory audit. +32 Coins credited to your wallet.', task_id='t-audit', at=now - 5 * D, read=True),
     ])
-    # N2: manager redemption decisions go to the OTHER manager-level users —
-    # here Dana (admin). Mirrors exactly what redeem() emits for managers.
-    db.add(Notification(id='n8', company_id=co.id, user_id='u-dana', level='ACTION_REQUIRED', category='Rewards', text='Reward fulfillment needed — Ergonomic home-office upgrade for Marcus Webb (150 Coins).', at=now - 2 * H, redemption_id='r3'))
+    # N2: manager redemption decisions go to admins only — here Dana.
+    # Mirrors exactly what redeem() emits for managers.
+    db.add(Notification(id='n8', company_id=co.id, user_id='u-dana', level='ACTION_REQUIRED', category='Rewards', text='Reward approval needed — Ergonomic home-office upgrade for Marcus Webb (150 Coins).', at=now - 2 * H, redemption_id='r3'))
     db.add_all([
         Activity(id='a11', company_id=co.id, at=now - 2 * H, actor_id='u-marcus', action='redeemed reward', object='Ergonomic home-office upgrade', econ='-150 Coins'),
         Activity(id='a10', company_id=co.id, at=now - 3 * H, actor_id='u-dana', action='created task', object='Q4 sales incentive plan', task_id='t-incentive', cycle=1),
