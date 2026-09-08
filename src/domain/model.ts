@@ -102,79 +102,92 @@ export interface SubmissionRecord {
   outcome: 'PENDING' | 'APPROVED' | 'REJECTED' | 'HANDED_OFF' | 'CANCELLED'
   reviewerId: string | null; reviewNote: string | null
 }
-
 export interface Task {
-  id: string; title: string; description: string; priority: Priority
-  deadline: string | null /* ISO date */
-  reward: number /* Coins */
+  id: string; title: string; description: string
+  priority: Priority; deadline: string | null; reward: number
   audience: Audience; assignMode: AssignMode; assigneeId: string | null
-  status: TaskStatus
-  ownerId: string | null /* employee doing the work */
-  cycle: number
-  verified: number /* canonical progress 0–100 (manager-verified) */
-  reported: number  /* informational self-reported progress 0–100 */
-  paid: number      /* Coins already paid out for this task */
-  submissionNote: string | null
-  attachments: Attachment[]
-  rejectionReason: string | null
-  submittedAt: number | null
-  /* Handoff: pending offer from a manager; assignMode is rewritten on
-     ACCEPT to SPECIFIC_EMPLOYEE (handoff → employee) or ALL_EMPLOYEES
-     (handoff → manager still works). */
-  handoffTo: string | null; handoffReason: string | null
-  instructions: string | null /* manager handoff brief for the new owner */
-  createdAt: number; updatedAt: number
-  createdBy: string /* user id — used by the N2.1 ownership rules */
+  status: TaskStatus; ownerId: string | null; cycle: number
+  verified: number; reported: number; paid: number
+  submissionNote: string | null; attachments: Attachment[]
+  rejectionReason: string | null; submittedAt: number | null
+  /* Management instructions from the last handoff — shown prominently to the
+     next owner until the task completes (or the next handoff replaces them). */
+  instructions: string | null
+  /* Reference files attached at creation or added during handoffs — the
+     brief, visible to everyone who works on the task. */
+  briefFiles: Attachment[]
+  /* Immutable per-owner submission history (see SubmissionRecord). */
   submissions: SubmissionRecord[]
-  contributions: Contribution[]
-  cycles: CycleRec[]
+  contributions: Contribution[]; cycles: CycleRec[]
+  createdAt: number; updatedAt: number; createdBy: string
 }
-
 export interface LedgerEntry {
-  id: string; userId: string; type: LedgerType; amount: number
-  ref: string; taskId?: string; cycle?: number; at: number
+  id: string; at: number; userId: string; type: LedgerType
+  amount: number; ref: string; taskId?: string; cycle?: number
 }
-
-/* N2.1-R1: flat task categories, one level only, no org units. */
-export interface Category { id: string; name: string }
-
-export interface RewardCategory { id: string; name: string; active: boolean }
-
+/* N2-A: who may redeem a reward. EMPLOYEES / MANAGERS / BOTH — never ADMIN.
+   The smallest compatible representation with the existing Reward model:
+   one canonical field, persisted in demo state and (server mode) the
+   rewards.eligibility column. */
 export type RewardEligibility = 'EMPLOYEES' | 'MANAGERS' | 'BOTH'
+/* N2.2 §1: one flat level of Admin-managed reward categories. Managers pick
+   existing categories for their eligible rewards; employees only consume
+   them through browsing/filtering. No trees. Archival never invalidates
+   historical rewards — a reward keeps its last-known category name even if
+   the category is later archived. */
+export interface RewardCategory { id: string; name: string; active: boolean }
 export interface Reward {
   id: string; name: string; description: string; cost: number
-  stock: number | null /* null = unlimited */
-  active: boolean
-  category: string /* flat one-level taxonomy (N2.2 §1): the NAME, kept as a
-    string so archiving/renaming a category never rewrites history */
+  stock: number | null; active: boolean; category: string
   eligibility: RewardEligibility
-  createdBy: string /* audit-only (N2.1-R2): never an authorization input */
-  /* N2.2 §2: per-user redemption limit (null = unlimited). Only
-     non-CANCELLED redemptions count; cancelling restores the quota. */
+  /* N2.1-A2 / N2.1-R2: creator identity is kept for history/audit only.
+     Management authority does NOT derive from it — it follows the canonical
+     governance matrix below (canManageReward/canCreateReward). Persisted in
+     demo state and (server mode) rewards.created_by. Never editable. */
+  createdBy: string
+  /* N2.2 §2: optional per-user redemption quantity limit. null = unlimited;
+     a positive integer caps how many non-CANCELLED redemptions of this
+     reward one eligible user may hold. */
   perUserLimit: number | null
-  /* N2.2 §3: availability window, UTC epoch ms (null = open-ended). */
+  /* N2.2 §3: optional activity window (canonical UTC ms timestamps; display
+     formatting is frontend-only). null = unbounded on that side. */
   availableFrom: number | null
   availableUntil: number | null
-  /* N2.2 §4: archive-only retirement — archived rewards keep their history
-     and are never hard-deleted or redeemable. */
+  /* N2.2 §4: lifecycle. `active` stays the on/off switch; `archived` is the
+     terminal management state for rewards that must keep their history —
+     never redeemable again, always inspectable by management. */
   archived: boolean
-  /* N2.2 §7: user ids assigned as fulfillment executors for this reward
-     (backend: reward_executors join table). Admin-assigned only; seats
-     require the REWARD_FULFILL capability at assignment time. */
+  /* N2.2 §7: assigned fulfillment executors (user ids). Only users holding
+     REWARD_FULFILL may be assigned; only they (and the admin) may execute an
+     approved redemption of this reward. */
   executorIds: string[]
 }
-
-/* N2-A governance matrix (canonical, verbatim):
-   VIEW:   employee sees EMPLOYEES + BOTH; manager/admin see all.
-   CREATE: admin creates any; manager creates EMPLOYEES or BOTH only (a BOTH
-           reward becomes company-wide → admin-managed after creation).
-   MANAGE: admin manages all; manager manages EMPLOYEES rewards only —
-           regardless of who created them. createdBy is audit-only.
-   DECIDE: admin decides all redemptions; a manager decides EMPLOYEE
-           redemptions only (never their own or another manager's). */
+/* Canonical eligibility check — a user may redeem iff their role is covered.
+   Admins are excluded outright: they run the economy but never receive
+   personal Coins or rewards (economy exclusion, M1-C / N2-A).
+   N2.1-B: unknown/missing eligibility fails CLOSED — never grant access on
+   data we cannot classify (a stale or partial payload must hide a reward,
+   not open it to managers). */
 export const rewardFits = (r: Pick<Reward, 'eligibility'>, u: Pick<User, 'role'>) =>
-  r.eligibility === 'BOTH' || (r.eligibility === 'EMPLOYEES' && u.role === 'EMPLOYEE')
-  || (r.eligibility === 'MANAGERS' && u.role === 'MANAGER')
+  u.role === 'ADMIN' ? false
+  : r.eligibility === 'BOTH' ? u.role === 'EMPLOYEE' || u.role === 'MANAGER'
+  : r.eligibility === 'EMPLOYEES' ? u.role === 'EMPLOYEE'
+  : r.eligibility === 'MANAGERS' ? u.role === 'MANAGER'
+  : false
+/* Canonical reward governance matrix (N2.1-R2 founder directive) — this
+   REPLACES the earlier creator-ownership rule. Viewing never implies
+   redeeming or managing.
+
+   VIEW:    admin + manager see all three categories; employee sees
+            EMPLOYEES + BOTH only (fail-closed on unknown eligibility).
+   CREATE:  admin any; manager EMPLOYEES or BOTH (a manager-created BOTH
+            reward is company-wide, hence admin-managed from birth).
+   MANAGE:  admin any; manager EMPLOYEES-targeted only — even for rewards
+            the manager created. Creator identity never outranks the matrix.
+   REDEEM:  rewardFits (above) — admin never redeems.
+   DECIDE:  authority depends on the REDEEMER's role — admin decides all;
+            a manager decides only EMPLOYEE redemptions (never their own or
+            another manager's). */
 export const canSeeReward = (r: Pick<Reward, 'eligibility'>, u: Pick<User, 'role'>) =>
   u.role === 'EMPLOYEE' ? rewardFits(r, u) : true
 export const canManageReward = (r: Pick<Reward, 'eligibility'>, u: Pick<User, 'role'>) =>
@@ -264,38 +277,78 @@ export const PRIORITIES: Priority[] = ['URGENT', 'IMPORTANT', 'NORMAL', 'NONE']
 const PRI_RANK: Record<Priority, number> = { URGENT: 0, IMPORTANT: 1, NORMAL: 2, NONE: 3 }
 
 /* Wrong voluntary-claim penalty (L.2-A): base 5 Coins scaled by priority.
-   Declining an assigned task is penalty-free; abandoning a CLAIMED task
-   costs. Returns the penalty, or 0 when the claim was right for the user. */
-export const claimPenalty = (t: Task, u: User): number =>
-  t.assignMode === 'SPECIFIC_EMPLOYEE' ? 0 : CLAIM_PENALTY * (PRI_RANK[t.priority] + 1)
+   MVP invariant: a penalty may never drive a balance below zero. */
+export const CLAIM_PENALTY_MULT: Record<Priority, number> = { NONE: 1, NORMAL: 1, IMPORTANT: 1.5, URGENT: 2 }
+export const claimPenalty = (p: Priority) => CLAIM_PENALTY * CLAIM_PENALTY_MULT[p]
 
-/* Roles eligible to work a task by audience. */
-export const roleFits = (t: Pick<Task, 'audience'>, u: Pick<User, 'role'>) =>
-  t.audience === 'EMPLOYEES' ? u.role === 'EMPLOYEE'
-  : t.audience === 'MANAGEMENT' ? u.role === 'MANAGER'
-  : true /* PRIVATE: the assignee (an employee) — checked by id elsewhere */
+/* Canonical partial reward formula — outputs .0 or .5 */
+export const partialPayout = (reward: number, pct: number) =>
+  Math.ceil((reward * pct) / 100 * 2) / 2
 
-/* Visibility: MANAGEMENT tasks are invisible to employees; PRIVATE tasks are
-   visible only to the assignee and management. */
-export const canSeeTask = (t: Pick<Task, 'audience' | 'assigneeId'>, u: Pick<User, 'id' | 'role'>) =>
-  t.audience === 'MANAGEMENT' ? u.role !== 'EMPLOYEE'
-  : t.audience === 'PRIVATE' ? (u.role !== 'EMPLOYEE' || t.assigneeId === u.id)
-  : true
-
-/* Active-work accounting (L.1-C): IN_PROGRESS + SUBMITTED + REJECTED count
-   against the 2-task cap. A submission in review still occupies the slot. */
-export const activeCount = (s: Pick<State, 'tasks'>, userId: string) =>
-  s.tasks.filter(t => t.ownerId === userId && ['IN_PROGRESS', 'SUBMITTED', 'REJECTED'].includes(t.status)).length
-
-/* Balance is ALWAYS the ledger sum — never a stored wallet field. */
-export const balanceOf = (s: Pick<State, 'ledger'>, userId: string) =>
+export const balanceOf = (s: State, userId: string) =>
   s.ledger.filter(l => l.userId === userId).reduce((a, l) => a + l.amount, 0)
 
-/* Canonical payout formula (L.1-D): exact .0/.5 steps, no float drift. */
-export const partialPayout = (reward: number, pct: number) => Math.ceil(reward * pct / 100 * 2) / 2
+export const activeCount = (s: State, userId: string) =>
+  s.tasks.filter(t => t.ownerId === userId && (t.status === 'IN_PROGRESS' || t.status === 'SUBMITTED')).length
 
-/* Coins display: integers stay integers, halves show one decimal. */
-export const fmtCoins = (n: number) => Number.isInteger(n) ? `${n}` : n.toFixed(1)
+/* Role eligibility for a task's audience — claims, assignments, handoffs.
+   The founder/admin arranges and reviews work but never owns it: admins are
+   never eligible to claim, be assigned, or receive a handoff. PRIVATE work
+   is one-to-one with any chosen person (employee or manager). */
+export const roleFits = (t: Task, u: User) =>
+  u.role === 'ADMIN' ? false
+  : t.audience === 'MANAGEMENT' ? u.role === 'MANAGER'
+  : t.audience === 'PRIVATE' ? true
+  : u.role === 'EMPLOYEE'
 
-/* Deadline normalization (M1-C): day precision, no time-of-day drift. */
-export const normalizeDeadline = (iso: string | null) => iso
+/* Visibility: management sees everything; employees never see MANAGEMENT
+   work, and PRIVATE work only when they are the assignee or owner. */
+export const canSeeTask = (t: Task, u: User) =>
+  u.role !== 'EMPLOYEE'
+    ? true
+    : t.audience === 'EMPLOYEES' || (t.audience === 'PRIVATE' && (t.assigneeId === u.id || t.ownerId === u.id))
+
+export const coinsInCirculation = (s: State) =>
+  s.users.reduce((a, u) => a + Math.max(0, balanceOf(s, u.id)), 0)
+
+/* Canonical sort: active before historical, then priority, then updated DESC */
+export const canonicalSort = (a: Task, b: Task) => {
+  const hist = (t: Task) => (t.status === 'APPROVED' || t.status === 'CANCELLED' ? 1 : 0)
+  if (hist(a) !== hist(b)) return hist(a) - hist(b)
+  if (PRI_RANK[a.priority] !== PRI_RANK[b.priority]) return PRI_RANK[a.priority] - PRI_RANK[b.priority]
+  return b.updatedAt - a.updatedAt
+}
+
+/* Notification mute helpers. Muting hides a notice from the bell and the
+   default inbox view, but never deletes it — audit integrity is preserved
+   and the Archived tab still shows everything. */
+export const MUTABLE_LEVELS: NotifLevel[] = ['INFORMATIONAL', 'AUDIT_ONLY']
+export const isMuted = (s: State, userId: string, level: NotifLevel) =>
+  (s.notifMuted[userId] ?? []).includes(level)
+export const visibleNotices = (s: State, userId: string) =>
+  s.notices.filter(n => n.userId === userId && !isMuted(s, userId, n.level))
+
+/* Priority-aware ordering (L.2-C): unread first; inside unread, critical
+   ACTION_REQUIRED alerts always win, then task priority URGENT→NONE, then
+   newest. Read notices fall back to pure recency. */
+export const sortNotices = (list: Notice[]) =>
+  [...list].sort((a, b) => {
+    if (a.read !== b.read) return a.read ? 1 : -1
+    if (!a.read) {
+      const crit = (n: Notice) => (n.level === 'ACTION_REQUIRED' ? 0 : 1)
+      if (crit(a) !== crit(b)) return crit(a) - crit(b)
+      const pa = a.pri ? PRI_RANK[a.pri] : 4, pb = b.pri ? PRI_RANK[b.pri] : 4
+      if (pa !== pb) return pa - pb
+    }
+    return b.at - a.at
+  })
+
+export const fmtCoins = (n: number) => `${n > 0 ? '+' : ''}${n} Coins`
+
+/* Canonical deadline: date-only 'YYYY-MM-DD' or null. Accepts and coerces
+   legacy full-ISO strings so every write path stores one representation. */
+export const normalizeDeadline = (d: string | null | undefined): string | null => {
+  if (!d) return null
+  const m = d.match(/^(\d{4}-\d{2}-\d{2})/)
+  return m ? m[1] : null
+}
