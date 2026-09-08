@@ -155,8 +155,17 @@ def test_n21_r2_manager_decides_employee_redemptions(client, auth):
     r = client.post(f'/api/redemptions/{rd_approve}/approve', headers=auth['marcus'])
     assert r.status_code == 200
     assert next(x for x in r.json()['redemptions'] if x['id'] == rd_approve)['status'] == 'APPROVED'
-    # fulfillment is NOT part of the manager's decision power (no executor seat)
+    # N2.3 §1: rw-coffee has NO executor seats, so the canonical management
+    # fallback lets the manager deliver it (approval and fulfillment remain
+    # two separate calls — the two-step flow itself is unchanged).
     r = client.post(f'/api/redemptions/{rd_approve}/fulfill', headers=auth['marcus'], json={})
+    assert r.status_code == 200
+    # …but a SEATED reward gives the manager no such fallback (the executor
+    # seat still means something):
+    rd_seated = _redeem(client, auth, 'priya', 'rw-lunch')
+    r = client.post(f'/api/redemptions/{rd_seated}/approve', headers=auth['marcus'])
+    assert r.status_code == 200
+    r = client.post(f'/api/redemptions/{rd_seated}/fulfill', headers=auth['marcus'], json={})
     assert r.status_code == 403 and r.json()['code'] == 'FORBIDDEN'
     rd_cancel = _redeem(client, auth, 'priya', 'rw-coffee')
     r = client.post(f'/api/redemptions/{rd_cancel}/cancel', headers=auth['marcus'],
