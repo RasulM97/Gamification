@@ -576,7 +576,7 @@
   "task.assignment.publishedManagement": "מתפרסמת במאגר הניהולי. משימה אחת — התביעה התקפה הראשונה מנצחת, כל השאר רואים אותה כתפוסה.",
   "task.assignment.publishedMarketplace": "מתפרסמת בשוק. משימה אחת — התביעה התקפה הראשונה מנצחת, כל השאר רואים אותה כתפוסה.",
   "task.assignment.specificEmployee": "עובד מסוים",
-  "task.assignment.specificManager": "מנהל ספציפי",
+  "task.assignment.specificManager": "מנהל מסוים",
   "task.audience.employees": "עובדים",
   "task.audience.management": "להנהלה בלבד",
   "task.audience.managementHint": "נסתרת מעובדים",
