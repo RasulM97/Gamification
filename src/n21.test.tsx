@@ -347,7 +347,7 @@ describe('B — eligibility parity fails closed', () => {
   it('6 · a persisted state missing eligibility/ownership migrates fail-closed', async () => {
     const s = seed()
     // simulate a pre-N2/partial payload: no eligibility, no ownership
-    const r = s.rewards.find(x => x.id === 'rw-lunch')! as Record<string, unknown>
+    const r = s.rewards.find(x => x.id === 'rw-lunch')! as unknown as Record<string, unknown>
     delete r.eligibility
     delete r.createdBy
     localStorage.setItem(STORE_KEY, JSON.stringify({ v: 2, state: s }))
@@ -472,7 +472,7 @@ describe('F — lightweight refresh loop (server mode only)', () => {
       addEventListener: (t: string, fn: () => void) => { listeners[t].push(fn) },
       removeEventListener: () => {},
     }
-    return { listeners, doc: doc as Document, win: win as unknown as Window }
+    return { listeners, doc: doc as unknown as Document, win: win as unknown as Window }
   }
 
   it('13 · refetch on window focus and on visibility restore', () => {
