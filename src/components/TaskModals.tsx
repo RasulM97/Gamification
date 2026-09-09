@@ -3,12 +3,15 @@ import { useStore, useMe } from '../store'
 import { MAX_ACTIVE, activeCount, partialPayout, validateAttachments, claimPenalty } from '../domain/engine'
 import type { Audience, Task, Attachment } from '../domain/engine'
 import { AttachField, Coin, DateInput, Field, Modal, coins } from '../ui'
+import { useI18n, fmtPct, fmtInt } from '../i18n'
+import { roleKey } from '../ui'
 
 /* Task action modals — submit / reject / decline / cancel / return /
  * reactivate / reopen. Each is a small controlled form that dispatches one
  * canonical engine action. */
 /* ─────────────────────────────────────────────────────────────── */
 export function SubmitModal({ open, onClose, task }: { open: boolean; onClose: () => void; task: Task }) {
+  const { t: tr } = useI18n()
   const { state, dispatch } = useStore()
   const me = useMe()
   const [note, setNote] = useState('')
@@ -44,94 +47,97 @@ export function SubmitModal({ open, onClose, task }: { open: boolean; onClose: (
   const mb = (n: number) => (n / 1048576).toFixed(1)
 
   return (
-    <Modal open={open} onClose={onClose} title={<>Submit work<small>{task.title}</small></>}>
-      <Field label="Submission note">
+    <Modal open={open} onClose={onClose} title={<>{tr('task.action.submit')}<small dir="auto">{task.title}</small></>}>
+      <Field label={tr('task.field.submissionNote')}>
         <textarea value={note} onChange={e => setNote(e.target.value)}
-          placeholder="What did you deliver? What should the reviewer look at?" />
+          placeholder={tr('task.placeholder.submissionNote')} />
       </Field>
       {/* Employee-reported completion: defaults to 100%, informational only —
           the manager's decision sets verified progress. */}
-      <Field label="How complete is the work? (your estimate)" hint="Informational only — the reviewer sets verified progress.">
+      <Field label={tr('task.field.completionEstimate')} hint={tr('task.help.reportInformational')}>
         <div className="range-row">
           <input type="range" min={0} max={100} step={5} value={pct} onChange={e => setPct(+e.target.value)} />
-          <span className="range-val">{pct}%</span>
+          <span className="range-val">{fmtPct(pct)}</span>
         </div>
       </Field>
-      <Field label={`Attachments — up to ${st.maxFileSizeMb} MB per file, ${st.maxSubmissionTotalMb} MB total`}
-        hint="No executables or scripts. Click a file to remove it before submitting.">
+      <Field label={tr('task.field.attachmentsLimit', { maxFileSizeMb: st.maxFileSizeMb, maxSubmissionTotalMb: st.maxSubmissionTotalMb })}
+        hint={tr('task.help.noExecutablesSubmit')}>
         <input ref={inputRef} type="file" multiple style={{ display: 'none' }}
           onChange={e => addFiles(e.target.files)} />
         <div className={'dropzone' + (dragOver ? ' over' : '')}
           onDragOver={e => { e.preventDefault(); setDragOver(true) }}
           onDragLeave={() => setDragOver(false)}
           onDrop={e => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files) }}>
-          <span className="dim" style={{ fontSize: 12 }}>Drop files here, or</span>
-          <button className="btn" type="button" onClick={() => inputRef.current?.click()}>📎 Choose files…</button>
+          <span className="dim" style={{ fontSize: 12 }}>{tr('file.dropHere')}</span>
+          <button className="btn" type="button" onClick={() => inputRef.current?.click()}>📎 {tr('file.choose')}</button>
         </div>
       </Field>
-      {errors.map(e => <div key={e} className="neg" style={{ fontSize: 12, marginBottom: 6 }}>⚠ {e}</div>)}
+      {errors.map(e => <div key={e} className="neg" style={{ fontSize: 12, marginBottom: 6 }} dir="auto">⚠ {e}</div>)}
       {files.length > 0 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 13 }}>
           {files.map((f, i) => (
             <span key={i} className="chip" onClick={() => remove(i)}
-              title="Click to remove">📎 {f.name}{f.size > 0 ? ` · ${mb(f.size)} MB` : ''} ✕</span>
+              title={tr('file.clickRemove')}>📎 <span dir="auto">{f.name}</span>{f.size > 0 ? ` · ${mb(f.size)} MB` : ''} ✕</span>
           ))}
         </div>
       )}
       <div className="actionbar" style={{ position: 'static', margin: '8px -18px -18px' }}>
-        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn" onClick={onClose}>{tr('common.cancel')}</button>
         <button className="btn primary" disabled={errors.length > 0} onClick={() => {
           dispatch({ type: 'SUBMIT_WORK', taskId: task.id, userId: me.id, note, attachments: files, pct })
           onClose()
-        }}>Submit for review</button>
+        }}>{tr('task.action.submitReview')}</button>
       </div>
     </Modal>
   )
 }
 
 export function RejectModal({ open, onClose, task }: { open: boolean; onClose: () => void; task: Task }) {
+  const { t: tr } = useI18n()
   const { dispatch } = useStore()
   const me = useMe()
   const [reason, setReason] = useState('')
   return (
-    <Modal open={open} onClose={onClose} title={<>Reject submission<small>{task.title} — the employee can resume and resubmit</small></>}>
-      <Field label="Rejection reason (required)">
+    <Modal open={open} onClose={onClose} title={<>{tr('task.rejectTitle')}<small dir="auto">{tr('task.rejectSub', { title: task.title })}</small></>}>
+      <Field label={tr('task.rejectReasonRequired')}>
         <textarea value={reason} onChange={e => setReason(e.target.value)}
-          placeholder="What is insufficient, and what does good look like?" autoFocus />
+          placeholder={tr('task.placeholder.rejectLooksLike')} autoFocus />
       </Field>
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
-        <button className="btn" onClick={onClose}>Back</button>
+        <button className="btn" onClick={onClose}>{tr('common.back')}</button>
         <button className="btn primary" disabled={!reason.trim()} onClick={() => {
           dispatch({ type: 'REJECT', taskId: task.id, managerId: me.id, reason: reason.trim() })
           onClose()
-        }}>Reject — send to rework</button>
+        }}>{tr('review.reject')}</button>
       </div>
     </Modal>
   )
 }
 
 export function DeclineModal({ open, onClose, task }: { open: boolean; onClose: () => void; task: Task }) {
+  const { t: tr } = useI18n()
   const { dispatch } = useStore()
   const me = useMe()
   const [reason, setReason] = useState('')
   return (
-    <Modal open={open} onClose={onClose} title={<>Decline assignment<small>{task.title} — no penalty; your manager is informed</small></>}>
-      <Field label="Reason (required)">
+    <Modal open={open} onClose={onClose} title={<>{tr('task.action.decline')}<small dir="auto">{tr('task.declineSub', { title: task.title })}</small></>}>
+      <Field label={tr('common.reasonRequired')}>
         <textarea value={reason} onChange={e => setReason(e.target.value)}
-          placeholder="Why can't you take this on?" autoFocus />
+          placeholder={tr('task.placeholder.declineReason')} autoFocus />
       </Field>
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
-        <button className="btn" onClick={onClose}>Back</button>
+        <button className="btn" onClick={onClose}>{tr('common.back')}</button>
         <button className="btn primary" disabled={!reason.trim()} onClick={() => {
           dispatch({ type: 'DECLINE_ASSIGNMENT', taskId: task.id, userId: me.id, reason: reason.trim() })
           onClose()
-        }}>Decline assignment</button>
+        }}>{tr('task.action.decline')}</button>
       </div>
     </Modal>
   )
 }
 
 export function CancelModal({ open, onClose, task }: { open: boolean; onClose: () => void; task: Task }) {
+  const { t: tr } = useI18n()
   const { state, dispatch } = useStore()
   const me = useMe()
   const [reason, setReason] = useState('')
@@ -140,35 +146,36 @@ export function CancelModal({ open, onClose, task }: { open: boolean; onClose: (
   const maxPct = 100 - task.verified
   const payout = pct > 0 ? Math.min(partialPayout(task.reward, pct), Math.max(0, task.reward - task.paid)) : 0
   return (
-    <Modal open={open} onClose={onClose} title={<>Cancel task<small>{task.title} — past payouts stay immutable</small></>}>
+    <Modal open={open} onClose={onClose} title={<>{tr('task.action.cancel')}<small dir="auto">{tr('task.cancelSub', { title: task.title })}</small></>}>
       {owner && maxPct > 0 && (
-        <Field label={`Partial credit for ${owner.name} — work already done`}
-          hint="Cancelled mid-work: contributors keep credit for accepted work. Paid now by the canonical formula, clamped to the remaining budget.">
+        <Field label={tr('task.partialCredit', { name: owner.name })}
+          hint={tr('task.partialCreditHint')}>
           <div className="range-row">
             <input type="range" min={0} max={maxPct} step={5} value={pct} onChange={e => setPct(+e.target.value)} />
-            <span className="range-val">{pct}%</span>
+            <span className="range-val">{fmtPct(pct)}</span>
           </div>
           <div className="summary" style={{ marginTop: 10 }}>
-            <div className="srow"><span>Payout to {owner.name} <span className="faint">(ceil(reward × % × 2) / 2)</span></span><Coin n={payout} /></div>
-            <div className="srow"><span>Verified progress after</span><b className="num">{task.verified}% → {Math.min(100, task.verified + pct)}%</b></div>
+            <div className="srow"><span dir="auto">{tr('handoff.payoutTo', { name: owner.name })} <span className="faint">{tr('task.payoutFormula')}</span></span><Coin n={payout} /></div>
+            <div className="srow"><span>{tr('handoff.verifiedAfter')}</span><b className="num">{fmtPct(task.verified)} → {fmtPct(Math.min(100, task.verified + pct))}</b></div>
           </div>
         </Field>
       )}
-      <Field label="Reason (required)">
-        <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Why is this task cancelled?" autoFocus />
+      <Field label={tr('common.reasonRequired')}>
+        <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder={tr('task.placeholder.cancelReason')} autoFocus />
       </Field>
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
-        <button className="btn" onClick={onClose}>Back</button>
+        <button className="btn" onClick={onClose}>{tr('common.back')}</button>
         <button className="btn primary" disabled={!reason.trim()} onClick={() => {
           dispatch({ type: 'CANCEL_TASK', taskId: task.id, by: me.id, reason: reason.trim(), acceptedPct: pct })
           onClose()
-        }}>{pct > 0 ? `Cancel — credit ${coins(payout)} Coins` : 'Cancel task'}</button>
+        }}>{pct > 0 ? tr('task.action.cancelCredit', { coins: coins(payout) }) : tr('task.action.cancel')}</button>
       </div>
     </Modal>
   )
 }
 
 export function ReturnModal({ open, onClose, task }: { open: boolean; onClose: () => void; task: Task }) {
+  const { t: tr } = useI18n()
   const { dispatch } = useStore()
   const me = useMe()
   const [reason, setReason] = useState('')
@@ -176,22 +183,22 @@ export function ReturnModal({ open, onClose, task }: { open: boolean; onClose: (
      so the balance can never go below zero. */
   const pen = claimPenalty(task.priority)
   return (
-    <Modal open={open} onClose={onClose} title={<>Return to marketplace<small>{task.title} — another employee can claim it</small></>}>
+    <Modal open={open} onClose={onClose} title={<>{tr('task.action.returnMarketplace')}<small dir="auto">{tr('task.returnSub', { title: task.title })}</small></>}>
       <div className="neg" style={{ fontSize: 13, marginBottom: 12 }}>
-        ⚠ Returning a claimed task costs a <b>−{pen} Coins</b> penalty
-        {task.priority !== 'NORMAL' && task.priority !== 'NONE' ? ` (${task.priority.toLowerCase()} priority ×${task.priority === 'URGENT' ? 2 : 1.5})` : ''}.
-        If your wallet can't cover it, the penalty is limited to your balance — it never goes negative.
+        ⚠ {tr('task.returnPenalty', { coins: fmtInt(pen) })}{' '}
+        {task.priority !== 'NORMAL' && task.priority !== 'NONE' ? tr('task.returnPenaltyPriority', { priority: tr('task.priority.' + task.priority.toLowerCase()), mult: task.priority === 'URGENT' ? 2 : 1.5 }) : ''}.{' '}
+        {tr('task.returnPenaltyCap')}
       </div>
-      <Field label="Reason (required)">
+      <Field label={tr('common.reasonRequired')}>
         <textarea value={reason} onChange={e => setReason(e.target.value)}
-          placeholder="Why are you returning this task?" autoFocus />
+          placeholder={tr('task.placeholder.returnReason')} autoFocus />
       </Field>
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
-        <button className="btn" onClick={onClose}>Back</button>
+        <button className="btn" onClick={onClose}>{tr('common.back')}</button>
         <button className="btn primary" disabled={!reason.trim()} onClick={() => {
           dispatch({ type: 'RETURN_CLAIM', taskId: task.id, userId: me.id, reason: reason.trim() })
           onClose()
-        }}>Return task (−{pen} Coins)</button>
+        }}>{tr('task.action.returnPenalty', { coins: fmtInt(pen) })}</button>
       </div>
     </Modal>
   )
@@ -205,28 +212,29 @@ function BriefChoice({ task, update, setUpdate, desc, setDesc, files, setFiles }
   desc: string; setDesc: (s: string) => void
   files: Attachment[]; setFiles: (f: Attachment[]) => void
 }) {
+  const { t: tr } = useI18n()
   const { state } = useStore()
   return (
     <div style={{ marginBottom: 14 }}>
-      <Field label="Brief for the new cycle">
+      <Field label={tr('task.briefNewCycle')}>
         <div className="choice">
           <button className={!update ? 'on' : ''} onClick={() => setUpdate(false)}>
-            <b>Use previous brief</b>
-            <small>Same description and brief files — just start running again.</small>
+            <b>{tr('task.usePreviousBrief')}</b>
+            <small>{tr('task.usePreviousBriefHint')}</small>
           </button>
           <button className={update ? 'on' : ''} onClick={() => setUpdate(true)}>
-            <b>Update brief</b>
-            <small>Revise the description and add files before the new cycle starts.</small>
+            <b>{tr('task.updateBrief')}</b>
+            <small>{tr('task.updateBriefHint')}</small>
           </button>
         </div>
       </Field>
       {update && (
         <>
-          <Field label="Description">
+          <Field label={tr('common.description')}>
             <textarea value={desc} onChange={e => setDesc(e.target.value)} style={{ minHeight: 88 }} />
           </Field>
           <AttachField files={files} onChange={setFiles} settings={state.settings}
-            label="Add files to the brief (optional)" />
+            label={tr('task.addFilesBrief')} />
         </>
       )}
     </div>
@@ -241,29 +249,30 @@ function NewCycleRouting({ task, audience, setAudience, assigneeId, setAssigneeI
   task: Task; audience: Audience; setAudience: (a: Audience) => void
   assigneeId: string; setAssigneeId: (id: string) => void
 }) {
+  const { t: tr } = useI18n()
   const { state } = useStore()
   const targets = state.users.filter(u =>
     (audience === 'EMPLOYEES' ? u.role === 'EMPLOYEE'
       : audience === 'MANAGEMENT' ? u.role === 'MANAGER'
       : u.role !== 'ADMIN'))
-  const pool = audience === 'MANAGEMENT' ? 'management pool — any manager can claim' : 'marketplace — any employee can claim'
+  const pool = audience === 'MANAGEMENT' ? tr('task.poolManagement') : tr('task.poolMarketplace')
   return (
-    <Field label="Route the new cycle"
-      hint="Cycle history stays untouched — the new cycle may go to an employee or a manager, regardless of who worked on it before.">
+    <Field label={tr('task.routeNewCycle')}
+      hint={tr('task.routeNewCycleHint')}>
       <>
-        <select value={audience} aria-label="New cycle audience"
+        <select value={audience} aria-label={tr('accessibility.newCycleAudience')}
           onChange={e => { setAudience(e.target.value as Audience); setAssigneeId('') }}>
-          <option value="EMPLOYEES">Employees</option>
-          <option value="MANAGEMENT">Management only</option>
-          <option value="PRIVATE">Private — one person</option>
+          <option value="EMPLOYEES">{tr('task.audience.employees')}</option>
+          <option value="MANAGEMENT">{tr('task.audience.management')}</option>
+          <option value="PRIVATE">{tr('task.audience.privateOnePerson')}</option>
         </select>
-        <select value={assigneeId} aria-label="New cycle assignee" style={{ marginTop: 8 }} onChange={e => setAssigneeId(e.target.value)}>
-          {audience !== 'PRIVATE' && <option value="">Available — {pool}</option>}
-          {audience === 'PRIVATE' && <option value="">Choose a person…</option>}
+        <select value={assigneeId} aria-label={tr('accessibility.newCycleAssignee')} style={{ marginTop: 8 }} onChange={e => setAssigneeId(e.target.value)}>
+          {audience !== 'PRIVATE' && <option value="">{tr('task.availablePool', { pool })}</option>}
+          {audience === 'PRIVATE' && <option value="">{tr('task.choosePerson')}</option>}
           {targets.map(u => {
             const n = activeCount(state, u.id)
             return <option key={u.id} value={u.id}>
-              Assign: {u.name} · {u.role.toLowerCase()} · {n}/{MAX_ACTIVE} active{n >= MAX_ACTIVE ? ' · at capacity' : ''}
+              {tr(n >= MAX_ACTIVE ? 'task.assignOptionRoleFull' : 'task.assignOptionRole', { name: u.name, role: tr(roleKey(u.role)), used: n, max: MAX_ACTIVE })}
             </option>
           })}
         </select>
@@ -273,6 +282,7 @@ function NewCycleRouting({ task, audience, setAudience, assigneeId, setAssigneeI
 }
 
 export function ReopenModal({ open, onClose, task }: { open: boolean; onClose: () => void; task: Task }) {
+  const { t: tr } = useI18n()
   const { dispatch } = useStore()
   const me = useMe()
   const [update, setUpdate] = useState(false)
@@ -282,29 +292,29 @@ export function ReopenModal({ open, onClose, task }: { open: boolean; onClose: (
   const [assigneeId, setAssigneeId] = useState('')
   const routeBad = audience === 'PRIVATE' && !assigneeId
   return (
-    <Modal open={open} onClose={onClose} title={<>Reopen task<small>{task.title} — starts cycle {task.cycle + 1}</small></>}>
+    <Modal open={open} onClose={onClose} title={<>{tr('task.reopenTitle')}<small dir="auto">{tr('task.reopenSub', { title: task.title, cycle: task.cycle + 1 })}</small></>}>
       <div style={{ fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>
-        Re-opening starts a <b>new cycle</b>: progress, payouts and submissions reset, and the task is routed
-        again with a refreshed reward budget. Past cycles stay untouched in the history.
+        {tr('task.reopenExplainer')}
       </div>
       <NewCycleRouting task={task} audience={audience} setAudience={setAudience}
         assigneeId={assigneeId} setAssigneeId={setAssigneeId} />
       <BriefChoice task={task} update={update} setUpdate={setUpdate} desc={desc} setDesc={setDesc} files={files} setFiles={setFiles} />
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
-        <button className="btn" onClick={onClose}>Back</button>
+        <button className="btn" onClick={onClose}>{tr('common.back')}</button>
         <button className="btn primary" disabled={routeBad} onClick={() => {
           dispatch({ type: 'REOPEN', taskId: task.id, by: me.id,
             description: update ? desc : undefined, attachments: files.length > 0 ? files : undefined,
             audience: audience !== task.audience ? audience : undefined,
             assigneeId: assigneeId || undefined })
           onClose()
-        }}>Reopen — start cycle {task.cycle + 1}</button>
+        }}>{tr('task.action.reopenCycle', { cycle: task.cycle + 1 })}</button>
       </div>
     </Modal>
   )
 }
 
 export function ReactivateModal({ open, onClose, task }: { open: boolean; onClose: () => void; task: Task }) {
+  const { t: tr } = useI18n()
   const { dispatch } = useStore()
   const me = useMe()
   const [reason, setReason] = useState('')
@@ -315,33 +325,33 @@ export function ReactivateModal({ open, onClose, task }: { open: boolean; onClos
   const [assigneeId, setAssigneeId] = useState('')
   const routeBad = audience === 'PRIVATE' && !assigneeId
   return (
-    <Modal open={open} onClose={onClose} title={<>Reactivate task<small>{task.title} — restarts from scratch as cycle {task.cycle + 1}</small></>}>
+    <Modal open={open} onClose={onClose} title={<>{tr('task.action.reactivateTask')}<small dir="auto">{tr('task.reactivateSub', { title: task.title, cycle: task.cycle + 1 })}</small></>}>
       <div style={{ fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>
-        Reactivation starts the task <b>from scratch</b>: verified progress and paid Coins reset to zero,
-        the task is routed again, and a new cycle is recorded. Past cycles stay immutable.
+        {tr('task.reactivateExplainer')}
       </div>
-      <Field label="Reason (required)">
+      <Field label={tr('common.reasonRequired')}>
         <textarea value={reason} onChange={e => setReason(e.target.value)}
-          placeholder="Why is this task being reactivated?" autoFocus />
+          placeholder={tr('task.placeholder.reactivateReason')} autoFocus />
       </Field>
       <NewCycleRouting task={task} audience={audience} setAudience={setAudience}
         assigneeId={assigneeId} setAssigneeId={setAssigneeId} />
       <BriefChoice task={task} update={update} setUpdate={setUpdate} desc={desc} setDesc={setDesc} files={files} setFiles={setFiles} />
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
-        <button className="btn" onClick={onClose}>Back</button>
+        <button className="btn" onClick={onClose}>{tr('common.back')}</button>
         <button className="btn primary" disabled={!reason.trim() || routeBad} onClick={() => {
           dispatch({ type: 'REACTIVATE', taskId: task.id, by: me.id, reason: reason.trim(),
             description: update ? desc : undefined, attachments: files.length > 0 ? files : undefined,
             audience: audience !== task.audience ? audience : undefined,
             assigneeId: assigneeId || undefined })
           onClose()
-        }}>Reactivate task</button>
+        }}>{tr('task.action.reactivateTask')}</button>
       </div>
     </Modal>
   )
 }
 
 export function EditTaskModal({ open, onClose, task }: { open: boolean; onClose: () => void; task: Task }) {
+  const { t: tr } = useI18n()
   const { dispatch } = useStore()
   const me = useMe()
   const [title, setTitle] = useState(task.title)
@@ -357,31 +367,31 @@ export function EditTaskModal({ open, onClose, task }: { open: boolean; onClose:
     priority === task.priority && (deadline || null) === (task.deadline ? task.deadline.slice(0, 10) : null) &&
     reward === task.reward
   return (
-    <Modal open={open} onClose={onClose} title={<>Edit task<small>{task.title} — the owner is notified of changes</small></>}>
-      <Field label="Title">
+    <Modal open={open} onClose={onClose} title={<>{tr('task.editTitle')}<small dir="auto">{tr('task.editSub', { title: task.title })}</small></>}>
+      <Field label={tr('common.title')}>
         <input value={title} onChange={e => setTitle(e.target.value)} />
       </Field>
-      <Field label="Description">
+      <Field label={tr('common.description')}>
         <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} />
       </Field>
-      <Field label="Priority">
+      <Field label={tr('common.priority')}>
         <select value={priority} onChange={e => setPriority(e.target.value as typeof priority)}>
-          <option value="NONE">No priority</option>
-          <option value="NORMAL">Normal</option>
-          <option value="IMPORTANT">Important</option>
-          <option value="URGENT">Urgent</option>
+          <option value="NONE">{tr('task.priority.none')}</option>
+          <option value="NORMAL">{tr('task.priority.normal')}</option>
+          <option value="IMPORTANT">{tr('task.priority.important')}</option>
+          <option value="URGENT">{tr('task.priority.urgent')}</option>
         </select>
       </Field>
-      <Field label="Deadline" hint="Leave empty for no deadline.">
+      <Field label={tr('common.deadline')} hint={tr('task.help.noDeadlineHint')}>
         <DateInput value={deadline} onChange={setDeadline} />
       </Field>
-      <Field label={`Reward (Coins) — at least ${coins(minReward)} already paid`}>
+      <Field label={tr('task.field.rewardMinPaid', { coins: coins(minReward) })}>
         <input type="number" min={minReward} step={0.5} value={reward}
           onChange={e => setReward(+e.target.value)} />
       </Field>
-      {rewardBad && <div className="neg" style={{ fontSize: 12, marginBottom: 8 }}>⚠ {coins(minReward)} Coins are already paid — the reward can't go below that.</div>}
+      {rewardBad && <div className="neg" style={{ fontSize: 12, marginBottom: 8 }}>⚠ {tr('task.help.rewardBelowPaid', { coins: coins(minReward) })}</div>}
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
-        <button className="btn" onClick={onClose}>Back</button>
+        <button className="btn" onClick={onClose}>{tr('common.back')}</button>
         <button className="btn primary" disabled={rewardBad || unchanged || !title.trim()} onClick={() => {
           dispatch({
             type: 'EDIT_TASK', taskId: task.id, by: me.id,
@@ -393,7 +403,7 @@ export function EditTaskModal({ open, onClose, task }: { open: boolean; onClose:
             reward: reward !== task.reward ? reward : undefined,
           })
           onClose()
-        }}>Save changes</button>
+        }}>{tr('common.saveChanges')}</button>
       </div>
     </Modal>
   )
