@@ -262,7 +262,7 @@ test.describe('UI health', () => {
       expect(overflow).toBeLessThanOrEqual(1)
     }
     await check()
-    await page.getByRole('button', { name: '☰' }).click()
+    await page.getByRole('button', { name: 'Menu' }).click() // N3 §21: burger carries a localized aria-label
     await nav(page, 'My Work')
     await check()
     await openTask(page, 'Expense policy one-pager')
