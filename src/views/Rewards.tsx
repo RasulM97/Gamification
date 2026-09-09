@@ -5,24 +5,27 @@ import {
 } from '../domain/engine'
 import type { Reward, RewardEligibility } from '../domain/engine'
 import { Coin, Empty, Field, Modal, Panel, coins } from '../ui'
+import { fmtDateL, tActive, useI18n } from '../i18n'
 
 /* N2-B: human-readable eligibility — never the raw enum. The fallback
-   covers unclassifiable legacy payloads without leaking raw values. */
-const ELIGIBILITY_LABEL: Record<RewardEligibility, string> = {
-  EMPLOYEES: 'Employees', MANAGERS: 'Managers', BOTH: 'Everyone eligible',
+   covers unclassifiable legacy payloads without leaking raw values.
+   N3 §8: display names are locale keys. */
+const ELIGIBILITY_KEY: Record<RewardEligibility, string> = {
+  EMPLOYEES: 'reward.eligibility.employees', MANAGERS: 'reward.eligibility.managers', BOTH: 'reward.eligibility.both',
 }
-const eligibilityLabel = (r: Reward) => ELIGIBILITY_LABEL[r.eligibility] ?? 'Employees'
+const eligibilityLabel = (r: Reward) => tActive(ELIGIBILITY_KEY[r.eligibility] ?? 'reward.eligibility.employees')
 
 const dayMs = (d: string) => new Date(`${d}T00:00:00Z`).getTime()
 const msDay = (ms: number | null) => ms === null ? '' : new Date(ms).toISOString().slice(0, 10)
-const fmtDay = (ms: number) => new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+/* N3 §13: locale-aware via Intl (en → en-GB: "1 Oct 2026"). */
+const fmtDay = (ms: number) => fmtDateL(ms)
 
 /* N2.2 §3/§14: availability marking — human-readable, never raw enums. */
 function availabilityLabel(r: Reward, now: number): string | null {
-  if (r.archived) return 'Archived'
+  if (r.archived) return tActive('common.archived')
   const a = rewardAvailability(r, now)
-  if (a === 'UPCOMING') return `Starts ${fmtDay(r.availableFrom!)}`
-  if (a === 'EXPIRED') return 'Expired'
+  if (a === 'UPCOMING') return `${tActive('date.starts')} ${fmtDay(r.availableFrom!)}`
+  if (a === 'EXPIRED') return tActive('date.expired')
   return null
 }
 
@@ -35,6 +38,7 @@ function availabilityLabel(r: Reward, now: number): string | null {
 export function RewardsView() {
   const { state, dispatch } = useStore()
   const me = useMe()
+  const { t } = useI18n()
   const isMgr = me.role !== 'EMPLOYEE'
   const isAdmin = me.role === 'ADMIN'
   const now = Date.now()
@@ -83,57 +87,57 @@ export function RewardsView() {
     <div className="wrap">
       <div className="toolbar">
         <div>
-          <h1 style={{ fontSize: 15 }}>Rewards marketplace</h1>
-          <div className="faint" style={{ fontSize: 12 }}>Coins earned through verified work, spent here.</div>
+          <h1 style={{ fontSize: 15 }}>{t('reward.marketplace')}</h1>
+          <div className="faint" style={{ fontSize: 12 }}>{t('reward.marketplaceSubtitle')}</div>
         </div>
         <div className="spacer" />
-        <span className="balance-chip"><span className="lbl">Balance</span><Coin n={bal} /></span>
-        {isAdmin && <button className="btn" onClick={() => setManageCats(true)}>Categories</button>}
-        {isMgr && <button className="btn primary" onClick={() => setCreating(true)}>+ New reward</button>}
+        <span className="balance-chip"><span className="lbl">{t('common.balance')}</span><Coin n={bal} /></span>
+        {isAdmin && <button className="btn" onClick={() => setManageCats(true)}>{t('reward.action.categories')}</button>}
+        {isMgr && <button className="btn primary" onClick={() => setCreating(true)}>+ {t('reward.action.new')}</button>}
       </div>
 
       <div className="toolbar" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <input type="search" value={q} onChange={e => setQ(e.target.value)}
-          placeholder="Search rewards…" aria-label="Search rewards" style={{ width: 190 }} />
+          placeholder={t('reward.filter.searchPlaceholder')} aria-label={t('accessibility.searchRewards')} style={{ width: 190 }} />
         {cats.length > 1 && (
-          <select value={catF} onChange={e => setCatF(e.target.value)} aria-label="Filter by category">
-            <option value="ALL">All categories</option>
+          <select value={catF} onChange={e => setCatF(e.target.value)} aria-label={t('accessibility.filterCategory')}>
+            <option value="ALL">{t('reward.filter.allCategories')}</option>
             {cats.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         )}
         {isMgr && (
-          <select value={eligF} onChange={e => setEligF(e.target.value as typeof eligF)} aria-label="Filter by eligibility">
-            <option value="ALL">Every audience</option>
-            <option value="EMPLOYEES">Employees</option>
-            <option value="MANAGERS">Managers</option>
-            <option value="BOTH">Everyone eligible</option>
+          <select value={eligF} onChange={e => setEligF(e.target.value as typeof eligF)} aria-label={t('accessibility.filterEligibility')}>
+            <option value="ALL">{t('reward.filter.everyAudience')}</option>
+            <option value="EMPLOYEES">{t('common.employees')}</option>
+            <option value="MANAGERS">{t('common.managers')}</option>
+            <option value="BOTH">{t('reward.eligibility.both')}</option>
           </select>
         )}
         {isMgr && (
-          <select value={activeF} onChange={e => setActiveF(e.target.value as typeof activeF)} aria-label="Filter by active state">
-            <option value="ALL">Every state</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
-            <option value="ARCHIVED">Archived</option>
+          <select value={activeF} onChange={e => setActiveF(e.target.value as typeof activeF)} aria-label={t('accessibility.filterActiveState')}>
+            <option value="ALL">{t('reward.filter.everyState')}</option>
+            <option value="ACTIVE">{t('common.active')}</option>
+            <option value="INACTIVE">{t('common.inactive')}</option>
+            <option value="ARCHIVED">{t('common.archived')}</option>
           </select>
         )}
         {isMgr && (
-          <select value={availF} onChange={e => setAvailF(e.target.value as typeof availF)} aria-label="Filter by availability">
-            <option value="ALL">Any window</option>
-            <option value="AVAILABLE">Available now</option>
-            <option value="UPCOMING">Upcoming</option>
-            <option value="EXPIRED">Expired</option>
+          <select value={availF} onChange={e => setAvailF(e.target.value as typeof availF)} aria-label={t('accessibility.filterAvailability')}>
+            <option value="ALL">{t('reward.filter.anyWindow')}</option>
+            <option value="AVAILABLE">{t('reward.filter.availableNow')}</option>
+            <option value="UPCOMING">{t('reward.filter.upcoming')}</option>
+            <option value="EXPIRED">{t('date.expired')}</option>
           </select>
         )}
-        <select value={stockF} onChange={e => setStockF(e.target.value as typeof stockF)} aria-label="Filter by stock">
-          <option value="ALL">Any stock</option>
-          <option value="IN">In stock</option>
-          <option value="OUT">Out of stock</option>
+        <select value={stockF} onChange={e => setStockF(e.target.value as typeof stockF)} aria-label={t('accessibility.filterStock')}>
+          <option value="ALL">{t('reward.filter.anyStock')}</option>
+          <option value="IN">{t('reward.filter.inStock')}</option>
+          <option value="OUT">{t('reward.filter.outOfStock')}</option>
         </select>
-        <span className="count">{shown.length} reward{shown.length === 1 ? '' : 's'}</span>
+        <span className="count">{t(shown.length === 1 ? 'reward.countOne' : 'reward.countMany', { count: shown.length })}</span>
       </div>
 
-      {shown.length === 0 && <Panel><Empty title="No rewards match" hint="Adjust the search or filters." /></Panel>}
+      {shown.length === 0 && <Panel><Empty title={t('reward.empty.noMatch')} hint={t('reward.empty.adjust')} /></Panel>}
       <div className="rw-grid">
         {shown.map(r => {
           const out = r.stock !== null && r.stock <= 0
@@ -151,36 +155,38 @@ export function RewardsView() {
           return (
             <div className={'rw-card' + (open ? '' : ' off')} key={r.id}>
               <div className="cat">
-                {r.category} · {eligibilityLabel(r)}
-                {!r.active && !r.archived && ' · inactive'}
+                {/* reward name/description/category are admin-authored
+                    content — verbatim, bidi-safe */}
+                <span dir="auto">{r.category}</span> · {eligibilityLabel(r)}
+                {!r.active && !r.archived && ` · ${t('reward.status.inactive')}`}
                 {mark && ` · ${mark}`}
               </div>
-              <div className="nm">{r.name}</div>
-              <div className="ds">{r.description}</div>
+              <div className="nm" dir="auto">{r.name}</div>
+              <div className="ds" dir="auto">{r.description}</div>
               <div className="ft">
                 <Coin n={r.cost} />
-                <span className="stock">{r.stock === null ? 'Unlimited' : `${r.stock} in stock`}</span>
-                {eligible && quota !== null && <span className="stock">{quota} left for you</span>}
+                <span className="stock">{r.stock === null ? t('reward.stock.unlimited') : t('reward.stock.inStock', { count: r.stock })}</span>
+                {eligible && quota !== null && <span className="stock">{t('reward.quotaLeft', { count: quota })}</span>}
               </div>
               {eligible && (
                 <button className="btn primary" disabled={!redeemable}
                   title={
-                    r.archived ? 'Archived' : !r.active ? 'Inactive'
-                    : rewardAvailability(r, now) === 'UPCOMING' ? `Starts ${fmtDay(r.availableFrom!)}`
-                    : rewardAvailability(r, now) === 'EXPIRED' ? 'Expired'
-                    : out ? 'Out of stock' : quota === 0 ? 'Personal limit reached'
-                    : !afford ? `Need ${coins(r.cost - bal)} more Coins` : ''
+                    r.archived ? t('common.archived') : !r.active ? t('reward.status.inactive')
+                    : rewardAvailability(r, now) === 'UPCOMING' ? `${t('date.starts')} ${fmtDay(r.availableFrom!)}`
+                    : rewardAvailability(r, now) === 'EXPIRED' ? t('date.expired')
+                    : out ? t('reward.status.outOfStock') : quota === 0 ? t('reward.personalLimitReached')
+                    : !afford ? t('reward.needMore', { coins: coins(r.cost - bal) }) : ''
                   }
                   onClick={() => setConfirm(r)}>
-                  {r.archived ? 'Archived' : !r.active ? 'Inactive'
-                    : rewardAvailability(r, now) === 'UPCOMING' ? `Starts ${fmtDay(r.availableFrom!)}`
-                    : rewardAvailability(r, now) === 'EXPIRED' ? 'Expired'
-                    : out ? 'Out of stock' : quota === 0 ? 'Limit reached'
-                    : !afford ? `${coins(r.cost - bal)} Coins short` : 'Redeem'}
+                  {r.archived ? t('common.archived') : !r.active ? t('reward.status.inactive')
+                    : rewardAvailability(r, now) === 'UPCOMING' ? `${t('date.starts')} ${fmtDay(r.availableFrom!)}`
+                    : rewardAvailability(r, now) === 'EXPIRED' ? t('date.expired')
+                    : out ? t('reward.status.outOfStock') : quota === 0 ? t('reward.limitReached')
+                    : !afford ? t('reward.coinsShort', { coins: coins(r.cost - bal) }) : t('reward.action.redeem')}
                 </button>
               )}
               {isMgr && canManage && (
-                <button className="btn" onClick={() => setEditing(r)}>Manage</button>
+                <button className="btn" onClick={() => setEditing(r)}>{t('reward.action.manage')}</button>
               )}
             </div>
           )
@@ -191,21 +197,21 @@ export function RewardsView() {
       <CategoryManagerModal open={manageCats} onClose={() => setManageCats(false)} />
 
       <Modal open={!!confirm} onClose={() => setConfirm(null)}
-        title={<>Redeem reward<small>{confirm?.name}</small></>}>
+        title={<>{t('reward.confirmTitle')}<small dir="auto">{confirm?.name}</small></>}>
         {confirm && (
           <>
             <div className="summary" style={{ marginBottom: 14 }}>
-              <div className="srow"><span>Cost</span><Coin n={confirm.cost} /></div>
-              <div className="srow"><span>Balance after</span><Coin n={bal - confirm.cost} /></div>
-              <div className="srow"><span>Approval</span><span className="dim">Management approves first</span></div>
-              <div className="srow"><span>Fulfillment</span><span className="dim">An assigned executor delivers it</span></div>
+              <div className="srow"><span>{t('reward.redemption.cost')}</span><Coin n={confirm.cost} /></div>
+              <div className="srow"><span>{t('reward.redemption.balanceAfter')}</span><Coin n={bal - confirm.cost} /></div>
+              <div className="srow"><span>{t('reward.redemption.approval')}</span><span className="dim">{t('reward.redemption.managerApproves')}</span></div>
+              <div className="srow"><span>{t('common.fulfillment')}</span><span className="dim">{t('reward.redemption.executorDelivers')}</span></div>
             </div>
             <div className="actionbar" style={{ position: 'static', margin: '0 -18px -18px' }}>
-              <button className="btn" onClick={() => setConfirm(null)}>Back</button>
+              <button className="btn" onClick={() => setConfirm(null)}>{t('common.back')}</button>
               <button className="btn primary" onClick={() => {
                 dispatch({ type: 'REDEEM', userId: me.id, rewardId: confirm.id })
                 setConfirm(null)
-              }}>Confirm redemption</button>
+              }}>{t('reward.action.confirmRedemption')}</button>
             </div>
           </>
         )}
@@ -220,41 +226,42 @@ export function RewardsView() {
 function CategoryManagerModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { state, dispatch } = useStore()
   const me = useMe()
+  const { t } = useI18n()
   const [newName, setNewName] = useState('')
   const [renaming, setRenaming] = useState<Record<string, string>>({})
   return (
-    <Modal open={open} onClose={onClose} title="Reward categories">
+    <Modal open={open} onClose={onClose} title={t('reward.category.title')}>
       <div className="faint" style={{ fontSize: 12, marginBottom: 10 }}>
-        One flat category level. Archived categories stay on historical rewards but can no longer be picked.
+        {t('reward.category.help')}
       </div>
       {state.rewardCategories.map(c => {
         const draft = renaming[c.id] ?? c.name
         return (
           <div key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-            <input type="text" value={draft} aria-label={`Category ${c.name}`}
+            <input type="text" value={draft} aria-label={t('reward.category.ariaPrefix', { name: c.name })}
               onChange={e => setRenaming({ ...renaming, [c.id]: e.target.value })} />
             <button className="btn" disabled={!draft.trim() || draft.trim() === c.name}
               onClick={() => {
                 dispatch({ type: 'SAVE_REWARD_CATEGORY', by: me.id, category: { ...c, name: draft.trim() } })
                 setRenaming(rn => { const n = { ...rn }; delete n[c.id]; return n })
-              }}>Rename</button>
+              }}>{t('reward.category.rename')}</button>
             <button className="btn" onClick={() =>
               dispatch({ type: 'SAVE_REWARD_CATEGORY', by: me.id, category: { ...c, active: !c.active } })
-            }>{c.active ? 'Archive' : 'Restore'}</button>
-            {!c.active && <span className="faint" style={{ fontSize: 11 }}>archived</span>}
+            }>{c.active ? t('reward.category.archive') : t('reward.category.restore')}</button>
+            {!c.active && <span className="faint" style={{ fontSize: 11 }}>{t('reward.archivedSuffix')}</span>}
           </div>
         )
       })}
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        <input type="text" value={newName} placeholder="New category name" aria-label="New category name"
+        <input type="text" value={newName} placeholder={t('reward.category.newName')} aria-label={t('reward.category.newName')}
           onChange={e => setNewName(e.target.value)} />
         <button className="btn primary" disabled={!newName.trim()} onClick={() => {
           dispatch({ type: 'SAVE_REWARD_CATEGORY', by: me.id, category: { id: '', name: newName.trim(), active: true } })
           setNewName('')
-        }}>Add category</button>
+        }}>{t('reward.category.add')}</button>
       </div>
       <div className="actionbar" style={{ position: 'static', margin: '14px -18px -18px' }}>
-        <button className="btn" onClick={onClose}>Close</button>
+        <button className="btn" onClick={onClose}>{t('common.close')}</button>
       </div>
     </Modal>
   )
@@ -263,6 +270,7 @@ function CategoryManagerModal({ open, onClose }: { open: boolean; onClose: () =>
 function RewardEditModal({ open, reward, onClose }: { open: boolean; reward: Reward | null; onClose: () => void }) {
   const { state, dispatch } = useStore()
   const me = useMe()
+  const { t } = useI18n()
   const isAdmin = me.role === 'ADMIN'
   const fallbackCat = state.rewardCategories.find(c => c.active)?.name ?? 'Company Perks'
   const [name, setName] = useState(reward?.name ?? '')
@@ -306,64 +314,64 @@ function RewardEditModal({ open, reward, onClose }: { open: boolean; reward: Rew
     && (limit === '' || Number.isInteger(+limit) && +limit > 0)
     && (!from || !until || dayMs(from) <= dayMs(until))
   return (
-    <Modal open={open} onClose={onClose} title={reward ? 'Manage reward' : 'New reward'}>
-      <div className="faint" style={{ fontSize: 11, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>Basic</div>
-      <Field label="Name"><input type="text" value={name} onChange={e => setName(e.target.value)} /></Field>
-      <Field label="Description"><textarea value={desc} onChange={e => setDesc(e.target.value)} /></Field>
+    <Modal open={open} onClose={onClose} title={reward ? t('reward.title.manage') : t('reward.title.new')}>
+      <div className="faint" style={{ fontSize: 11, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>{t('reward.section.basic')}</div>
+      <Field label={t('reward.field.name')}><input type="text" value={name} onChange={e => setName(e.target.value)} /></Field>
+      <Field label={t('common.description')}><textarea value={desc} onChange={e => setDesc(e.target.value)} /></Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-        <Field label="Cost (Coins)"><input type="number" min={1} value={cost} onChange={e => setCost(e.target.value)} /></Field>
-        <Field label="Stock (blank = unlimited)"><input type="number" min={0} value={stock} onChange={e => setStock(e.target.value)} placeholder="∞" /></Field>
-        <Field label="Category">
-          <select value={cat} onChange={e => setCat(e.target.value)} aria-label="Category">
-            {catOptions.map(c => <option key={c.id} value={c.name}>{c.name}{c.active ? '' : ' (archived)'}</option>)}
+        <Field label={t('reward.field.cost')}><input type="number" min={1} value={cost} onChange={e => setCost(e.target.value)} /></Field>
+        <Field label={t('reward.field.stock')}><input type="number" min={0} value={stock} onChange={e => setStock(e.target.value)} placeholder="∞" /></Field>
+        <Field label={t('reward.field.category')}>
+          <select value={cat} onChange={e => setCat(e.target.value)} aria-label={t('reward.field.category')}>
+            {catOptions.map(c => <option key={c.id} value={c.name}>{c.name}{c.active ? '' : ` (${t('reward.archivedSuffix')})`}</option>)}
           </select>
         </Field>
       </div>
-      <Field label="Who can redeem" hint={me.role === 'ADMIN'
-        ? 'Eligibility applies to employees and managers only — never the admin.'
-        : 'Managers create employee-facing rewards. A reward for everyone becomes company-wide — the admin manages it after creation.'}>
-        <select value={elig} onChange={e => setElig(e.target.value as RewardEligibility)} aria-label="Who can redeem">
-          <option value="EMPLOYEES">Employees only</option>
+      <Field label={t('reward.field.whoCanRedeem')} hint={me.role === 'ADMIN'
+        ? t('reward.eligibilityHint.admin')
+        : t('reward.eligibilityHint.manager')}>
+        <select value={elig} onChange={e => setElig(e.target.value as RewardEligibility)} aria-label={t('reward.field.whoCanRedeem')}>
+          <option value="EMPLOYEES">{t('reward.eligibility.employeesOnly')}</option>
           {/* N2.1-R2: a manager can never create or steer a reward to a
               MANAGERS audience — the option is not offered (engine and
               backend refuse it too). */}
-          {me.role === 'ADMIN' && <option value="MANAGERS">Managers only</option>}
-          <option value="BOTH">Everyone eligible</option>
+          {me.role === 'ADMIN' && <option value="MANAGERS">{t('reward.eligibility.managersOnly')}</option>}
+          <option value="BOTH">{t('reward.eligibility.both')}</option>
         </select>
       </Field>
 
-      <div className="faint" style={{ fontSize: 11, margin: '10px 0 6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>Availability</div>
+      <div className="faint" style={{ fontSize: 11, margin: '10px 0 6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>{t('reward.section.availability')}</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-        <Field label="Visibility" hint="Archived rewards stay visible to management but can never be redeemed.">
-          <select value={archived ? 'arch' : active ? 'y' : 'n'} aria-label="Lifecycle"
+        <Field label={t('reward.field.visibility')} hint={t('reward.visibilityHint')}>
+          <select value={archived ? 'arch' : active ? 'y' : 'n'} aria-label={t('accessibility.lifecycle')}
             onChange={e => { const v = e.target.value; setArchived(v === 'arch'); setActive(v === 'y') }}>
-            <option value="y">Active — eligible people can redeem</option>
-            <option value="n">Inactive — hidden from redemption</option>
-            <option value="arch">Archived — kept for history, never redeemable</option>
+            <option value="y">{t('reward.visibility.active')}</option>
+            <option value="n">{t('reward.visibility.inactive')}</option>
+            <option value="arch">{t('reward.visibility.archived')}</option>
           </select>
         </Field>
-        <Field label="Available from (optional)" hint="UTC day">
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} aria-label="Available from" />
+        <Field label={t('reward.field.availableFrom')} hint={t('reward.field.utcDay')}>
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)} aria-label={t('accessibility.availableFrom')} />
         </Field>
-        <Field label="Available until (optional)" hint="UTC day">
-          <input type="date" value={until} onChange={e => setUntil(e.target.value)} aria-label="Available until" />
+        <Field label={t('reward.field.availableUntil')} hint={t('reward.field.utcDay')}>
+          <input type="date" value={until} onChange={e => setUntil(e.target.value)} aria-label={t('accessibility.availableUntil')} />
         </Field>
       </div>
-      <Field label="Per-user limit (blank = unlimited)" hint="How many times one person may redeem this reward. Cancellations restore the quota.">
-        <input type="number" min={1} step={1} value={limit} onChange={e => setLimit(e.target.value)} placeholder="∞" aria-label="Per-user limit" />
+      <Field label={t('reward.field.perUserLimit')} hint={t('reward.field.perUserLimitHint')}>
+        <input type="number" min={1} step={1} value={limit} onChange={e => setLimit(e.target.value)} placeholder="∞" aria-label={t('accessibility.perUserLimit')} />
       </Field>
 
       {isAdmin && (
         <>
-          <div className="faint" style={{ fontSize: 11, margin: '10px 0 6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>Fulfillment</div>
-          <Field label="Executors" hint="People with reward-fulfillment permission who deliver this reward once a redemption is approved. The admin always retains fulfillment authority.">
+          <div className="faint" style={{ fontSize: 11, margin: '10px 0 6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>{t('reward.section.fulfillment')}</div>
+          <Field label={t('reward.field.executors')} hint={t('reward.field.executorsHint')}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {fulfillHolders.length === 0 && <span className="faint" style={{ fontSize: 12 }}>No one holds reward-fulfillment permission yet — grant it in the Admin view.</span>}
+              {fulfillHolders.length === 0 && <span className="faint" style={{ fontSize: 12 }}>{t('reward.noFulfillHolders')}</span>}
               {fulfillHolders.map(u => (
                 <label key={u.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
-                  <input type="checkbox" checked={executors.includes(u.id)} aria-label={`Executor ${u.name}`}
+                  <input type="checkbox" checked={executors.includes(u.id)} aria-label={t('accessibility.executorFor', { name: u.name })}
                     onChange={e => setExecutors(e.target.checked ? [...executors, u.id] : executors.filter(id => id !== u.id))} />
-                  {u.name} <span className="faint" style={{ fontSize: 11 }}>{u.position}</span>
+                  <span dir="auto">{u.name}</span> <span className="faint" style={{ fontSize: 11 }} dir="auto">{u.position}</span>
                 </label>
               ))}
             </div>
@@ -372,7 +380,7 @@ function RewardEditModal({ open, reward, onClose }: { open: boolean; reward: Rew
       )}
 
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
-        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn" onClick={onClose}>{t('common.cancel')}</button>
         <button className="btn primary" disabled={!valid} onClick={() => {
           dispatch({
             type: 'SAVE_REWARD', by: me.id,
@@ -390,7 +398,7 @@ function RewardEditModal({ open, reward, onClose }: { open: boolean; reward: Rew
             },
           })
           onClose()
-        }}>{reward ? 'Save changes' : 'Create reward'}</button>
+        }}>{reward ? t('common.saveChanges') : t('reward.action.create')}</button>
       </div>
     </Modal>
   )
