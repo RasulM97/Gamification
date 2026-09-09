@@ -3,10 +3,12 @@ import { useStore, useMe } from '../store'
 import { PRIORITIES, MAX_ACTIVE, activeCount } from '../domain/engine'
 import type { Attachment, Audience, Priority } from '../domain/engine'
 import { AttachField, Coin, DateInput, Field, Modal, PriBadge, Seg, fmtDate } from '../ui'
+import { useI18n } from '../i18n'
 
 /* Create Task follows the canonical four-question structure; economy never
    visually dominates the meaning of the work. */
 export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t: tr } = useI18n()
   const { state, dispatch } = useStore()
   const me = useMe()
   const [title, setTitle] = useState('')
@@ -53,93 +55,93 @@ export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () 
   return (
     <Modal open={open} onClose={closeAll} wide
       dirty={!!(title.trim() || desc.trim() || files.length > 0)}
-      title={<>Create task<small>{confirming ? 'Check the summary, then confirm.' : 'One task, one owner at a time — the economy follows the work, not the other way around.'}</small></>}>
+      title={<>{tr('task.action.create')}<small>{confirming ? tr('task.createSubConfirm') : tr('task.createSub')}</small></>}>
       {confirming ? (
         <div>
           <div className="panel" style={{ padding: '12px 14px', marginBottom: 14 }}>
-            <b style={{ fontSize: 14 }}>{title.trim()}</b>
-            <div className="dim" style={{ fontSize: 12.5, marginTop: 6, lineHeight: 1.55, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{desc.trim()}</div>
+            <b style={{ fontSize: 14 }} dir="auto">{title.trim()}</b>
+            <div className="dim" dir="auto" style={{ fontSize: 12.5, marginTop: 6, lineHeight: 1.55, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{desc.trim()}</div>
           </div>
           <div className="summary">
-            <div className="srow"><span>Audience</span><b>{audience === 'MANAGEMENT' ? 'Management only' : audience === 'PRIVATE' ? 'Private — one person' : 'Employees'}</b></div>
-            <div className="srow"><span>Ownership</span><b>{audience === 'PRIVATE'
-              ? `Private assignment to ${assigneeUser?.name ?? '—'}`
+            <div className="srow"><span>{tr('common.audience')}</span><b>{tr(audience === 'MANAGEMENT' ? 'task.audience.management' : audience === 'PRIVATE' ? 'task.audience.privateOnePerson' : 'task.audience.employees')}</b></div>
+            <div className="srow"><span>{tr('task.field.ownership')}</span><b dir="auto">{audience === 'PRIVATE'
+              ? tr('task.assignment.privateTo', { assignee: assigneeUser?.name ?? '—' })
               : mode === 'all'
-                ? (audience === 'MANAGEMENT' ? 'Management pool — first valid claim wins' : 'Marketplace — first valid claim wins')
-                : `Assigned to ${assigneeUser?.name ?? '—'}`}</b></div>
+                ? (audience === 'MANAGEMENT' ? tr('task.assignment.managementPoolFirst') : tr('task.assignment.marketplaceFirst'))
+                : tr('task.assignment.assignedTo', { assignee: assigneeUser?.name ?? '—' })}</b></div>
             {files.length > 0 && (
-              <div className="srow"><span>Attached files</span>
+              <div className="srow"><span>{tr('common.attachments')}</span>
                 <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  {files.map((f, i) => <span key={i} className="chip">📎 {f.name}</span>)}
+                  {files.map((f, i) => <span key={i} className="chip" dir="auto">📎 {f.name}</span>)}
                 </span>
               </div>
             )}
-            <div className="srow"><span>Priority</span><PriBadge p={priority} /></div>
-            <div className="srow"><span>Deadline</span><b>{/^\d{4}-\d{2}-\d{2}$/.test(deadline) ? fmtDate(deadline) : 'No deadline'}</b></div>
-            <div className="srow"><span>Economic value</span><Coin n={+reward} /></div>
+            <div className="srow"><span>{tr('common.priority')}</span><PriBadge p={priority} /></div>
+            <div className="srow"><span>{tr('common.deadline')}</span><b>{/^\d{4}-\d{2}-\d{2}$/.test(deadline) ? fmtDate(deadline) : tr('date.noDeadline')}</b></div>
+            <div className="srow"><span>{tr('task.field.economicValue')}</span><Coin n={+reward} /></div>
           </div>
           <div className="actionbar" style={{ position: 'static', margin: '14px -18px -18px' }}>
-            <button className="btn" onClick={() => setConfirming(false)}>Back to edit</button>
-            <button className="btn primary" onClick={create}>Confirm & create</button>
+            <button className="btn" onClick={() => setConfirming(false)}>{tr('task.action.backEdit')}</button>
+            <button className="btn primary" onClick={create}>{tr('task.action.confirmCreate')}</button>
           </div>
         </div>
       ) : (
       <>
       <div className="form-sec">
-        <span className="eyebrow">What needs to be done?</span>
-        <Field label="Title">
+        <span className="eyebrow">{tr('task.field.whatNeedsDone')}</span>
+        <Field label={tr('common.title')}>
           <input type="text" value={title} onChange={e => setTitle(e.target.value)}
-            placeholder="e.g. Reconcile October supplier invoices" autoFocus />
+            placeholder={tr('task.placeholder.title')} autoFocus />
         </Field>
-        <Field label="Description" hint="What does done look like? What evidence should the reviewer expect?">
+        <Field label={tr('common.description')} hint={tr('task.help.descriptionHint')}>
           <textarea value={desc} onChange={e => setDesc(e.target.value)} style={{ minHeight: 96 }}
-            placeholder="Scope, deliverables, definition of done…" />
+            placeholder={tr('task.placeholder.description')} />
         </Field>
         {/* Brief files: specs, templates, source data — attached at creation,
             visible to everyone who works on the task. */}
         <AttachField files={files} onChange={setFiles} settings={state.settings}
-          label={`Brief attachments — up to ${state.settings.maxFileSizeMb} MB per file`} />
+          label={tr('task.field.briefAttachments', { maxFileSizeMb: state.settings.maxFileSizeMb })} />
       </div>
 
       <div className="form-sec">
-        <span className="eyebrow">Who can do it?</span>
+        <span className="eyebrow">{tr('task.field.whoCanDo')}</span>
         <Seg value={audience} onChange={v => { setAudience(v as Audience); setAssignee('') }}
           options={[
-            { v: 'EMPLOYEES', label: 'Employees' },
-            { v: 'PRIVATE', label: 'Private' },
-            { v: 'MANAGEMENT', label: 'Management only' },
+            { v: 'EMPLOYEES', label: tr('task.audience.employees') },
+            { v: 'PRIVATE', label: tr('task.audience.private') },
+            { v: 'MANAGEMENT', label: tr('task.audience.management') },
           ]} />
         {audience === 'MANAGEMENT' && (
           <div className="faint" style={{ fontSize: 11.5, marginTop: 7 }}>
-            Management work stays between admin and managers — employees never see it, and managers earn Coins from it. Nobody reviews their own submission.
+            {tr('task.audienceHint.managementEarn')}
           </div>
         )}
         {audience === 'PRIVATE' && (
           <div className="faint" style={{ fontSize: 11.5, marginTop: 7 }}>
-            Private work is one-to-one: only the chosen person — employee or manager — and management can see it. It never appears in anyone else's lists or notifications.
+            {tr('task.audienceHint.privateLists')}
           </div>
         )}
         {audience !== 'PRIVATE' && (
         <div className="choice" style={{ marginTop: 10 }}>
           <button className={mode === 'all' ? 'on' : ''} onClick={() => setMode('all')}>
-            <b>{audience === 'MANAGEMENT' ? 'Available to managers' : 'Available to employees'}</b>
-            <small>Published to the {audience === 'MANAGEMENT' ? 'management pool' : 'marketplace'}. One task — the first valid claim wins, everyone else sees it as taken.</small>
+            <b>{audience === 'MANAGEMENT' ? tr('task.assignment.availableManagers') : tr('task.assignment.availableEmployees')}</b>
+            <small>{tr(audience === 'MANAGEMENT' ? 'task.assignment.publishedManagement' : 'task.assignment.publishedMarketplace')}</small>
           </button>
           <button className={mode === 'specific' ? 'on' : ''} onClick={() => setMode('specific')}>
-            <b>{audience === 'MANAGEMENT' ? 'Specific manager' : 'Specific employee'}</b>
-            <small>Assigned directly. They can accept and start, or decline with a reason (no penalty — even after starting).</small>
+            <b>{audience === 'MANAGEMENT' ? tr('task.assignment.specificManager') : tr('task.assignment.specificEmployee')}</b>
+            <small>{tr('task.assignment.assignedDirectlyHint')}</small>
           </button>
         </div>
         )}
         {(mode === 'specific' || audience === 'PRIVATE') && (
           <div style={{ marginTop: 11 }}>
-            <Field label="Assignee" hint="Workload shown so you don't overload one person — the claim limit is enforced by the engine.">
+            <Field label={tr('common.assignee')} hint={tr('task.help.workloadShown')}>
               <select value={assignee} onChange={e => setAssignee(e.target.value)}>
-                <option value="">Choose {audience === 'MANAGEMENT' ? 'a manager…' : audience === 'PRIVATE' ? 'a person…' : 'an employee…'}</option>
+                <option value="">{tr(audience === 'MANAGEMENT' ? 'task.chooseManager' : audience === 'PRIVATE' ? 'task.choosePersonEllipsis' : 'task.chooseEmployee')}</option>
                 {targets.map(u => {
                   const n = activeCount(state, u.id)
                   return <option key={u.id} value={u.id}>
-                    {u.name} — {u.position} · {n}/{MAX_ACTIVE} active{n >= MAX_ACTIVE ? ' · at capacity' : ''}
+                    {tr(n >= MAX_ACTIVE ? 'task.assignOptionPosFull' : 'task.assignOptionPos', { name: u.name, position: u.position, used: n, max: MAX_ACTIVE })}
                   </option>
                 })}
               </select>
@@ -149,29 +151,29 @@ export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () 
       </div>
 
       <div className="form-sec">
-        <span className="eyebrow">When & how important?</span>
+        <span className="eyebrow">{tr('task.field.whenImportance')}</span>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Field label="Deadline">
+          <Field label={tr('common.deadline')}>
             <DateInput value={deadline} onChange={setDeadline} />
           </Field>
-          <Field label="Priority">
+          <Field label={tr('common.priority')}>
             <select value={priority} onChange={e => setPriority(e.target.value as Priority)}>
-              {PRIORITIES.map(p => <option key={p} value={p}>{p === 'NONE' ? 'None' : p[0] + p.slice(1).toLowerCase()}</option>)}
+              {PRIORITIES.map(p => <option key={p} value={p}>{tr('task.priority.' + p.toLowerCase())}</option>)}
             </select>
           </Field>
         </div>
       </div>
 
       <div className="form-sec">
-        <span className="eyebrow">What is it worth?</span>
-        <Field label="Reward (Coins)" hint="Paid on approval. Partial contributions pay proportionally: ceil(reward × % × 2) / 2.">
+        <span className="eyebrow">{tr('task.field.whatWorth')}</span>
+        <Field label={tr('task.field.rewardCoins')} hint={tr('task.help.rewardPaidHint')}>
           <input type="number" min={1} step={1} value={reward} onChange={e => setReward(e.target.value)} style={{ width: 140 }} />
         </Field>
       </div>
 
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
-        <button className="btn" onClick={closeAll}>Cancel</button>
-        <button className="btn primary" disabled={!valid} onClick={() => setConfirming(true)}>Review & create</button>
+        <button className="btn" onClick={closeAll}>{tr('common.cancel')}</button>
+        <button className="btn primary" disabled={!valid} onClick={() => setConfirming(true)}>{tr('task.action.reviewCreate')}</button>
       </div>
       </>
       )}
