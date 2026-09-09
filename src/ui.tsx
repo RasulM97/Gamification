@@ -4,15 +4,20 @@ import type { Attachment, Notice, Priority, TaskStatus, NotifLevel, LedgerType }
 import { validateAttachments } from './domain/engine'
 import { openStoredFile } from './api'
 import { IS_DEMO } from './runtime'
+import { currentLocale, fmtNum, fmtPct, intlLocaleOf, tActive } from './i18n'
 
-/* ── formatting ────────────────────────────────────────────────────────── */
+/* ── formatting ──────────────────────────────────────────────────────────
+   N3 §13–§15: every date/number/percent/relative-time string below is
+   produced via the i18n module — translation keys (relative.*) and Intl
+   formatters bound to the active locale. In English (en-GB) the output is
+   byte-identical to the pre-N3 literals. */
 export const ago = (t: number) => {
   const s = Math.max(1, Math.round((Date.now() - t) / 1000))
-  if (s < 60) return `${s}s ago`
-  const m = Math.round(s / 60); if (m < 60) return `${m}m ago`
-  const h = Math.round(m / 60); if (h < 24) return `${h}h ago`
-  const d = Math.round(h / 24); if (d < 30) return `${d}d ago`
-  return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  if (s < 60) return tActive('relative.secondsAgo', { count: s })
+  const m = Math.round(s / 60); if (m < 60) return tActive('relative.minutesAgo', { count: m })
+  const h = Math.round(m / 60); if (h < 24) return tActive('relative.hoursAgo', { count: h })
+  const d = Math.round(h / 24); if (d < 30) return tActive('relative.daysAgo', { count: d })
+  return new Intl.DateTimeFormat(intlLocaleOf(currentLocale()), { day: 'numeric', month: 'short' }).format(new Date(t))
 }
 /* Canonical deadline representation: date-only 'YYYY-MM-DD' (or null).
    toDateOnly also accepts legacy full-ISO values and coerces them, so no
@@ -24,18 +29,22 @@ export const toDateOnly = (d: string | null): string | null => {
 }
 export const fmtDate = (iso: string | null) => {
   const d = toDateOnly(iso)
-  return d ? new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+  return d
+    ? new Intl.DateTimeFormat(intlLocaleOf(currentLocale()), { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(d + 'T00:00:00'))
+    : '—'
 }
 export const deadlineInfo = (iso: string | null) => {
   const d = toDateOnly(iso)
-  if (!d) return { label: 'No deadline', cls: '' }
+  if (!d) return { label: tActive('date.noDeadline'), cls: '' }
   const days = Math.ceil((new Date(d + 'T00:00:00').getTime() - Date.now()) / 86400e3)
-  if (days < 0) return { label: `${-days}d overdue`, cls: 'neg' }
-  if (days === 0) return { label: 'Due today', cls: 'neg' }
-  if (days === 1) return { label: 'Due tomorrow', cls: 'warn' }
+  if (days < 0) return { label: tActive('task.help.overdue', { count: -days }), cls: 'neg' }
+  if (days === 0) return { label: tActive('date.dueToday'), cls: 'neg' }
+  if (days === 1) return { label: tActive('date.dueTomorrow'), cls: 'warn' }
   return { label: fmtDate(d), cls: days <= 3 ? 'warn' : '' }
 }
-export const coins = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
+/* Coins are product units, not currency — plain Intl number formatting,
+   max one decimal (N3 §15). */
+export const coins = (n: number) => fmtNum(n)
 
 /* Keyboard parity for clickable rows: role + tabIndex + Enter/Space.
    Clickable divs without this fail the M0-C accessibility gate. */
@@ -106,7 +115,9 @@ export function linkifyText(text: string): ReactNode[] {
 export function LinkText({ text, style, className }: {
   text: string; style?: CSSProperties; className?: string
 }) {
-  return <span className={className} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', ...style }}>{linkifyText(text)}</span>
+  /* N3 §19: user-authored text is bidi-safe — the browser resolves its
+     direction from content, never from the UI direction. */
+  return <span dir="auto" className={className} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', ...style }}>{linkifyText(text)}</span>
 }
 
 /* ── long-form text: limited preview, explicit expand ────────────────────
@@ -120,7 +131,7 @@ export function ClampedText({ text, lines = 4, style, className }: {
   const long = text.length > 240
   return (
     <div className={className}>
-      <div className="clampbox" style={{
+      <div className="clampbox" dir="auto" style={{
         ...style,
         ...(open || !long ? {} : {
           display: '-webkit-box', WebkitBoxOrient: 'vertical',
@@ -130,7 +141,7 @@ export function ClampedText({ text, lines = 4, style, className }: {
       {long && (
         <button className="linkish" style={{ background: 'none', border: 0, padding: 0, marginTop: 5, fontSize: 11.5, cursor: 'pointer' }}
           onClick={() => setOpen(o => !o)}>
-          {open ? '▴ Show less' : '▾ Show more'}
+          {open ? `▴ ${tActive('common.showLess')}` : `▾ ${tActive('common.showMore')}`}
         </button>
       )}
     </div>
@@ -148,11 +159,13 @@ export function ClampedText({ text, lines = 4, style, className }: {
 export function openAttachment(f: Attachment) {
   if (!IS_DEMO) {
     if (!f.id) return // queued in a form, not stored yet — nothing to open
-    openStoredFile(f.id, f.name).catch(() => alert(`Could not open ${f.name} — please sign in again.`))
+    openStoredFile(f.id, f.name).catch(() => alert(tActive('file.openFailed', { fileName: f.name })))
     return
   }
+  /* The first line is a localized product message; the remainder is a
+     technical metadata dump (diagnostic payload, intentionally English). */
   const body = [
-    'Demo attachment — file content unavailable', '—'.repeat(28), '',
+    tActive('file.demoUnavailable'), '—'.repeat(28), '',
     'This pilot build persists attachment metadata (name, size, type) only.',
     'Real file bytes are stored by the production backend (server mode).', '',
     `Name: ${f.name}`,
@@ -169,16 +182,20 @@ export const AttachmentChips = ({ files }: { files: Attachment[] }) => (
     {files.map(f => (
       <button key={f.name} className="chip att-open"
         title={IS_DEMO
-          ? `${f.name} — demo attachment: file content unavailable (metadata only)`
-          : `Open ${f.name} — stored on the server, opens in a new tab`}
+          ? tActive('file.titleDemo', { fileName: f.name })
+          : tActive('file.titleOpen', { fileName: f.name })}
         onClick={e => { e.stopPropagation(); openAttachment(f) }}>
-        📎 {f.name}{f.size > 0 ? ` · ${(f.size / 1048576).toFixed(1)} MB` : ''}{IS_DEMO ? ' · demo' : ' ↗'}
+        📎 <span dir="auto">{f.name}</span>{f.size > 0 ? ` · ${(f.size / 1048576).toFixed(1)} MB` : ''}{IS_DEMO ? ` · ${tActive('file.demoMarker')}` : ' ↗'}
       </button>
     ))}
   </div>
 )
 
 /* ── atoms ─────────────────────────────────────────────────────────────── */
+/* N3 §8: system roles stay canonical codes; display names map to keys. */
+const ROLE_KEY: Record<string, string> = { ADMIN: 'common.admin', MANAGER: 'common.manager', EMPLOYEE: 'common.employee' }
+export const roleKey = (role: string) => ROLE_KEY[role] ?? 'common.employee'
+
 export const Avatar = ({ name, size = 26 }: { name: string; size?: number }) => {
   const initials = name.split(' ').map(w => w[0]).slice(0, 2).join('')
   return <span className="avatar" style={{ width: size, height: size, fontSize: size * .38 }}>{initials}</span>
@@ -193,29 +210,32 @@ export const Coin = ({ n, sign = false }: { n: number; sign?: boolean }) => (
 const PRI_STYLE: Record<Priority, string> = {
   URGENT: 'bd-urgent', IMPORTANT: 'bd-important', NORMAL: 'bd-normal', NONE: 'bd-none',
 }
+const PRI_KEY: Record<Priority, string> = {
+  URGENT: 'task.priority.urgent', IMPORTANT: 'task.priority.important', NORMAL: 'task.priority.normal', NONE: 'task.priority.none',
+}
 export const PriBadge = ({ p }: { p: Priority }) =>
-  p === 'NONE' ? <span className="bd bd-none">—</span> : <span className={'bd ' + PRI_STYLE[p]}>{p}</span>
+  p === 'NONE' ? <span className="bd bd-none">—</span> : <span className={'bd ' + PRI_STYLE[p]}>{tActive(PRI_KEY[p])}</span>
 
-const ST_LABEL: Record<TaskStatus, string> = {
-  OPEN: 'Open', IN_PROGRESS: 'In progress', SUBMITTED: 'In review',
-  APPROVED: 'Approved', REJECTED: 'Rework', CANCELLED: 'Cancelled',
+const ST_KEY: Record<TaskStatus, string> = {
+  OPEN: 'task.status.open', IN_PROGRESS: 'task.status.inProgress', SUBMITTED: 'task.status.submitted',
+  APPROVED: 'task.status.approved', REJECTED: 'task.status.rejected', CANCELLED: 'task.status.cancelled',
 }
 const ST_STYLE: Record<TaskStatus, string> = {
   OPEN: 'st-open', IN_PROGRESS: 'st-prog', SUBMITTED: 'st-review',
   APPROVED: 'st-done', REJECTED: 'st-rej', CANCELLED: 'st-cancel',
 }
 export const StatusBadge = ({ s }: { s: TaskStatus }) =>
-  <span className={'bd ' + ST_STYLE[s]}>{ST_LABEL[s]}</span>
+  <span className={'bd ' + ST_STYLE[s]}>{tActive(ST_KEY[s])}</span>
 
 export const NotifBadge = ({ l }: { l: NotifLevel }) => {
   const map: Record<NotifLevel, [string, string]> = {
-    ACTION_REQUIRED: ['Action required', 'bd-urgent'],
-    IMPORTANT: ['Important', 'bd-important'],
-    INFORMATIONAL: ['Info', 'bd-normal'],
-    AUDIT_ONLY: ['Audit', 'bd-none'],
+    ACTION_REQUIRED: ['notification.level.actionRequired', 'bd-urgent'],
+    IMPORTANT: ['notification.level.important', 'bd-important'],
+    INFORMATIONAL: ['notification.level.informational', 'bd-normal'],
+    AUDIT_ONLY: ['notification.level.auditOnly', 'bd-none'],
   }
-  const [label, cls] = map[l]
-  return <span className={'bd ' + cls}>{label}</span>
+  const [key, cls] = map[l]
+  return <span className={'bd ' + cls}>{tActive(key)}</span>
 }
 
 /* ── N1-B: notification center has exactly two product tabs ─────────────
@@ -238,46 +258,75 @@ export const noticeTab = (n: Pick<Notice, 'category' | 'taskId' | 'redemptionId'
    transitions get a marker; routine noise (progress reports, edits, policy
    changes) stays unmarked, and no raw enum ever leaks into the UI. */
 export type ActMarker = { label: string; cls: string }
+/* §10/§12: stored activity prose is append-only history and is never
+   rewritten (§10 debt). As a display-only improvement, the two N2.3
+   governance strings the engine writes verbatim are recognized and rendered
+   through the translation keys; everything else passes through untouched. */
+export function localizedHist(text: string): string {
+  const trimmed = text.trim()
+  if (trimmed === 'fulfillment executors cleared — management fallback applies')
+    return tActive('activity.reward.executorsClearedFallback')
+  if (trimmed === 'fulfillment executors updated')
+    return tActive('activity.reward.executorsUpdated')
+  return text
+}
+
 export function actMarker(action: string): ActMarker | null {
-  if (action === 'approved work') return { label: 'APPROVED', cls: 'st-done' }
-  if (action === 'rejected submission') return { label: 'REJECTED', cls: 'st-rej' }
+  /* N3: marker labels come from activity.event.* — the canonical en values
+     match the pre-N3 uppercase labels byte-for-byte. */
+  if (action === 'approved work') return { label: tActive('activity.event.approved'), cls: 'st-done' }
+  if (action === 'rejected submission') return { label: tActive('activity.event.rejected'), cls: 'st-rej' }
   if (action === 'declined assignment' || action === 'handed back assignment')
-    return { label: 'DECLINED', cls: 'bd-important' }
-  if (action.startsWith('handed off')) return { label: 'HANDOFF', cls: 'bd-important' }
-  if (action === 'resumed rework') return { label: 'REWORK', cls: 'st-review' }
-  if (action.startsWith('reassigned to')) return { label: 'ASSIGNED', cls: 'bd-normal' }
+    return { label: tActive('activity.event.declined'), cls: 'bd-important' }
+  if (action.startsWith('handed off')) return { label: tActive('activity.event.handoff'), cls: 'bd-important' }
+  if (action === 'resumed rework') return { label: tActive('activity.event.rework'), cls: 'st-review' }
+  if (action.startsWith('reassigned to')) return { label: tActive('activity.event.assigned'), cls: 'bd-normal' }
   if (action === 'claimed task' || action === 'accepted assignment')
-    return { label: 'CLAIMED', cls: 'st-prog' }
-  if (action === 'submitted work for review') return { label: 'SUBMITTED', cls: 'st-review' }
+    return { label: tActive('activity.event.claimed'), cls: 'st-prog' }
+  if (action === 'submitted work for review') return { label: tActive('activity.event.submitted'), cls: 'st-review' }
   if (action.startsWith('reopened task') || action.startsWith('reactivated task'))
-    return { label: 'REOPENED', cls: 'st-open' }
-  if (action.startsWith('cancelled task')) return { label: 'CANCELLED', cls: 'st-cancel' }
+    return { label: tActive('activity.event.reopened'), cls: 'st-open' }
+  if (action.startsWith('cancelled task')) return { label: tActive('activity.event.cancelled'), cls: 'st-cancel' }
   return null
 }
 
+const LEDGER_KEY: Record<LedgerType, [string, string]> = {
+  TASK_REWARD: ['wallet.ledger.taskReward', 'pos'],
+  TASK_PARTIAL_REWARD: ['wallet.ledger.partialReward', 'pos'],
+  ADMIN_ADJUSTMENT: ['wallet.ledger.adjustment', 'warn'],
+  REDEMPTION: ['wallet.ledger.redemption', 'neg'],
+  REFUND: ['wallet.ledger.refund', 'pos'],
+  REVERSAL: ['wallet.ledger.reversal', 'warn'],
+  TASK_CLAIM_PENALTY: ['wallet.ledger.claimPenalty', 'neg'],
+}
 export const LedgerBadge = ({ t }: { t: LedgerType }) => {
-  const map: Record<LedgerType, [string, string]> = {
-    TASK_REWARD: ['Task reward', 'pos'],
-    TASK_PARTIAL_REWARD: ['Partial reward', 'pos'],
-    ADMIN_ADJUSTMENT: ['Adjustment', 'warn'],
-    REDEMPTION: ['Redemption', 'neg'],
-    REFUND: ['Refund', 'pos'],
-    REVERSAL: ['Reversal', 'warn'],
-    TASK_CLAIM_PENALTY: ['Claim penalty', 'neg'],
-  }
-  const [label, cls] = map[t]
-  return <span className={'lt ' + cls}>{label}</span>
+  const [key, cls] = LEDGER_KEY[t]
+  return <span className={'lt ' + cls}>{tActive(key)}</span>
+}
+
+/* Cycle outcomes are canonical engine codes (APPROVED/REJECTED/HANDED_OFF/
+   CANCELLED, null while open) — mapped to locale keys at render time (N3 §8);
+   unknown values render verbatim as stored (immutable history, §10). */
+export const cycleOutcome = (o: string | null): string => {
+  if (o === 'APPROVED') return tActive('task.status.approved')
+  if (o === 'REJECTED') return tActive('task.status.rejected')
+  if (o === 'HANDED_OFF') return tActive('task.status.handedOff')
+  if (o === 'CANCELLED') return tActive('task.status.cancelled')
+  if (o === null) return tActive('task.status.inProgress')
+  return o
 }
 
 /* Verified progress bar — the ghost tick shows the employee's self-report,
    which is informational only and never drives the filled width. */
 export const Progress = ({ verified, reported }: { verified: number; reported?: number }) => (
-  <div className="pbar" title={`Verified ${verified}%${reported != null ? ` · self-reported ${reported}%` : ''}`}>
+  <div className="pbar" title={reported != null
+    ? tActive('task.progress.withSelf', { verified, reported })
+    : tActive('task.progress.verified', { verified })}>
     <div className="pfill" style={{ width: verified + '%' }} />
     {reported != null && reported > verified && (
       <div className="pghost" style={{ left: verified + '%', width: (reported - verified) + '%' }} />
     )}
-    <span className="pval num">{verified}%</span>
+    <span className="pval num">{fmtPct(verified)}</span>
   </div>
 )
 
@@ -343,7 +392,7 @@ export function Drawer({ open, onClose, title, children, wide = false }: {
       <aside className={'drawer' + (wide ? ' wide' : '')} onClick={e => e.stopPropagation()}>
         <div className="drawer-head">
           <div className="drawer-title">{title}</div>
-          <button className="btn" onClick={onClose} aria-label="Close">✕</button>
+          <button className="btn" onClick={onClose} aria-label={tActive('accessibility.close')}>✕</button>
         </div>
         <div className="drawer-body">{children}</div>
       </aside>
@@ -362,7 +411,7 @@ export function Modal({ open, onClose, title, children, wide = false, dirty = fa
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { if (!dirty || confirm('Discard changes?')) onClose() }
+      if (e.key === 'Escape') { if (!dirty || confirm(tActive('dialog.discardChanges'))) onClose() }
     }
     addEventListener('keydown', onKey)
     return () => removeEventListener('keydown', onKey)
@@ -373,7 +422,7 @@ export function Modal({ open, onClose, title, children, wide = false, dirty = fa
       <div className={'modal' + (wide ? ' wide' : '')} onClick={e => e.stopPropagation()}>
         <div className="drawer-head">
           <div className="drawer-title">{title}</div>
-          <button className="btn" onClick={onClose} aria-label="Close">✕</button>
+          <button className="btn" onClick={onClose} aria-label={tActive('accessibility.close')}>✕</button>
         </div>
         <div className="drawer-body">{children}</div>
       </div>
@@ -417,22 +466,24 @@ export function AttachField({ files, onChange, settings, label, hint }: {
     onChange(next); setErrors(validateAttachments(next, settings))
   }
   return (
-    <Field label={label} hint={hint ?? 'No executables or scripts. Click a file to remove it.'}>
+    <Field label={label} hint={hint ?? tActive('task.help.noExecutables')}>
       <input ref={inputRef} type="file" multiple style={{ display: 'none' }}
         onChange={e => addFiles(e.target.files)} />
       <div className={'dropzone' + (dragOver ? ' over' : '')}
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
         onDrop={e => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files) }}>
-        <span className="dim" style={{ fontSize: 12 }}>Drop files here, or</span>
-        <button className="btn" type="button" onClick={() => inputRef.current?.click()}>📎 Choose files…</button>
+        <span className="dim" style={{ fontSize: 12 }}>{tActive('file.dropHere')}</span>
+        <button className="btn" type="button" onClick={() => inputRef.current?.click()}>📎 {tActive('file.choose')}</button>
       </div>
-      {errors.map(e => <div key={e} className="neg" style={{ fontSize: 12, marginTop: 6 }}>⚠ {e}</div>)}
+      {/* validation messages are engine-owned policy strings (English by
+          design in N3 — see docs/localization); file names stay verbatim */}
+      {errors.map(e => <div key={e} className="neg" style={{ fontSize: 12, marginTop: 6 }} dir="auto">⚠ {e}</div>)}
       {files.length > 0 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
           {files.map((f, i) => (
             <span key={i} className="chip" onClick={() => remove(i)}
-              title="Click to remove">📎 {f.name}{f.size > 0 ? ` · ${mb(f.size)} MB` : ''} ✕</span>
+              title={tActive('file.clickRemove')}>📎 <span dir="auto">{f.name}</span>{f.size > 0 ? ` · ${mb(f.size)} MB` : ''} ✕</span>
           ))}
         </div>
       )}
