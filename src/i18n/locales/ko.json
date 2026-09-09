@@ -58,6 +58,8 @@
   "admin.amountPlaceholder": "예: 10 또는 -10",
   "admin.byOffice": "사무실 기준",
   "admin.completedContrib": "완료된 기여",
+  "admin.deducted": "차감됨",
+  "admin.deductedHint": "(벌금 및 조정)",
   "admin.demoControls": "데모 제어",
   "admin.fulfillToggleAria": "{{name}}의 리워드 전달 권한 전환",
   "admin.fulfillment": "리워드 전달",
