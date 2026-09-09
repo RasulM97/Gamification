@@ -58,7 +58,7 @@ test('N2.2-1 · category manager + reward creation with limit, window and execut
   const card = page.locator('.rw-card', { hasText: 'Theater evening' })
   await expect(card).toBeVisible()
   await expect(card).toContainText('Team Experiences')
-  await expect(card).toContainText('Starts Oct 1, 2026')
+  await expect(card).toContainText('Starts 1 Oct 2026')
 
   // the manager's form has no executor section but the same basic fields
   await viewAs(page, 'Marcus Webb')
