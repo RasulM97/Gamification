@@ -3,8 +3,10 @@ import { useStore, useMe } from '../store'
 import { balanceOf, canDecideRedemption, canFulfillReward } from '../domain/engine'
 import type { Redemption, Reward } from '../domain/engine'
 import { Avatar, Coin, Empty, Field, Modal, Panel, ago, coins } from '../ui'
+import { fmtDateTimeL, useI18n } from '../i18n'
 
-const fmtAt = (ms: number) => new Date(ms).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+/* N3 §13: timestamps render via Intl in the active locale. */
+const fmtAt = (ms: number) => fmtDateTimeL(ms)
 
 /* N2.2 §8/§9: the redemption area is a pipeline with four sections —
    Pending Approval → Ready for Fulfillment → Fulfilled / Cancelled.
@@ -14,6 +16,7 @@ const fmtAt = (ms: number) => new Date(ms).toLocaleString(undefined, { year: 'nu
 export function RedemptionsView() {
   const { state, dispatch, refresh } = useStore()
   const me = useMe()
+  const { t } = useI18n()
   const [reviewId, setReviewId] = useState<string | null>(null)
   const [fulfillId, setFulfillId] = useState<string | null>(null)
   const [decision, setDecision] = useState<'cancel' | null>(null)
@@ -29,7 +32,7 @@ export function RedemptionsView() {
      or the explicit management fallback when no executor is configured.
      Never a silent auto-assignment. */
   const fulfillmentLabel = (r: Reward | undefined) =>
-    !r ? '' : r.executorIds.length === 0 ? 'Management fulfillment'
+    !r ? '' : r.executorIds.length === 0 ? t('reward.fulfillment.managementFallback')
     : r.executorIds.map(id => user(id)?.name).filter(Boolean).join(', ')
 
   /* N2.1-C: opening a review asks for authoritative state first — in server
@@ -55,21 +58,21 @@ export function RedemptionsView() {
 
   return (
     <div className="wrap">
-      <Panel pad={false} title="Pending approval" right={<span className="eyebrow">{pending.length}</span>}>
-        {pending.length === 0 && <Empty title="Nothing awaiting approval" hint="New redemption requests appear here." />}
+      <Panel pad={false} title={t('redemption.section.pendingApproval')} right={<span className="eyebrow">{pending.length}</span>}>
+        {pending.length === 0 && <Empty title={t('redemption.empty.nothingAwaiting')} hint={t('redemption.empty.newRequests')} />}
         {pending.map(r => (
           <div className="att-row" key={r.id}>
             <Avatar name={user(r.userId)?.name ?? '?'} size={22} />
             <span style={{ flex: 1 }}>
-              <b>{reward(r.rewardId)?.name}</b>
-              <span className="dim"> — {user(r.userId)?.name} · {ago(r.at)}</span>
+              <b dir="auto">{reward(r.rewardId)?.name}</b>
+              <span className="dim"> — <span dir="auto">{user(r.userId)?.name}</span> · {ago(r.at)}</span>
             </span>
             <Coin n={r.cost} />
             {isMgr ? (
               canDecideRedemption(user(r.userId)!, me) ? (
                 <button className="btn primary" style={{ padding: '3px 10px', fontSize: 11.5 }}
                   onClick={() => openReview(r.id)}>
-                  Review &amp; decide
+                  {t('redemption.action.reviewDecide')}
                 </button>
               ) : (
                 /* N2.1-R2: management without decision authority can still
@@ -77,13 +80,13 @@ export function RedemptionsView() {
                    buttons, only context and the authority note. */
                 <button className="btn" style={{ padding: '3px 10px', fontSize: 11.5 }}
                   onClick={() => openReview(r.id)}>
-                  Review
+                  {t('common.review')}
                 </button>
               )
             ) : (
               <button className="btn" style={{ padding: '3px 10px', fontSize: 11.5 }}
                 onClick={() => openCancel(r.id)}>
-                Cancel — refund me
+                {t('redemption.action.cancelRefundMe')}
               </button>
             )}
           </div>
@@ -91,15 +94,15 @@ export function RedemptionsView() {
       </Panel>
 
       {ready.length > 0 && (
-        <Panel pad={false} title="Ready for fulfillment" right={<span className="eyebrow">{ready.length}</span>}>
+        <Panel pad={false} title={t('redemption.section.ready')} right={<span className="eyebrow">{ready.length}</span>}>
           {ready.map(r => {
             const rw = reward(r.rewardId)
             return (
               <div className="att-row" key={r.id}>
                 <Avatar name={user(r.userId)?.name ?? '?'} size={22} />
                 <span style={{ flex: 1 }}>
-                  <b>{rw?.name}</b>
-                  <span className="dim"> — {user(r.userId)?.name} · approved{r.approvedBy ? ` by ${user(r.approvedBy)?.name}` : ''} {r.approvedAt ? ago(r.approvedAt) : ago(r.at)}</span>
+                  <b dir="auto">{rw?.name}</b>
+                  <span className="dim"> — <span dir="auto">{user(r.userId)?.name}</span> · {r.approvedBy ? t('reward.fulfillment.approvedBy', { name: user(r.approvedBy)?.name ?? '' }) : t('task.status.approved')} {r.approvedAt ? ago(r.approvedAt) : ago(r.at)}</span>
                   {/* N2.3 §10: operational context — who delivers this item. */}
                   <span className="faint" data-testid="fulfillment-owner"> · {fulfillmentLabel(rw)}</span>
                 </span>
@@ -107,13 +110,13 @@ export function RedemptionsView() {
                 {canFulfill(rw) && (
                   <button className="btn primary" style={{ padding: '3px 10px', fontSize: 11.5 }}
                     onClick={() => openFulfill(r.id)}>
-                    Fulfill
+                    {t('redemption.action.fulfill')}
                   </button>
                 )}
                 {r.userId === me.id && (
                   <button className="btn" style={{ padding: '3px 10px', fontSize: 11.5 }}
                     onClick={() => openCancel(r.id)}>
-                    Cancel — refund me
+                    {t('redemption.action.cancelRefundMe')}
                   </button>
                 )}
               </div>
@@ -122,34 +125,34 @@ export function RedemptionsView() {
         </Panel>
       )}
 
-      <Panel pad={false} title="Fulfilled">
-        {fulfilled.length === 0 && <Empty title="Nothing fulfilled yet" />}
+      <Panel pad={false} title={t('task.status.fulfilled')}>
+        {fulfilled.length === 0 && <Empty title={t('redemption.empty.nothingFulfilled')} />}
         {fulfilled.map(r => (
           <div className="att-row" key={r.id}>
-            <span className="bd st-done">Fulfilled</span>
+            <span className="bd st-done">{t('task.status.fulfilled')}</span>
             <span style={{ flex: 1 }}>
-              <b>{reward(r.rewardId)?.name}</b>
-              <span className="dim"> — {user(r.userId)?.name} · {ago(r.at)}</span>
-              {r.fulfilledBy && <span className="faint"> · delivered by {user(r.fulfilledBy)?.name}{r.fulfilledAt ? `, ${fmtAt(r.fulfilledAt)}` : ''}</span>}
-              {r.fulfillmentReference && <span className="faint"> · ref {r.fulfillmentReference}</span>}
+              <b dir="auto">{reward(r.rewardId)?.name}</b>
+              <span className="dim"> — <span dir="auto">{user(r.userId)?.name}</span> · {ago(r.at)}</span>
+              {r.fulfilledBy && <span className="faint"> · {t('redemption.deliveredBy', { name: user(r.fulfilledBy)?.name ?? '' })}{r.fulfilledAt ? `, ${fmtAt(r.fulfilledAt)}` : ''}</span>}
+              {r.fulfillmentReference && <span className="faint"> · {t('redemption.ref')} <span dir="auto">{r.fulfillmentReference}</span></span>}
               {/* N2.2 §10: fulfillment notes are executor/management context —
                   not shown to the redeemer. */}
-              {isMgr && r.fulfillmentNote && <span className="faint"> · {r.fulfillmentNote}</span>}
+              {isMgr && r.fulfillmentNote && <span className="faint" dir="auto"> · {r.fulfillmentNote}</span>}
             </span>
             <Coin n={r.cost} />
           </div>
         ))}
       </Panel>
 
-      <Panel pad={false} title="Cancelled">
-        {cancelled.length === 0 && <Empty title="No cancelled redemptions" />}
+      <Panel pad={false} title={t('task.status.cancelled')}>
+        {cancelled.length === 0 && <Empty title={t('redemption.empty.noneCancelled')} />}
         {cancelled.map(r => (
           <div className="att-row" key={r.id}>
-            <span className="bd st-cancel">Cancelled</span>
+            <span className="bd st-cancel">{t('task.status.cancelled')}</span>
             <span style={{ flex: 1 }}>
-              <b>{reward(r.rewardId)?.name}</b>
-              <span className="dim"> — {user(r.userId)?.name} · {ago(r.at)}</span>
-              {r.reason && <span className="faint"> · {r.reason}</span>}
+              <b dir="auto">{reward(r.rewardId)?.name}</b>
+              <span className="dim"> — <span dir="auto">{user(r.userId)?.name}</span> · {ago(r.at)}</span>
+              {r.reason && <span className="faint" dir="auto"> · {r.reason}</span>}
             </span>
             <Coin n={r.cost} />
           </div>
@@ -163,9 +166,9 @@ export function RedemptionsView() {
       {(() => {
         const reviewTitle = (
           <span>
-            Review redemption
+            {t('redemption.reviewTitle')}
             <small style={{ display: 'block' }}>
-              {review ? `${reward(review.rewardId)?.name ?? 'Reward'} — ${user(review.userId)?.name} · ${ago(review.at)}` : ''}
+              {review ? t('redemption.reviewSub', { reward: reward(review.rewardId)?.name ?? t('common.reward'), name: user(review.userId)?.name ?? '', time: ago(review.at) }) : ''}
             </small>
           </span>
         )
@@ -178,30 +181,30 @@ export function RedemptionsView() {
             is the admin's call. The engine and backend refuse it too (403). */}
         {review && isMgr && !canDecideRedemption(user(review.userId)!, me) && (
           <p className="faint" style={{ fontSize: 12.5 }}>
-            A manager's redemption can only be decided by the admin.
+            {t('redemption.managerOnlyAdmin')}
           </p>
         )}
         {review && isMgr && canDecideRedemption(user(review.userId)!, me) && decision !== 'cancel' && (
           <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
-            <button className="btn" onClick={() => { setDecision('cancel'); setReason('') }}>Cancel &amp; refund…</button>
+            <button className="btn" onClick={() => { setDecision('cancel'); setReason('') }}>{t('redemption.action.cancelRefund')}</button>
             <button className="btn primary" onClick={() => {
               dispatch({ type: 'APPROVE_REDEMPTION', id: review!.id, by: me.id })
               setReviewId(null)
-            }}>Approve</button>
+            }}>{t('redemption.action.approve')}</button>
           </div>
         )}
         {decision === 'cancel' && (
           <>
-            <Field label="Cancellation reason (required)">
+            <Field label={t('redemption.cancelReason')}>
               <textarea value={reason} onChange={e => setReason(e.target.value)}
-                placeholder="e.g. item discontinued; agreed alternative…" autoFocus />
+                placeholder={t('redemption.placeholder.cancelReason')} autoFocus />
             </Field>
             <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
-              {isMgr && <button className="btn" onClick={() => setDecision(null)}>Back to review</button>}
+              {isMgr && <button className="btn" onClick={() => setDecision(null)}>{t('redemption.backReview')}</button>}
               <button className="btn primary" disabled={!reason.trim()} onClick={() => {
                 dispatch({ type: 'CANCEL_REDEMPTION', id: review!.id, by: me.id, reason: reason.trim() })
                 setReviewId(null); setDecision(null)
-              }}>Cancel &amp; refund {coins(review?.cost ?? 0)} Coins</button>
+              }}>{t('redemption.action.cancelRefundAmount', { coins: coins(review?.cost ?? 0) })}</button>
             </div>
           </>
         )}
@@ -225,32 +228,33 @@ function FulfillModal({ redemption, rewardName, redeemerName, onClose }: {
 }) {
   const { dispatch } = useStore()
   const me = useMe()
+  const { t } = useI18n()
   const [reference, setReference] = useState('')
   const [note, setNote] = useState('')
   const [lastId, setLastId] = useState(redemption?.id)
   if (redemption?.id !== lastId) { setLastId(redemption?.id); setReference(''); setNote('') }
   return (
     <Modal open={!!redemption} onClose={onClose}
-      title={<>Mark as fulfilled<small>{rewardName} — {redeemerName}</small></>}>
+      title={<>{t('redemption.fulfillTitle')}<small><span dir="auto">{rewardName}</span> — <span dir="auto">{redeemerName}</span></small></>}>
       {redemption && (
         <>
           <div className="summary" style={{ marginBottom: 14 }}>
-            <div className="srow"><span>Reward</span><b>{rewardName}</b></div>
-            <div className="srow"><span>For</span><span>{redeemerName}</span></div>
-            <div className="srow"><span>Cost</span><Coin n={redemption.cost} /></div>
+            <div className="srow"><span>{t('common.reward')}</span><b dir="auto">{rewardName}</b></div>
+            <div className="srow"><span>{t('redemption.forWhom')}</span><span dir="auto">{redeemerName}</span></div>
+            <div className="srow"><span>{t('reward.redemption.cost')}</span><Coin n={redemption.cost} /></div>
           </div>
-          <Field label="Fulfillment reference (optional)" hint="e.g. voucher code, order number, booking id.">
-            <input type="text" value={reference} onChange={e => setReference(e.target.value)} aria-label="Fulfillment reference" />
+          <Field label={t('redemption.field.reference')} hint={t('redemption.field.referenceHint')}>
+            <input type="text" value={reference} onChange={e => setReference(e.target.value)} aria-label={t('accessibility.fulfillmentReference')} />
           </Field>
-          <Field label="Fulfillment note (optional)" hint="Internal — visible to management and executors, not to the redeemer.">
-            <textarea value={note} onChange={e => setNote(e.target.value)} aria-label="Fulfillment note" />
+          <Field label={t('redemption.field.note')} hint={t('redemption.field.noteHint')}>
+            <textarea value={note} onChange={e => setNote(e.target.value)} aria-label={t('accessibility.fulfillmentNote')} />
           </Field>
           <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
-            <button className="btn" onClick={onClose}>Back</button>
+            <button className="btn" onClick={onClose}>{t('common.back')}</button>
             <button className="btn primary" onClick={() => {
               dispatch({ type: 'FULFILL_REDEMPTION', id: redemption.id, by: me.id, reference, note })
               onClose()
-            }}>Confirm fulfillment</button>
+            }}>{t('redemption.action.confirmFulfill')}</button>
           </div>
         </>
       )}
@@ -266,6 +270,7 @@ function FulfillModal({ redemption, rewardName, redeemerName, onClose }: {
    balance, recent history, pending requests). */
 function ReviewContext({ r }: { r: Redemption }) {
   const { state } = useStore()
+  const { t } = useI18n()
   const u = state.users.find(x => x.id === r.userId)
   if (!u) return null
   const owned = state.tasks.filter(t => t.ownerId === u.id)
@@ -281,19 +286,19 @@ function ReviewContext({ r }: { r: Redemption }) {
   return (
     <div data-testid="redemption-review-context">
       <div className="redemption-review" data-testid="review-work-status">
-        <div className="kpi2"><div className="l">Active tasks</div><div className="v" data-testid="rr-active">{active.length}</div><div className="s">{inReview.length} in review</div></div>
-        <div className="kpi2"><div className="l">Approved tasks</div><div className="v" data-testid="rr-approved">{approved.length}</div><div className="s">completed &amp; paid out</div></div>
-        <div className="kpi2"><div className="l">In rework</div><div className="v" data-testid="rr-rework">{rework.length}</div><div className="s">rejected, awaiting fixes</div></div>
-        <div className="kpi2"><div className="l">Coin balance</div><div className="v" data-testid="rr-balance">{coins(balanceOf(state, u.id))}</div><div className="s">{coins(earned)} earned lifetime</div></div>
+        <div className="kpi2"><div className="l">{t('redemption.ctx.activeTasks')}</div><div className="v" data-testid="rr-active">{active.length}</div><div className="s">{t('redemption.ctx.inReview', { count: inReview.length })}</div></div>
+        <div className="kpi2"><div className="l">{t('redemption.ctx.approvedTasks')}</div><div className="v" data-testid="rr-approved">{approved.length}</div><div className="s">{t('redemption.ctx.completedPaid')}</div></div>
+        <div className="kpi2"><div className="l">{t('redemption.ctx.inRework')}</div><div className="v" data-testid="rr-rework">{rework.length}</div><div className="s">{t('redemption.ctx.reworkHint')}</div></div>
+        <div className="kpi2"><div className="l">{t('redemption.ctx.coinBalance')}</div><div className="v" data-testid="rr-balance">{coins(balanceOf(state, u.id))}</div><div className="s">{t('redemption.ctx.earnedLifetime', { coins: coins(earned) })}</div></div>
       </div>
 
       {recentActs.length > 0 && (
         <>
-          <span className="eyebrow" style={{ display: 'block', margin: '14px 0 6px' }}>Recent activity</span>
+          <span className="eyebrow" style={{ display: 'block', margin: '14px 0 6px' }}>{t('redemption.recentActivity')}</span>
           {recentActs.map(a => (
             <div className="aitem" key={a.id} style={{ padding: '5px 0' }}>
               <div className="aa">
-                <span>{u.name} {a.action} </span><span className="obj">{a.object}</span>
+                <span dir="auto">{u.name} {a.action} </span><span className="obj" dir="auto">{a.object}</span>
                 {a.econ && <span className="num warn" style={{ fontSize: 11 }}>{a.econ}</span>}
               </div>
               <span className="at">{ago(a.at)}</span>
@@ -303,15 +308,15 @@ function ReviewContext({ r }: { r: Redemption }) {
       )}
 
       <span className="eyebrow" style={{ display: 'block', margin: '14px 0 6px' }}>
-        Redemption history{pendingCount > 0 ? ` — ${pendingCount} pending` : ''}
+        {t('redemption.history')}{pendingCount > 0 ? ` — ${t('redemption.pendingCount', { count: pendingCount })}` : ''}
       </span>
-      {past.length === 0 && <div className="faint" style={{ fontSize: 12.5 }}>First redemption.</div>}
+      {past.length === 0 && <div className="faint" style={{ fontSize: 12.5 }}>{t('redemption.first')}</div>}
       {past.slice(0, 5).map(x => (
         <div className="att-row" key={x.id} style={{ padding: '7px 0' }}>
           <span className={'bd ' + (x.status === 'FULFILLED' ? 'st-done' : x.status === 'CANCELLED' ? 'st-cancel' : x.status === 'APPROVED' ? 'st-prog' : 'st-review')}>
-            {x.status === 'FULFILLED' ? 'Fulfilled' : x.status === 'CANCELLED' ? 'Cancelled' : x.status === 'APPROVED' ? 'Approved' : 'Pending'}
+            {x.status === 'FULFILLED' ? t('task.status.fulfilled') : x.status === 'CANCELLED' ? t('task.status.cancelled') : x.status === 'APPROVED' ? t('task.status.approved') : t('task.status.pending')}
           </span>
-          <span style={{ flex: 1 }}>{state.rewards.find(w => w.id === x.rewardId)?.name ?? 'Reward'}
+          <span style={{ flex: 1 }} dir="auto">{state.rewards.find(w => w.id === x.rewardId)?.name ?? t('common.reward')}
             <span className="dim"> · {ago(x.at)}</span></span>
           <Coin n={x.cost} />
         </div>
