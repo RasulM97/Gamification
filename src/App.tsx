@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { StoreProvider, useStore, useMe, IS_DEMO } from './store'
 import { DEV_TOOLS } from './runtime'
 import { balanceOf, canFulfillReward, canSeeTask, sortNotices, visibleNotices } from './domain/engine'
-import { Avatar, Coin, NotifBadge, ago, noticeTab } from './ui'
+import { Avatar, Coin, NotifBadge, ago, noticeTab, roleKey } from './ui'
+import { I18nProvider, fmtInt, useI18n } from './i18n'
+import { LocaleSwitcher } from './components/LocaleSwitcher'
 import { LoginScreen } from './components/Login'
 import { DevAccountSwitcher } from './components/DevSwitch'
 import { setPage } from './uat'
@@ -25,27 +27,30 @@ type View =
   | 'rewards' | 'redemptions' | 'wallet' | 'notifications' | 'activity' | 'admin'
   | 'testlab'
 
-const TITLES: Record<View, [string, string]> = {
-  overview: ['Overview', 'What needs attention right now'],
-  tasks: ['Tasks', 'All work in the company economy'],
-  mywork: ['My Work', 'Tasks you own, owe, or contributed to'],
-  available: ['Available Work', 'The marketplace — first valid claim wins'],
-  reviews: ['Reviews', 'Manager decision inbox'],
-  attention: ['Needs Attention', 'Rework, declines and returned claims'],
-  rewards: ['Rewards', 'Spend Coins on real things'],
-  redemptions: ['Redemptions', 'Fulfillment queue and history'],
-  wallet: ['Wallet', 'Append-only Coin ledger'],
-  notifications: ['Notifications', 'Attention, not noise'],
-  activity: ['Activity', 'Canonical business history'],
-  admin: ['Admin', 'People, adjustments and demo controls'],
-  testlab: ['Test Lab', 'UAT session recorder — development tool'],
+/* N3: page titles/subtitles are localization keys (page.* / nav.* / common.*). */
+const TITLE_KEYS: Record<View, [string, string]> = {
+  overview: ['nav.overview', 'page.overview.subtitle'],
+  tasks: ['common.tasks', 'page.tasks.subtitle'],
+  mywork: ['nav.myWork', 'page.myWork.subtitle'],
+  available: ['nav.availableWork', 'page.availableWork.subtitle'],
+  reviews: ['common.reviews', 'page.reviews.subtitle'],
+  attention: ['nav.needsAttention', 'page.attention.subtitle'],
+  rewards: ['common.rewards', 'page.rewards.subtitle'],
+  redemptions: ['common.redemptions', 'page.redemptions.subtitle'],
+  wallet: ['common.wallet', 'page.wallet.subtitle'],
+  notifications: ['common.notifications', 'page.notifications.subtitle'],
+  activity: ['common.activity', 'page.activity.subtitle'],
+  admin: ['common.admin', 'page.admin.subtitle'],
+  testlab: ['nav.testLab', 'page.testLab.subtitle'],
 }
 
-interface NavItem { v: View; label: string; icon: string; badge?: number; soft?: number }
+
+interface NavItem { v: View; labelKey: string; icon: string; badge?: number; soft?: number }
 
 function Shell() {
   const { state, dispatch, meId, setMeId, persistError, logout } = useStore()
   const me = useMe()
+  const { t } = useI18n()
   const isMgr = me.role !== 'EMPLOYEE'
   const isAdmin = me.role === 'ADMIN'
 
@@ -129,83 +134,84 @@ function Shell() {
        ECONOMY:   Rewards · Redemptions · Wallet — reward management only.
        SYSTEM:    Notifications · Activity (cross-cutting business history) ·
                   Admin. No duplicated repositories, no new backend concepts. */
-  const nav: { group: string; items: NavItem[] }[] = isMgr
+  const nav: { groupKey: string; items: NavItem[] }[] = isMgr
     ? [{
         /* A manager can also be a work RECIPIENT — their own work is separated
            from the management repository and review inbox (M1-C A4).
            The admin/founder never participates as a worker (M1-D D3): no
            My Work entry and no claimed-work count for them. */
-        group: 'Work', items: [
-          { v: 'overview', label: 'Overview', icon: '◧' },
-          ...(!isAdmin ? [{ v: 'mywork', label: 'My Work', icon: '◉', badge: myWorkCount } as NavItem] : []),
-          { v: 'tasks', label: 'Tasks', icon: '▤' },
-          { v: 'reviews', label: 'Reviews', icon: '▣', badge: reviewCount },
-          { v: 'attention', label: 'Needs Attention', icon: '▲', badge: attentionCount },
+        groupKey: 'common.work', items: [
+          { v: 'overview', labelKey: 'nav.overview', icon: '◧' },
+          ...(!isAdmin ? [{ v: 'mywork', labelKey: 'nav.myWork', icon: '◉', badge: myWorkCount } as NavItem] : []),
+          { v: 'tasks', labelKey: 'common.tasks', icon: '▤' },
+          { v: 'reviews', labelKey: 'common.reviews', icon: '▣', badge: reviewCount },
+          { v: 'attention', labelKey: 'nav.needsAttention', icon: '▲', badge: attentionCount },
         ],
       }, {
-        group: 'Economy', items: [
-          { v: 'rewards', label: 'Rewards', icon: '◈' },
-          { v: 'redemptions', label: 'Redemptions', icon: '⇄', badge: redemptionCount },
+        groupKey: 'common.economy', items: [
+          { v: 'rewards', labelKey: 'common.rewards', icon: '◈' },
+          { v: 'redemptions', labelKey: 'common.redemptions', icon: '⇄', badge: redemptionCount },
           /* N2: managers can hold personal Coins (manager-scope work pays
              out); only the admin is wallet-less. */
-          { v: 'wallet', label: isAdmin ? 'Wallet' : 'Wallet & Rewards', icon: '◉' },
+          { v: 'wallet', labelKey: isAdmin ? 'common.wallet' : 'nav.walletAndRewards', icon: '◉' },
         ],
       }, {
-        group: 'System', items: [
-          { v: 'notifications', label: 'Notifications', icon: '♪', soft: unread.length },
-          { v: 'activity', label: 'Activity', icon: '≣' },
-          ...(isAdmin ? [{ v: 'admin', label: 'Admin', icon: '⚙' } as NavItem] : []),
+        groupKey: 'common.system', items: [
+          { v: 'notifications', labelKey: 'common.notifications', icon: '♪', soft: unread.length },
+          { v: 'activity', labelKey: 'common.activity', icon: '≣' },
+          ...(isAdmin ? [{ v: 'admin', labelKey: 'common.admin', icon: '⚙' } as NavItem] : []),
         ],
       }, /* Test Lab is a dev/UAT tool, admin-only — its own group, visually
             and conceptually separate from product navigation. */
       ...(isAdmin ? [{
-        group: 'Development', items: [
-          { v: 'testlab', label: 'Test Lab', icon: '⚗' } as NavItem,
+        groupKey: 'common.development', items: [
+          { v: 'testlab', labelKey: 'nav.testLab', icon: '⚗' } as NavItem,
         ],
       }] : [])]
     : [{
-        group: 'Work', items: [
-          { v: 'overview', label: 'Overview', icon: '◧' },
-          { v: 'mywork', label: 'My Work', icon: '▤' },
-          { v: 'available', label: 'Available Work', icon: '◫', badge: state.tasks.filter(t => t.status === 'OPEN' && canSeeTask(t, me) && (t.assignMode === 'ALL_EMPLOYEES' || t.assigneeId === me.id)).length },
+        groupKey: 'common.work', items: [
+          { v: 'overview', labelKey: 'nav.overview', icon: '◧' },
+          { v: 'mywork', labelKey: 'nav.myWork', icon: '▤' },
+          { v: 'available', labelKey: 'nav.availableWork', icon: '◫', badge: state.tasks.filter(t => t.status === 'OPEN' && canSeeTask(t, me) && (t.assignMode === 'ALL_EMPLOYEES' || t.assigneeId === me.id)).length },
         ],
       }, {
-        group: 'Economy', items: [
-          { v: 'rewards', label: 'Rewards', icon: '◈' },
+        groupKey: 'common.economy', items: [
+          { v: 'rewards', labelKey: 'common.rewards', icon: '◈' },
           /* N2.2 §8: an employee with the REWARD_FULFILL capability also sees
              their executor queue — approved redemptions on rewards assigned
              to them. Capability grants nothing else. */
-          { v: 'redemptions', label: 'My Redemptions', icon: '⇄', badge: state.redemptions.filter(r =>
+          { v: 'redemptions', labelKey: 'nav.myRedemptions', icon: '⇄', badge: state.redemptions.filter(r =>
               (r.status === 'PENDING' && r.userId === me.id)
               || (r.status === 'APPROVED' && (w => !!w && canFulfillReward(me, w))
                   (state.rewards.find(w => w.id === r.rewardId)))).length },
-          { v: 'wallet', label: 'Wallet', icon: '◉' },
+          { v: 'wallet', labelKey: 'common.wallet', icon: '◉' },
         ],
       }, {
-        group: 'System', items: [
-          { v: 'notifications', label: 'Notifications', icon: '♪', soft: unread.length },
+        groupKey: 'common.system', items: [
+          { v: 'notifications', labelKey: 'common.notifications', icon: '♪', soft: unread.length },
         ],
       }]
 
-  const [title, sub] = TITLES[view]
+  const [titleKey, subKey] = TITLE_KEYS[view]
 
   return (
     <div className={'shell' + (collapsed ? ' collapsed' : '')}>
       {sideOpen && <div className="scrim" onClick={() => setSideOpen(false)} />}
       <aside className={'side' + (sideOpen ? ' open' : '') + (collapsed ? ' collapsed' : '')}>
         <div className="brand">
-          <div className="logo"><span className="mark">◈</span>Corporate Virtual Economy</div>
-          <div className="co">{state.company} · pilot build</div>
+          <div className="logo"><span className="mark">◈</span>{t('app.name')}</div>
+          {/* company name is user-authored org data — never translated (N3 §6) */}
+          <div className="co"><span dir="auto">{state.company}</span> · {t('app.pilotBuild')}</div>
         </div>
         <nav className="nav">
           {nav.map(g => (
-            <div key={g.group}>
-              <div className="group">{g.group}</div>
+            <div key={g.groupKey}>
+              <div className="group">{t(g.groupKey)}</div>
               {g.items.map(it => (
                 <button key={it.v} className={view === it.v ? 'on' : ''} onClick={() => go(it.v)}>
-                  <span className="ic">{it.icon}</span>{it.label}
-                  {!!it.badge && <span className="ct">{it.badge}</span>}
-                  {!it.badge && !!it.soft && <span className="ct soft">{it.soft}</span>}
+                  <span className="ic">{it.icon}</span>{t(it.labelKey)}
+                  {!!it.badge && <span className="ct">{fmtInt(it.badge)}</span>}
+                  {!it.badge && !!it.soft && <span className="ct soft">{fmtInt(it.soft)}</span>}
                 </button>
               ))}
             </div>
@@ -213,16 +219,17 @@ function Shell() {
         </nav>
         <div className="side-foot">
           <button className="side-collapse" onClick={toggleCollapsed}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+            title={collapsed ? t('accessibility.expandSidebar') : t('accessibility.collapseSidebar')}
+            aria-label={collapsed ? t('accessibility.expandSidebar') : t('accessibility.collapseSidebar')}>
             {collapsed ? '»' : '«'}
           </button>
           <div style={{ position: 'relative' }} ref={whoRef}>
             <button className="who" onClick={() => setWhoOpen(o => !o)}>
               <Avatar name={me.name} size={30} />
               <span style={{ flex: 1, minWidth: 0 }}>
-                <span className="nm" style={{ display: 'block' }}>{me.name}</span>
-                <span className="rl" style={{ display: 'block' }}>{me.role} · {me.position}</span>
+                {/* name + position are user-authored — never translated, bidi-safe */}
+                <span className="nm" style={{ display: 'block' }} dir="auto">{me.name}</span>
+                <span className="rl" style={{ display: 'block' }}>{t(roleKey(me.role))} · <span dir="auto">{me.position}</span></span>
               </span>
               <span className="faint" style={{ fontSize: 11 }}>⇅</span>
             </button>
@@ -230,12 +237,12 @@ function Shell() {
               <div className="who-pop">
                 {IS_DEMO ? (
                   <>
-                    <div className="bp-head">View as — demo persona switcher</div>
+                    <div className="bp-head">{t('persona.switcher')}</div>
                     <div className="user-pick" style={{ padding: 6 }}>
                       {state.users.map(u => (
                         <button key={u.id} className={u.id === meId ? 'on' : ''} onClick={() => switchUser(u.id)}>
                           <Avatar name={u.name} size={24} />
-                          <span className="meta"><b>{u.name}</b><small>{u.role} — {u.position}</small></span>
+                          <span className="meta"><b dir="auto">{u.name}</b><small>{t(roleKey(u.role))} — <span dir="auto">{u.position}</span></small></span>
                           <Coin n={balanceOf(state, u.id)} />
                         </button>
                       ))}
@@ -252,7 +259,7 @@ function Shell() {
                     {DEV_TOOLS && (
                       <DevAccountSwitcher onSwitched={() => { setWhoOpen(false); setView('overview'); setTaskId(null) }} />
                     )}
-                    <button onClick={logout} style={{ width: '100%' }}>Sign out</button>
+                    <button onClick={logout} style={{ width: '100%' }}>{t('common.signOut')}</button>
                   </div>
                 )}
               </div>
@@ -263,39 +270,40 @@ function Shell() {
 
       <div className="main">
         <div className="topbar">
-          <button className="btn burger" onClick={() => setSideOpen(o => !o)}>☰</button>
+          <button className="btn burger" onClick={() => setSideOpen(o => !o)} aria-label={t('accessibility.menu')}>☰</button>
           <div>
-            <h1>{title}</h1>
-            <div className="crumb">{sub}</div>
+            <h1>{t(titleKey)}</h1>
+            <div className="crumb">{t(subKey)}</div>
           </div>
           <div className="spacer" style={{ flex: 1 }} />
-          {isMgr && <button className="btn primary" onClick={() => setCreateOpen(true)}>+ Create task</button>}
+          {isMgr && <button className="btn primary" onClick={() => setCreateOpen(true)}>+ {t('task.action.create')}</button>}
           {/* Admin/founder runs the economy but doesn't hold a wallet — no
               personal balance chip. */}
-          {!isAdmin && <span className="balance-chip"><span className="lbl">Balance</span><Coin n={bal} /></span>}
-          <button className="bell-btn" onClick={themeToggle} title="Toggle theme" aria-label="Toggle dark and light theme" style={{ fontSize: 13 }}>◐</button>
+          {!isAdmin && <span className="balance-chip"><span className="lbl">{t('common.balance')}</span><Coin n={bal} /></span>}
+          <LocaleSwitcher />
+          <button className="bell-btn" onClick={themeToggle} title={t('accessibility.toggleTheme')} aria-label={t('accessibility.toggleTheme')} style={{ fontSize: 13 }}>◐</button>
           <div className="bell" ref={bellRef}>
-            <button className="bell-btn" onClick={() => setBellOpen(o => !o)} title="Notifications" aria-label="Open notifications">
+            <button className="bell-btn" onClick={() => setBellOpen(o => !o)} title={t('common.notifications')} aria-label={t('accessibility.openNotifications')}>
               ♪
-              {unread.length > 0 && <span className="dot">{unread.length}</span>}
+              {unread.length > 0 && <span className="dot">{fmtInt(unread.length)}</span>}
             </button>
             {bellOpen && (
               <div className="bell-pop">
                 <div className="bp-head">
-                  Notifications
+                  {t('common.notifications')}
                   <div className="spacer" style={{ flex: 1 }} />
-                  <span className="linkish" onClick={() => dispatch({ type: 'MARK_ALL_READ', userId: me.id })}>Mark all read</span>
+                  <span className="linkish" onClick={() => dispatch({ type: 'MARK_ALL_READ', userId: me.id })}>{t('notification.action.markAllRead')}</span>
                 </div>
                 {/* N2.1-D: Tasks/Rewards tabs with per-tab unread counts —
                     same classification as the full Notification Center. */}
                 <div className="seg bp-tabs" data-testid="bell-tabs">
                   <button className={bellTab === 'tasks' ? 'on' : ''} data-testid="bell-tab-tasks"
-                    onClick={() => setBellTab('tasks')}>Tasks ({unreadTasks})</button>
+                    onClick={() => setBellTab('tasks')}>{t('notification.tab.tasks', { count: unreadTasks })}</button>
                   <button className={bellTab === 'rewards' ? 'on' : ''} data-testid="bell-tab-rewards"
-                    onClick={() => setBellTab('rewards')}>Rewards ({unreadRewards})</button>
+                    onClick={() => setBellTab('rewards')}>{t('notification.tab.rewards', { count: unreadRewards })}</button>
                 </div>
                 <div className="bp-list">
-                  {bellNotices.length === 0 && <div style={{ padding: 20, textAlign: 'center', color: 'var(--faint)', fontSize: 12.5 }}>All caught up.</div>}
+                  {bellNotices.length === 0 && <div style={{ padding: 20, textAlign: 'center', color: 'var(--faint)', fontSize: 12.5 }}>{t('notification.empty')}</div>}
                   {bellNotices.slice(0, 6).map(n => (
                     <div className={'nitem' + (!n.read ? ' unread' : '')} key={n.id}
                       onClick={() => {
@@ -305,14 +313,16 @@ function Shell() {
                         else if (n.taskId) setTaskId(n.taskId)
                       }}>
                       {!n.read ? <span className="un" /> : <span style={{ width: 7, flex: 'none' }} />}
-                      <div className="tx">{n.text}
+                      {/* stored notice text is immutable history — rendered as-is,
+                          bidi-safe (N3 §10 debt: structured events not yet stored) */}
+                      <div className="tx" dir="auto">{n.text}
                         <div className="meta"><NotifBadge l={n.level} /><span>{ago(n.at)}</span></div>
                       </div>
                     </div>
                   ))}
                 </div>
                 <div className="bp-foot">
-                  <span className="linkish" onClick={() => { setBellOpen(false); go('notifications') }}>View all →</span>
+                  <span className="linkish" onClick={() => { setBellOpen(false); go('notifications') }}>{t('notification.action.viewAll')}</span>
                 </div>
               </div>
             )}
@@ -356,17 +366,22 @@ function Shell() {
    gate entirely and renders the shell exactly as M0-B always has. */
 function Gate() {
   const { auth } = useStore()
+  const { t } = useI18n()
   if (auth === 'loading') {
-    return <div className="login-wrap"><div className="dim" style={{ fontSize: 13 }}>Loading…</div></div>
+    return <div className="login-wrap"><div className="dim" style={{ fontSize: 13 }}>{t('common.loading')}</div></div>
   }
   if (auth === 'anon') return <LoginScreen />
   return <Shell />
 }
 
 export default function App() {
+  /* N3: the i18n provider wraps everything — locale/direction apply to the
+     shell, the auth gate and the login screen alike. */
   return (
-    <StoreProvider>
-      {IS_DEMO ? <Shell /> : <Gate />}
-    </StoreProvider>
+    <I18nProvider>
+      <StoreProvider>
+        {IS_DEMO ? <Shell /> : <Gate />}
+      </StoreProvider>
+    </I18nProvider>
   )
 }
