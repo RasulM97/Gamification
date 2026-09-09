@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
 import { useStore, useMe } from '../store'
 import { MAX_ACTIVE, activeCount, balanceOf, canSeeTask, rewardFits, rewardOpen, coinsInCirculation, canonicalSort } from '../domain/engine'
-import { Avatar, Coin, Empty, Panel, PriBadge, Progress, StatusBadge, ago, coins, rowProps } from '../ui'
+import { Avatar, Coin, Empty, Panel, PriBadge, Progress, StatusBadge, ago, coins, roleKey, rowProps } from '../ui'
+import { fmtInt, useI18n } from '../i18n'
 
 function css(v: string) { return getComputedStyle(document.documentElement).getPropertyValue('--' + v).trim() }
 
@@ -10,26 +11,27 @@ function css(v: string) { return getComputedStyle(document.documentElement).getP
    dismissed per persona and remembered locally. */
 function WelcomeCard() {
   const me = useMe()
+  const { t } = useI18n()
   const key = 'cve-welcome-' + me.id
   const [show, setShow] = useState(() => { try { return !localStorage.getItem(key) } catch { return true } })
   if (!show) return null
   const dismiss = () => { try { localStorage.setItem(key, '1') } catch { /* ignore */ } setShow(false) }
   const steps = me.role === 'EMPLOYEE'
     ? [
-        ['Claim or accept work', 'Available Work is the marketplace — first valid claim wins. Assigned work waits for your accept/decline.'],
-        ['Submit with evidence', 'Attach files (policy limits apply) and add a note. Self-reported progress is informational; the manager verifies.'],
-        ['Earn and spend Coins', 'Approvals and accepted partial contributions pay into your wallet. Spend them in Rewards; track everything in Wallet.'],
+        [t('welcome.employee1Title'), t('welcome.employee1Text')],
+        [t('welcome.employee2Title'), t('welcome.employee2Text')],
+        [t('welcome.employee3Title'), t('welcome.employee3Text')],
       ]
     : [
-        ['Create and route work', 'Create task — to the marketplace or a specific employee. Watch capacity before assigning.'],
-        ['Review and decide', 'Submissions land in Reviews: approve (pays out), reject (rework), or hand off with partial credit.'],
-        ['Run the economy', 'Fulfill redemptions, watch the append-only ledger, and set the upload policy in Admin.'],
+        [t('welcome.manager1Title'), t('welcome.manager1Text')],
+        [t('welcome.manager2Title'), t('welcome.manager2Text')],
+        [t('welcome.manager3Title'), t('welcome.manager3Text')],
       ]
   return (
     <div className="welcome">
-      <button className="btn wdismiss" onClick={dismiss} aria-label="Dismiss welcome">Got it</button>
-      <h3>Welcome to {me.role === 'EMPLOYEE' ? 'your work economy' : 'the operations deck'}, {me.name.split(' ')[0]}</h3>
-      <div className="wsub">Tasks are economic objects: work flows to review, review flows to Coins. Three things to know:</div>
+      <button className="btn wdismiss" onClick={dismiss} aria-label={t('accessibility.dismissWelcome')}>{t('welcome.gotIt')}</button>
+      <h3>{t(me.role === 'EMPLOYEE' ? 'welcome.titleEmployee' : 'welcome.titleManager', { name: me.name.split(' ')[0] })}</h3>
+      <div className="wsub">{t('welcome.intro')}</div>
       <div className="wsteps">
         {steps.map(([b, s], i) => (
           <div className="wstep" key={i}><b><span className="wn">{i + 1}</span>{b}</b>{s}</div>
@@ -62,6 +64,7 @@ export function Overview({ onGo }: { onGo: (view: string, taskId?: string) => vo
 function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => void }) {
   const { state } = useStore()
   const me = useMe()
+  const { t: tr } = useI18n()
   const isAdmin = me.role === 'ADMIN'
   const pendingReviews = state.tasks.filter(t => t.status === 'SUBMITTED')
   const rework = state.tasks.filter(t => t.status === 'REJECTED')
@@ -95,12 +98,12 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
       label: { color: css('muted'), fontSize: 11 },
       itemStyle: { borderColor: css('panel'), borderWidth: 2 },
       data: [
-        { name: 'Open', value: state.tasks.filter(t => t.status === 'OPEN').length, itemStyle: { color: css('accent') } },
-        { name: 'In progress', value: state.tasks.filter(t => t.status === 'IN_PROGRESS').length, itemStyle: { color: css('info') } },
-        { name: 'In review', value: pendingReviews.length, itemStyle: { color: css('warn') } },
-        { name: 'Rework', value: rework.length, itemStyle: { color: css('neg') } },
-        { name: 'Approved', value: state.tasks.filter(t => t.status === 'APPROVED').length, itemStyle: { color: css('pos') } },
-        { name: 'Cancelled', value: state.tasks.filter(t => t.status === 'CANCELLED').length, itemStyle: { color: css('faint') } },
+        { name: tr('task.status.open'), value: state.tasks.filter(t => t.status === 'OPEN').length, itemStyle: { color: css('accent') } },
+        { name: tr('task.status.inProgress'), value: state.tasks.filter(t => t.status === 'IN_PROGRESS').length, itemStyle: { color: css('info') } },
+        { name: tr('task.status.submitted'), value: pendingReviews.length, itemStyle: { color: css('warn') } },
+        { name: tr('task.status.rejected'), value: rework.length, itemStyle: { color: css('neg') } },
+        { name: tr('task.status.approved'), value: state.tasks.filter(t => t.status === 'APPROVED').length, itemStyle: { color: css('pos') } },
+        { name: tr('task.status.cancelled'), value: state.tasks.filter(t => t.status === 'CANCELLED').length, itemStyle: { color: css('faint') } },
       ],
     }],
   }
@@ -108,7 +111,7 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
   const econFlow: echarts.EChartsOption = {
     tooltip: { trigger: 'axis' },
     grid: { left: 8, right: 8, top: 24, bottom: 4, containLabel: true },
-    xAxis: { type: 'category', data: ['Issued', 'Redeemed', 'Penalties', 'Circulating'], axisLabel: { color: css('muted') }, axisLine: { lineStyle: { color: css('line') } } },
+    xAxis: { type: 'category', data: [tr('chart.issued'), tr('chart.redeemed'), tr('chart.penalties'), tr('chart.circulating')], axisLabel: { color: css('muted') }, axisLine: { lineStyle: { color: css('line') } } },
     yAxis: { type: 'value', splitLine: { lineStyle: { color: css('line-soft') } }, axisLabel: { color: css('muted') } },
     series: [{
       type: 'bar', barWidth: 34,
@@ -126,12 +129,12 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
     <div className="wrap">
       <WelcomeCard />
       {(pendingReviews.length + pendingRedemptions.length + fulfillQueue.length + unclaimedHot.length + rework.length) > 0 && (
-        <Panel title="Needs your attention" right={<span className="eyebrow">{pendingReviews.length + pendingRedemptions.length + fulfillQueue.length + unclaimedHot.length + rework.length} items</span>}>
+        <Panel title={tr('overview.attentionTitle')} right={<span className="eyebrow">{tr('overview.attentionItems', { count: pendingReviews.length + pendingRedemptions.length + fulfillQueue.length + unclaimedHot.length + rework.length })}</span>}>
           <div className="attn">
             {pendingReviews.map(t => (
               <div className="attn-item crit" key={t.id} {...rowProps(() => onGo('reviews', t.id))}>
                 <span>▣</span>
-                <div className="x"><b>Review waiting</b> — {t.title}<small>{user(t.ownerId!)?.name} · submitted {ago(t.submittedAt!)} · <Coin n={Math.max(0, t.reward - t.paid)} /></small></div>
+                <div className="x"><b>{tr('overview.reviewWaiting')}</b> — <span dir="auto">{t.title}</span><small><span dir="auto">{user(t.ownerId!)?.name}</span> · {tr('common.submittedAgo', { time: ago(t.submittedAt!) })} · <Coin n={Math.max(0, t.reward - t.paid)} /></small></div>
                 <PriBadge p={t.priority} />
               </div>
             ))}
@@ -140,7 +143,7 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
               return (
                 <div className="attn-item warn" key={r.id} {...rowProps(() => onGo('redemptions'))}>
                   <span>◈</span>
-                  <div className="x"><b>Reward approval</b> — {rw.name} for {user(r.userId)?.name}<small>requested {ago(r.at)} · {coins(r.cost)} Coins</small></div>
+                  <div className="x"><b>{tr('overview.rewardApproval')}</b> — <span dir="auto">{rw.name}</span> — <span dir="auto">{user(r.userId)?.name}</span><small>{tr('common.requestedAgo', { time: ago(r.at) })} · {coins(r.cost)} {tr('common.coins')}</small></div>
                 </div>
               )
             })}
@@ -149,21 +152,21 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
               return (
                 <div className="attn-item info" key={r.id} {...rowProps(() => onGo('redemptions'))}>
                   <span>◈</span>
-                  <div className="x"><b>Ready for fulfillment</b> — {rw.name} for {user(r.userId)?.name}<small>approved {r.approvedAt ? ago(r.approvedAt) : ago(r.at)} · {coins(r.cost)} Coins</small></div>
+                  <div className="x"><b>{tr('overview.readyForFulfillment')}</b> — <span dir="auto">{rw.name}</span> — <span dir="auto">{user(r.userId)?.name}</span><small>{tr('common.approvedAgo', { time: r.approvedAt ? ago(r.approvedAt) : ago(r.at) })} · {coins(r.cost)} {tr('common.coins')}</small></div>
                 </div>
               )
             })}
             {unclaimedHot.map(t => (
               <div className="attn-item warn" key={t.id} {...rowProps(() => onGo('tasks', t.id))}>
                 <span>▲</span>
-                <div className="x"><b>{t.priority === 'URGENT' ? 'Urgent' : 'Important'} task unclaimed</b> — {t.title}<small>published {ago(t.createdAt)} · <Coin n={t.reward} /></small></div>
+                <div className="x"><b>{t.priority === 'URGENT' ? tr('overview.taskUnclaimedUrgent') : tr('overview.taskUnclaimedImportant')}</b> — <span dir="auto">{t.title}</span><small>{tr('common.publishedAgo', { time: ago(t.createdAt) })} · <Coin n={t.reward} /></small></div>
                 <PriBadge p={t.priority} />
               </div>
             ))}
             {rework.map(t => (
               <div className="attn-item info" key={t.id} {...rowProps(() => onGo('tasks', t.id))}>
                 <span>↺</span>
-                <div className="x"><b>In rework</b> — {t.title}<small>{user(t.ownerId!)?.name} · rejected {ago(t.updatedAt)}</small></div>
+                <div className="x"><b>{tr('overview.inRework')}</b> — <span dir="auto">{t.title}</span><small><span dir="auto">{user(t.ownerId!)?.name}</span> · {tr('common.rejectedAgo', { time: ago(t.updatedAt) })}</small></div>
               </div>
             ))}
           </div>
@@ -174,39 +177,39 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
           then the portfolio/economy deck — three clearly labeled number sets. */}
       {!isAdmin && (
         <>
-          <div className="kpi-group-label" data-testid="personal-work-label">Personal work — you as a worker</div>
+          <div className="kpi-group-label" data-testid="personal-work-label">{tr('overview.personalWork')}</div>
           <div className="kpis" data-testid="personal-work-kpis">
-            <div className="kpi2"><div className="l">Active owned tasks</div><div className="v">{myActiveOwned.length}<u>/ {MAX_ACTIVE}</u></div><div className="s">capacity you hold as a worker</div></div>
-            <div className="kpi2"><div className="l">In review as worker</div><div className="v">{myInReviewWorker.length}</div><div className="s">decided by another manager or the admin</div></div>
-            <div className="kpi2"><div className="l">Wallet balance</div><div className="v">{coins(myBal)}<u>Coins</u></div><div className="s">{myAffordable.length} rewards affordable to you</div></div>
+            <div className="kpi2"><div className="l">{tr('overview.kpi.activeOwned')}</div><div className="v">{fmtInt(myActiveOwned.length)}<u>/ {fmtInt(MAX_ACTIVE)}</u></div><div className="s">{tr('overview.kpi.capacityWorker')}</div></div>
+            <div className="kpi2"><div className="l">{tr('overview.kpi.inReviewWorker')}</div><div className="v">{fmtInt(myInReviewWorker.length)}</div><div className="s">{tr('overview.kpi.decidedByOther')}</div></div>
+            <div className="kpi2"><div className="l">{tr('wallet.balance')}</div><div className="v">{coins(myBal)}<u>{tr('common.coins')}</u></div><div className="s">{tr('overview.kpi.rewardsAffordable', { count: myAffordable.length })}</div></div>
           </div>
         </>
       )}
 
-      <div className="kpi-group-label" data-testid="management-work-label">Management work</div>
+      <div className="kpi-group-label" data-testid="management-work-label">{tr('overview.managementWork')}</div>
       <div className="kpis" data-testid="management-work-kpis">
-        <div className="kpi2"><div className="l">Reviews waiting</div><div className="v">{reviewsWaiting.length}</div><div className="s">submissions needing your decision</div></div>
-        <div className="kpi2"><div className="l">Needs attention</div><div className="v">{needsAttention}</div><div className="s">rework + unanswered assignments</div></div>
+        <div className="kpi2"><div className="l">{tr('overview.kpi.reviewsWaiting')}</div><div className="v">{fmtInt(reviewsWaiting.length)}</div><div className="s">{tr('overview.kpi.submissionsWaiting')}</div></div>
+        <div className="kpi2"><div className="l">{tr('overview.kpi.needsAttention')}</div><div className="v">{fmtInt(needsAttention)}</div><div className="s">{tr('overview.kpi.reworkPlus')}</div></div>
       </div>
 
-      <div className="kpi-group-label">Portfolio &amp; economy</div>
+      <div className="kpi-group-label">{tr('overview.portfolio')}</div>
       <div className="kpis">
-        <div className="kpi2"><div className="l">Active tasks</div><div className="v">{active.length}</div><div className="s">{pendingReviews.length} awaiting review</div></div>
-        <div className="kpi2"><div className="l">Avg verified progress</div><div className="v">{avgVerified}<u>%</u></div><div className="s">manager-verified only</div></div>
-        <div className="kpi2"><div className="l">Coins circulating</div><div className="v">{coins(coinsInCirculation(state))}</div><div className="s">Σ employee balances</div></div>
-        <div className="kpi2"><div className="l">Coins issued</div><div className="v">{coins(state.ledger.filter(l => l.amount > 0).reduce((a, l) => a + l.amount, 0))}</div><div className="s">append-only ledger</div></div>
-        <div className="kpi2"><div className="l">Pending redemptions</div><div className="v">{pendingRedemptions.length}</div><div className="s">awaiting approval</div></div>
+        <div className="kpi2"><div className="l">{tr('overview.kpi.activeTasks')}</div><div className="v">{fmtInt(active.length)}</div><div className="s">{tr('overview.kpi.awaitingReview', { count: pendingReviews.length })}</div></div>
+        <div className="kpi2"><div className="l">{tr('overview.kpi.avgVerified')}</div><div className="v">{fmtInt(avgVerified)}<u>%</u></div><div className="s">{tr('overview.kpi.managerVerified')}</div></div>
+        <div className="kpi2"><div className="l">{tr('wallet.coinsCirculating')}</div><div className="v">{coins(coinsInCirculation(state))}</div><div className="s">{tr('overview.kpi.sumBalances')}</div></div>
+        <div className="kpi2"><div className="l">{tr('wallet.coinsIssued')}</div><div className="v">{coins(state.ledger.filter(l => l.amount > 0).reduce((a, l) => a + l.amount, 0))}</div><div className="s">{tr('overview.kpi.appendOnly')}</div></div>
+        <div className="kpi2"><div className="l">{tr('overview.kpi.pendingRedemptions')}</div><div className="v">{fmtInt(pendingRedemptions.length)}</div><div className="s">{tr('overview.kpi.awaitingApproval')}</div></div>
       </div>
 
       {/* Team operations: per-person workload and economy at a glance, so a
           manager can see who is overloaded, who is waiting on review, and who
           is earning — without opening each wallet. */}
-      <Panel title="Team operations" pad={false} right={<span className="eyebrow">{state.users.length} people</span>}>
+      <Panel title={tr('overview.teamOps')} pad={false} right={<span className="eyebrow">{tr('overview.peopleCount', { count: state.users.length })}</span>}>
         <div className="table-wrap">
           <table>
             <thead><tr>
-              <th>Person</th><th className="n">Active</th><th className="n">Waiting review</th>
-              <th className="n">Earned</th><th className="n">Balance</th>
+              <th>{tr('common.person')}</th><th className="n">{tr('common.active')}</th><th className="n">{tr('overview.team.waitingReview')}</th>
+              <th className="n">{tr('common.earned')}</th><th className="n">{tr('common.balance')}</th>
             </tr></thead>
             <tbody>
               {state.users.map(u => {
@@ -216,8 +219,8 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
                 return (
                   <tr key={u.id}>
                     <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                      <Avatar name={u.name} size={20} /><b>{u.name}</b>
-                      <span className="faint" style={{ fontSize: 11 }}>{u.role === 'EMPLOYEE' ? '' : u.role.toLowerCase()}</span></span></td>
+                      <Avatar name={u.name} size={20} /><b dir="auto">{u.name}</b>
+                      <span className="faint" style={{ fontSize: 11 }}>{u.role === 'EMPLOYEE' ? '' : tr(roleKey(u.role))}</span></span></td>
                     <td className={'n num' + (act >= MAX_ACTIVE ? ' neg' : '')}>{act} / {MAX_ACTIVE}</td>
                     <td className={'n num' + (wait > 0 ? ' warn' : '')}>{wait}</td>
                     <td className="n"><Coin n={earned} /></td>
@@ -231,28 +234,28 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
       </Panel>
 
       <div className="grid2">
-        <Panel title="Task portfolio by status"><Chart option={statusMix} /></Panel>
-        <Panel title="Economy flow (Coins)"><Chart option={econFlow} /></Panel>
+        <Panel title={tr('overview.chart.status')}><Chart option={statusMix} /></Panel>
+        <Panel title={tr('overview.chart.econ')}><Chart option={econFlow} /></Panel>
       </div>
 
       <div className="grid32">
-        <Panel title="Hottest work right now" pad={false} right={<span className="linkish" {...rowProps(() => onGo('tasks'))}>All tasks →</span>}>
+        <Panel title={tr('overview.hottest')} pad={false} right={<span className="linkish" {...rowProps(() => onGo('tasks'))}>{tr('overview.allTasks')}</span>}>
           {[...active].sort(canonicalSort).slice(0, 5).map(t => (
             <div className="att-row" key={t.id} {...rowProps(() => onGo('tasks', t.id))}>
               <PriBadge p={t.priority} />
-              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="auto">{t.title}</span>
               <Progress verified={t.verified} />
               <StatusBadge s={t.status} />
             </div>
           ))}
-          {active.length === 0 && <Empty title="No active work" />}
+          {active.length === 0 && <Empty title={tr('overview.noActiveWork')} />}
         </Panel>
-        <Panel title="Recent activity" pad={false} right={<span className="linkish" {...rowProps(() => onGo('activity'))}>All activity →</span>}>
+        <Panel title={tr('redemption.recentActivity')} pad={false} right={<span className="linkish" {...rowProps(() => onGo('activity'))}>{tr('overview.allActivity')}</span>}>
           {recentActs.map(a => (
             <div className="aitem" key={a.id}>
               <Avatar name={user(a.actorId)?.name ?? '?'} size={20} />
               <div className="aa">
-                <span>{user(a.actorId)?.name} {a.action} </span><span className="obj">{a.object}</span>
+                <span dir="auto">{user(a.actorId)?.name} {a.action} </span><span className="obj" dir="auto">{a.object}</span>
                 {a.econ && <span className="num warn" style={{ fontSize: 11, marginLeft: 6 }}>{a.econ}</span>}
               </div>
               <span className="at">{ago(a.at)}</span>
@@ -267,6 +270,7 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
 function EmployeeOverview({ onGo }: { onGo: (view: string, taskId?: string) => void }) {
   const { state } = useStore()
   const me = useMe()
+  const { t: tr } = useI18n()
   const bal = balanceOf(state, me.id)
   const myActive = state.tasks.filter(t => t.ownerId === me.id && ['IN_PROGRESS', 'REJECTED'].includes(t.status)).sort(canonicalSort)
   const mySubmitted = state.tasks.filter(t => t.ownerId === me.id && t.status === 'SUBMITTED')
@@ -287,35 +291,35 @@ function EmployeeOverview({ onGo }: { onGo: (view: string, taskId?: string) => v
       {/* N1-C: the employee's work status reads left to right — active work,
           review queue, marketplace, then wallet and pending rewards. */}
       <div className="kpis">
-        <div className="kpi2"><div className="l">Active work</div><div className="v" data-testid="emp-active-count">{myActive.length}<u>/ {MAX_ACTIVE}</u></div><div className="s">capacity in use: {activeCount(state, me.id)} / {MAX_ACTIVE}</div></div>
-        <div className="kpi2"><div className="l">In review</div><div className="v" data-testid="emp-review-count">{mySubmitted.length}</div><div className="s">waiting for a manager decision</div></div>
-        <div className="kpi2"><div className="l">Marketplace</div><div className="v">{state.tasks.filter(t => t.status === 'OPEN' && t.assignMode === 'ALL_EMPLOYEES' && canSeeTask(t, me)).length}</div><div className="s">open to claim</div></div>
-        <div className="kpi2"><div className="l">Wallet balance</div><div className="v">{coins(bal)}<u>Coins</u></div><div className="s">{affordable.length} rewards affordable · {coins(earned)} earned lifetime</div></div>
+        <div className="kpi2"><div className="l">{tr('overview.emp.activeWork')}</div><div className="v" data-testid="emp-active-count">{fmtInt(myActive.length)}<u>/ {fmtInt(MAX_ACTIVE)}</u></div><div className="s">{tr('overview.emp.capacityInUse', { used: activeCount(state, me.id), max: MAX_ACTIVE })}</div></div>
+        <div className="kpi2"><div className="l">{tr('task.status.submitted')}</div><div className="v" data-testid="emp-review-count">{fmtInt(mySubmitted.length)}</div><div className="s">{tr('overview.emp.inReviewSub')}</div></div>
+        <div className="kpi2"><div className="l">{tr('common.marketplace')}</div><div className="v">{fmtInt(state.tasks.filter(t => t.status === 'OPEN' && t.assignMode === 'ALL_EMPLOYEES' && canSeeTask(t, me)).length)}</div><div className="s">{tr('overview.emp.openToClaim')}</div></div>
+        <div className="kpi2"><div className="l">{tr('wallet.balance')}</div><div className="v">{coins(bal)}<u>{tr('common.coins')}</u></div><div className="s">{tr('overview.emp.affordableLifetime', { count: affordable.length, coins: coins(earned) })}</div></div>
         {myPendingRewards.length > 0 && (
-          <div className="kpi2"><div className="l">Pending rewards</div><div className="v">{myPendingRewards.length}</div><div className="s">awaiting fulfillment</div></div>
+          <div className="kpi2"><div className="l">{tr('overview.emp.pendingRewards')}</div><div className="v">{fmtInt(myPendingRewards.length)}</div><div className="s">{tr('overview.emp.awaitingFulfillment')}</div></div>
         )}
       </div>
 
       {myAssignments.length > 0 && (
-        <Panel title="Assignments waiting for your answer" pad={false}>
+        <Panel title={tr('overview.assignmentsWaiting')} pad={false}>
           {myAssignments.map(t => (
             <div className="att-row" key={t.id} {...rowProps(() => onGo('mywork', t.id))}>
               <PriBadge p={t.priority} />
-              <span style={{ flex: 1 }}>{t.title}</span>
+              <span style={{ flex: 1 }} dir="auto">{t.title}</span>
               <Coin n={t.reward} />
-              <span className="bd bd-urgent">Accept or decline</span>
+              <span className="bd bd-urgent">{tr('overview.acceptOrDecline')}</span>
             </div>
           ))}
         </Panel>
       )}
 
       <div className="grid2">
-        <Panel title="My active work" pad={false} right={<span className="linkish" {...rowProps(() => onGo('mywork'))}>My work →</span>}>
-          {myActive.length === 0 && <Empty title="No active work" hint="Claim something from the marketplace." />}
+        <Panel title={tr('overview.myActiveWork')} pad={false} right={<span className="linkish" {...rowProps(() => onGo('mywork'))}>{tr('overview.myWorkLink')}</span>}>
+          {myActive.length === 0 && <Empty title={tr('overview.noActiveWork')} hint={tr('overview.claimSomething')} />}
           {myActive.map(t => (
             <div className="att-row" key={t.id} {...rowProps(() => onGo('mywork', t.id))}>
               <StatusBadge s={t.status} />
-              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dir="auto">{t.title}</span>
               <Progress verified={t.verified} reported={t.reported > t.verified ? t.reported : undefined} />
               <Coin n={Math.max(0, t.reward - t.paid)} />
             </div>
@@ -323,32 +327,32 @@ function EmployeeOverview({ onGo }: { onGo: (view: string, taskId?: string) => v
           {mySubmitted.map(t => (
             <div className="att-row" key={t.id} {...rowProps(() => onGo('mywork', t.id))}>
               <StatusBadge s={t.status} />
-              <span style={{ flex: 1 }}>{t.title}</span>
-              <span className="faint" style={{ fontSize: 11.5 }}>submitted {ago(t.submittedAt!)}</span>
+              <span style={{ flex: 1 }} dir="auto">{t.title}</span>
+              <span className="faint" style={{ fontSize: 11.5 }}>{tr('common.submittedAgo', { time: ago(t.submittedAt!) })}</span>
               <Coin n={Math.max(0, t.reward - t.paid)} />
             </div>
           ))}
         </Panel>
 
-        <Panel title="Hot in the marketplace" pad={false} right={<span className="linkish" {...rowProps(() => onGo('available'))}>Available work →</span>}>
-          {hot.length === 0 && <Empty title="Nothing urgent or important open" hint="Routine work is under Available work." />}
+        <Panel title={tr('overview.hotMarketplace')} pad={false} right={<span className="linkish" {...rowProps(() => onGo('available'))}>{tr('overview.availableWorkLink')}</span>}>
+          {hot.length === 0 && <Empty title={tr('overview.nothingHot')} hint={tr('overview.nothingHotHint')} />}
           {hot.map(t => (
             <div className="att-row" key={t.id} {...rowProps(() => onGo('available', t.id))}>
               <PriBadge p={t.priority} />
-              <span style={{ flex: 1 }}>{t.title}</span>
+              <span style={{ flex: 1 }} dir="auto">{t.title}</span>
               <Coin n={t.reward} />
             </div>
           ))}
         </Panel>
       </div>
 
-      <Panel title="Rewards within reach" pad={false} right={<span className="linkish" {...rowProps(() => onGo('rewards'))}>Rewards marketplace →</span>}>
+      <Panel title={tr('overview.rewardsWithinReach')} pad={false} right={<span className="linkish" {...rowProps(() => onGo('rewards'))}>{tr('overview.rewardsMarketplaceLink')}</span>}>
         {affordable.length === 0
-          ? <Empty title="Nothing affordable yet" hint="Earn Coins by completing verified work." />
+          ? <Empty title={tr('overview.nothingAffordable')} hint={tr('overview.nothingAffordableHint')} />
           : <div className="attn">{affordable.slice(0, 4).map(r => (
               <div className="attn-item info" key={r.id} {...rowProps(() => onGo('rewards'))}>
                 <span>◈</span>
-                <div className="x"><b>{r.name}</b><small>{r.description}</small></div>
+                <div className="x"><b dir="auto">{r.name}</b><small dir="auto">{r.description}</small></div>
                 <Coin n={r.cost} />
               </div>
             ))}</div>}
