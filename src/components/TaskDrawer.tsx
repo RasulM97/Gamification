@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { MAX_ACTIVE, activeCount, roleFits } from '../domain/engine'
 import type { Task } from '../domain/engine'
-import { rowProps } from '../ui'
+import { rowProps, cycleOutcome, localizedHist } from '../ui'
+import { useI18n, fmtPct } from '../i18n'
 import { AttachmentChips, Avatar, ClampedText, Coin, LinkText, Drawer, PriBadge, Progress, StatusBadge, actMarker, ago, coins, deadlineInfo } from '../ui'
 import { SubmitModal, RejectModal, DeclineModal, CancelModal, ReturnModal, ReopenModal, ReactivateModal, EditTaskModal } from './TaskModals'
 import { HandoffWizard } from './HandoffWizard'
@@ -17,11 +18,12 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
   const me = useMe()
   const t = state.tasks.find(x => x.id === taskId)
   const [modal, setModal] = useState<'submit' | 'reject' | 'decline' | 'handoff' | 'cancel' | 'return' | 'reopen' | 'reactivate' | 'edit' | null>(null)
+  const { t: tr } = useI18n()
 
   const user = (id: string | null) => state.users.find(u => u.id === id)
   const isMgr = me.role !== 'EMPLOYEE'
 
-  if (!t) return <Drawer open={!!taskId} onClose={onClose} title="Task">—</Drawer>
+  if (!t) return <Drawer open={!!taskId} onClose={onClose} title={tr('common.task')}>—</Drawer>
 
   const owner = user(t.ownerId)
   const assignee = user(t.assigneeId)
@@ -55,33 +57,33 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
 
   return (
     <Drawer open onClose={onClose} wide
-      title={<>{t.title}<small>Task · Cycle {t.cycle} · created {ago(t.createdAt)} by {user(t.createdBy)?.name}</small></>}>
+      title={<><span dir="auto">{t.title}</span><small dir="auto">{tr('task.drawerSub', { cycle: t.cycle, time: ago(t.createdAt), name: user(t.createdBy)?.name ?? '' })}</small></>}>
       {/* 1 · CURRENT SITUATION */}
       <div className="dsec">
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
           <StatusBadge s={t.status} /><PriBadge p={t.priority} />
-          <span className="bd bd-none">Cycle {t.cycle}</span>
+          <span className="bd bd-none">{tr('common.cycle')} {t.cycle}</span>
           <span className={'dim'} style={{ fontSize: 12 }}>{deadlineInfo(t.deadline).label}</span>
         </div>
         <dl className="kv">
-          <dt>Owner</dt>
-          <dd>{owner ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}><Avatar name={owner.name} size={20} />{owner.name}</span>
-            : assignee ? <>Assigned to {assignee.name}</> : 'Available in marketplace'}</dd>
-          <dt>Reward</dt>
-          <dd><Coin n={t.reward} /> {t.paid > 0 && <span className="faint" style={{ fontSize: 11.5 }}>({coins(t.paid)} paid · {coins(remaining)} remaining)</span>}</dd>
-          <dt>Verified progress</dt>
+          <dt>{tr('common.owner')}</dt>
+          <dd>{owner ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}><Avatar name={owner.name} size={20} /><span dir="auto">{owner.name}</span></span>
+            : assignee ? <span dir="auto">{tr('task.assignment.assignedTo', { assignee: assignee.name })}</span> : tr('task.assignment.availableMarketplace')}</dd>
+          <dt>{tr('common.reward')}</dt>
+          <dd><Coin n={t.reward} /> {t.paid > 0 && <span className="faint" style={{ fontSize: 11.5 }}>{tr('task.paidRemaining', { paid: coins(t.paid), remaining: coins(remaining) })}</span>}</dd>
+          <dt>{tr('task.field.verifiedProgress')}</dt>
           <dd><Progress verified={t.verified} reported={t.reported > t.verified ? t.reported : undefined} /></dd>
           {t.reported > 0 && <>
-            <dt>Self-reported</dt>
-            <dd className="dim">{t.reported}% — employee estimate, informational only</dd>
+            <dt>{tr('task.field.reportedProgress')}</dt>
+            <dd className="dim">{tr('task.reportedEstimate', { percent: fmtPct(t.reported) })}</dd>
           </>}
           {t.audience === 'MANAGEMENT' && <>
-            <dt>Audience</dt>
-            <dd><span className="bd bd-important">Management only</span> <span className="faint" style={{ fontSize: 11.5 }}>invisible to employees</span></dd>
+            <dt>{tr('common.audience')}</dt>
+            <dd><span className="bd bd-important">{tr('task.audience.management')}</span> <span className="faint" style={{ fontSize: 11.5 }}>{tr('task.audience.managementHint')}</span></dd>
           </>}
           {t.audience === 'PRIVATE' && <>
-            <dt>Audience</dt>
-            <dd><span className="bd bd-urgent">Private</span> <span className="faint" style={{ fontSize: 11.5 }}>only the assignee and management can see this</span></dd>
+            <dt>{tr('common.audience')}</dt>
+            <dd><span className="bd bd-urgent">{tr('task.audience.private')}</span> <span className="faint" style={{ fontSize: 11.5 }}>{tr('task.audience.privateHintShort')}</span></dd>
           </>}
         </dl>
       </div>
@@ -89,12 +91,12 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
       {/* 1b · DESCRIPTION — what the work IS must catch the eye immediately;
           long text clamps to a preview with an explicit expand toggle. */}
       <div className="dsec">
-        <span className="eyebrow">Description</span>
+        <span className="eyebrow">{tr('common.description')}</span>
         <div className="panel" style={{ padding: '11px 14px', marginTop: 8 }}>
           <ClampedText text={t.description} lines={4} style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.6 }} />
           {t.briefFiles.length > 0 && (
             <div style={{ marginTop: 9 }}>
-              <div className="faint" style={{ fontSize: 11, marginBottom: 5 }}>Brief files — attached at creation or added in handoffs:</div>
+              <div className="faint" style={{ fontSize: 11, marginBottom: 5 }}>{tr('task.briefFiles')}</div>
               <AttachmentChips files={t.briefFiles} />
             </div>
           )}
@@ -105,7 +107,7 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
           prominent for the current owner until the task completes. */}
       {t.instructions && (isOwner || t.assigneeId === me.id || isMgr) && (
         <div className="dsec">
-          <span className="eyebrow">Management instructions</span>
+          <span className="eyebrow">{tr('task.field.managementInstructions')}</span>
           <div className="panel" style={{ padding: '11px 14px', marginTop: 8, fontSize: 12.5, borderLeft: '3px solid var(--accent, var(--pos))' }}>
             <ClampedText text={t.instructions} lines={4} style={{ lineHeight: 1.55 }} />
           </div>
@@ -116,87 +118,87 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
           the employee sees WHY before the resume button */}
       {t.status === 'REJECTED' && t.rejectionReason && (
         <div className="dsec">
-          <span className="eyebrow">Rejection reason</span>
+          <span className="eyebrow">{tr('task.field.rejectionReason')}</span>
           <div className="panel" style={{ padding: '11px 14px', marginTop: 8, fontSize: 12.5, borderLeft: '3px solid var(--neg)' }}>
             <ClampedText text={t.rejectionReason} lines={4} style={{ lineHeight: 1.55 }} />
           </div>
         </div>
       )}
       <div className="dsec">
-        <span className="eyebrow">Current action</span>
+        <span className="eyebrow">{tr('task.field.currentAction')}</span>
         <div className="actions" style={{ marginTop: 8 }}>
           {canClaim && (
             <button className="btn primary" disabled={claimBlocked}
-              title={claimBlocked ? `You already have ${MAX_ACTIVE} active tasks` : ''}
+              title={claimBlocked ? tr('task.help.activeLimit', { maxActive: MAX_ACTIVE }) : ''}
               onClick={() => dispatch({ type: 'CLAIM_TASK', taskId: t.id, userId: me.id })}>
-              {t.assigneeId === me.id ? 'Accept & start' : 'Claim task'}
+              {t.assigneeId === me.id ? tr('task.action.acceptStart') : tr('task.action.claim')}
             </button>
           )}
           {canClaim && t.assigneeId === me.id && (
-            <button className="btn" onClick={() => setModal('decline')}>Decline assignment</button>
+            <button className="btn" onClick={() => setModal('decline')}>{tr('task.action.decline')}</button>
           )}
           {isOwner && t.status === 'IN_PROGRESS' && <>
-            <button className="btn primary" onClick={() => setModal('submit')}>Submit work</button>
+            <button className="btn primary" onClick={() => setModal('submit')}>{tr('task.action.submit')}</button>
             <ReportProgressInline pct={t.reported} onSet={p => dispatch({ type: 'REPORT_PROGRESS', taskId: t.id, userId: me.id, pct: p })} />
           </>}
           {canReturn && (
-            <button className="btn" onClick={() => setModal('return')}>Return to marketplace</button>
+            <button className="btn" onClick={() => setModal('return')}>{tr('task.action.returnMarketplace')}</button>
           )}
           {canHandBack && (
-            <button className="btn" onClick={() => setModal('decline')}>Decline & hand back</button>
+            <button className="btn" onClick={() => setModal('decline')}>{tr('task.action.declineHandBack')}</button>
           )}
           {isOwner && t.status === 'REJECTED' && (() => {
             const blocked = activeCount(state, me.id) >= MAX_ACTIVE
             return (
               <button className="btn primary" disabled={blocked}
-                title={blocked ? `You already have ${MAX_ACTIVE} active tasks — finish or return one first` : ''}
+                title={blocked ? tr('task.help.activeLimitFinish', { maxActive: MAX_ACTIVE }) : ''}
                 onClick={() => dispatch({ type: 'RESUME_WORK', taskId: t.id, userId: me.id })}>
-                Resume rework
+                {tr('task.action.resumeRework')}
               </button>
             )
           })()}
 
-          {claimBlocked && <span className="neg" style={{ fontSize: 12 }}>Claim limit reached ({MAX_ACTIVE} active tasks)</span>}
+          {claimBlocked && <span className="neg" style={{ fontSize: 12 }}>{tr('task.help.claimLimit', { maxActive: MAX_ACTIVE })}</span>}
           {canReviewDecision && <>
-            <button className="btn primary" onClick={() => onGo('reviews', t.id)}>Open in Reviews</button>
-            <button className="btn" onClick={() => setModal('reject')}>Reject</button>
+            <button className="btn primary" onClick={() => onGo('reviews', t.id)}>{tr('task.action.openReviews')}</button>
+            <button className="btn" onClick={() => setModal('reject')}>{tr('review.rejectShort')}</button>
           </>}
           {/* Manager-as-worker (M1-D D4): after submitting their OWN work, a
               manager sees worker state only — the decision belongs to another
               manager or the admin. */}
           {isOwner && t.status === 'SUBMITTED' && (
             <span className="faint" style={{ fontSize: 12.5 }} data-testid="awaiting-review-note">
-              Submitted for review — waiting for a decision by another manager or the admin.
+              {tr('task.awaitingDecision')}
             </span>
           )}
-          {canHandoff ? <button className="btn" onClick={() => setModal('handoff')}>Handoff…</button> : null}
+          {canHandoff ? <button className="btn" onClick={() => setModal('handoff')}>{tr('task.action.handoff')}</button> : null}
           {isMgr && t.status === 'OPEN' && (
             <ReassignInline taskId={t.id} assigneeId={t.assigneeId} assignMode={t.assignMode} audience={t.audience} />
           )}
           {isMgr && t.status === 'APPROVED' && (
-            <button className="btn" onClick={() => setModal('reopen')}>Reopen (new cycle)</button>
+            <button className="btn" onClick={() => setModal('reopen')}>{tr('task.action.reopen')}</button>
           )}
           {isMgr && t.status === 'CANCELLED' && (
-            <button className="btn" onClick={() => setModal('reactivate')}>Reactivate</button>
+            <button className="btn" onClick={() => setModal('reactivate')}>{tr('task.action.reactivate')}</button>
           )}
           {/* Edit is creator-or-admin only (M1-C A2) — mirrors the domain
               rule; a non-creator manager sees no affordance at all. */}
           {isMgr && !['APPROVED', 'CANCELLED'].includes(t.status) && (me.role === 'ADMIN' || t.createdBy === me.id) && (
-            <button className="btn" onClick={() => setModal('edit')}>Edit task…</button>
+            <button className="btn" onClick={() => setModal('edit')}>{tr('task.action.edit')}</button>
           )}
           {canCancel && (
-            <button className="btn" onClick={() => setModal('cancel')}>Cancel task</button>
+            <button className="btn" onClick={() => setModal('cancel')}>{tr('task.action.cancel')}</button>
           )}
         </div>
         {!canClaim && !isOwner && !isMgr && t.status === 'OPEN' && t.assignMode === 'ALL_EMPLOYEES' && (
-          <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>Available to employees — switch to an employee persona to claim it.</div>
+          <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>{tr('task.help.switchPersonaToClaim')}</div>
         )}
       </div>
 
       {/* 3 · DETAILS & HISTORY */}
       {t.submissionNote && (
         <div className="dsec">
-          <span className="eyebrow">Latest submission</span>
+          <span className="eyebrow">{tr('task.field.latestSubmission')}</span>
           <div className="panel" style={{ padding: '12px 14px', marginTop: 8, fontSize: 12.5 }}>
             <ClampedText text={t.submissionNote} lines={4} style={{ lineHeight: 1.55 }} />
             {t.attachments.length > 0 && (
@@ -204,7 +206,7 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
                 <AttachmentChips files={t.attachments} />
               </div>
             )}
-            <div className="faint" style={{ fontSize: 11, marginTop: 8 }}>Submitted {ago(t.submittedAt!)}</div>
+            <div className="faint" style={{ fontSize: 11, marginTop: 8 }}>{tr('common.submittedAgo', { time: ago(t.submittedAt!) })}</div>
           </div>
         </div>
       )}
@@ -220,11 +222,11 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
 
       {myHistory.length > 0 && !isMgr && (
         <div className="dsec">
-          <span className="eyebrow">Your earnings here</span>
+          <span className="eyebrow">{tr('task.field.yourEarnings')}</span>
           <div className="summary" style={{ marginTop: 8 }}>
             {myHistory.map(c => (
               <div className="srow" key={c.id}>
-                <span>{c.acceptedPct}% accepted · cycle {c.cycle}</span>
+                <span>{tr('task.earningsLine', { percent: fmtPct(c.acceptedPct), cycle: c.cycle })}</span>
                 <Coin n={c.payout} sign />
               </div>
             ))}
@@ -268,12 +270,13 @@ function actCycle(a: Act, t: Task): number {
 }
 
 function CyclesHistory({ task: t, taskActs }: { task: Task; taskActs: Act[] }) {
+  const { t: tr } = useI18n()
   const cycles = t.cycles.length > 0 ? t.cycles : [{ cycle: t.cycle, openedAt: t.createdAt, closedAt: null, outcome: null, paid: t.paid, verified: t.verified }]
   const [open, setOpen] = useState<number | null>(null)
   const sel = open ?? t.cycle /* current cycle is the default-open one */
   return (
     <div className="dsec">
-      <span className="eyebrow">History by cycle</span>
+      <span className="eyebrow">{tr('task.field.historyByCycle')}</span>
       <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
         {[...cycles].reverse().map(c => {
           const current = c.cycle === t.cycle && c.closedAt == null
@@ -282,10 +285,10 @@ function CyclesHistory({ task: t, taskActs }: { task: Task; taskActs: Act[] }) {
             <div className="panel" key={c.cycle} data-testid={`cycle-${c.cycle}`} style={{ padding: 0, overflow: 'hidden' }}>
               <div {...rowProps(() => setOpen(expanded ? -1 : c.cycle))}
                 style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 13px', cursor: 'pointer' }}>
-                <b style={{ fontSize: 12.5 }}>Cycle {c.cycle}</b>
-                {current && <span className="bd bd-open" data-testid="cycle-current">current</span>}
+                <b style={{ fontSize: 12.5 }}>{tr('common.cycle')} {c.cycle}</b>
+                {current && <span className="bd bd-open" data-testid="cycle-current">{tr('task.cycle.current')}</span>}
                 <span className="dim" style={{ fontSize: 11.5 }}>
-                  {c.outcome ?? 'in progress'} · {c.verified}% verified · {c.paid} Coins paid
+                  {cycleOutcome(c.outcome)} · {tr('task.cycle.verifiedPct', { percent: fmtPct(c.verified) })} · <Coin n={c.paid} /> {tr('common.paid')}
                 </span>
                 <span className="faint" style={{ marginLeft: 'auto', fontSize: 12 }}>{expanded ? '▾' : '▸'}</span>
               </div>
@@ -299,17 +302,18 @@ function CyclesHistory({ task: t, taskActs }: { task: Task; taskActs: Act[] }) {
 }
 
 function CycleBody({ task: t, cycle, acts }: { task: Task; cycle: number; acts: Act[] }) {
+  const { t: tr } = useI18n()
   const subs = t.submissions.filter(s => s.cycle === cycle)
   const contribs = t.contributions.filter(c => c.cycle === cycle)
   return (
     <div style={{ borderTop: '1px solid var(--line)', padding: '10px 13px 13px' }}>
-      <span className="eyebrow" style={{ fontSize: 10 }}>People this cycle</span>
+      <span className="eyebrow" style={{ fontSize: 10 }}>{tr('task.field.peopleThisCycle')}</span>
       {subs.length === 0 && contribs.length === 0
-        ? <div className="faint" style={{ fontSize: 12, margin: '6px 0 10px' }}>Nobody worked this cycle yet.</div>
+        ? <div className="faint" style={{ fontSize: 12, margin: '6px 0 10px' }}>{tr('task.cycleEmpty')}</div>
         : <PeopleHistory task={t} cycle={cycle} />}
-      <span className="eyebrow" style={{ fontSize: 10, display: 'block', marginTop: 12 }}>Task history this cycle</span>
+      <span className="eyebrow" style={{ fontSize: 10, display: 'block', marginTop: 12 }}>{tr('task.field.taskHistoryThisCycle')}</span>
       {acts.length === 0
-        ? <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>No recorded events in this cycle.</div>
+        ? <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>{tr('task.cycleNoEvents')}</div>
         : (
           <div style={{ marginTop: 4 }}>
             {acts.map(a => <HistoryItem key={a.id} a={a} />)}
@@ -329,9 +333,9 @@ function HistoryItem({ a }: { a: Act }) {
       <div className="aa">
         <span>
           {m && <span className={'bd hist-marker ' + m.cls} data-testid={`hist-marker-${m.label}`}>{m.label}</span>}
-          {user(a.actorId)?.name} {a.action}{' '}
+          <span dir="auto">{user(a.actorId)?.name} {a.action}</span>{' '}
         </span>
-        {a.reason && <div className="rs"><LinkText text={`“${a.reason}”`} /></div>}
+        {a.reason && <div className="rs" dir="auto"><LinkText text={`“${localizedHist(a.reason)}”`} /></div>}
         {a.econ && <span className="num warn" style={{ fontSize: 11 }}>{a.econ}</span>}
       </div>
       <span className="at">{ago(a.at)}</span>
@@ -341,11 +345,12 @@ function HistoryItem({ a }: { a: Act }) {
 
 /* ── per-owner history tabs ────────────────────────────────────────────── */
 const SUBMISSION_OUTCOME: Record<string, [string, string]> = {
-  PENDING: ['st-review', 'Awaiting review'], APPROVED: ['st-done', 'Approved'],
-  REJECTED: ['st-rej', 'Sent to rework'], HANDED_OFF: ['bd-important', 'Handed off'],
-  CANCELLED: ['st-cancel', 'Cancelled'],
+  PENDING: ['st-review', 'task.status.awaitingReview'], APPROVED: ['st-done', 'task.status.approved'],
+  REJECTED: ['st-rej', 'task.outcome.sentToRework'], HANDED_OFF: ['bd-important', 'task.status.handedOff'],
+  CANCELLED: ['st-cancel', 'task.status.cancelled'],
 }
 function PeopleHistory({ task: t, cycle }: { task: Task; cycle?: number }) {
+  const { t: tr } = useI18n()
   const { state } = useStore()
   const user = (id: string | null) => state.users.find(u => u.id === id)
   /* Everyone who ever owned or contributed (in this cycle, when scoped) —
@@ -368,7 +373,7 @@ function PeopleHistory({ task: t, cycle }: { task: Task; cycle?: number }) {
           const u = user(id)
           return (
             <button key={id} className={'chip' + (id === selId ? ' on' : '')} onClick={() => setSel(id)}
-              title={`Show ${u?.name}'s history on this task`}>
+              title={tr('task.showPersonHistory', { name: u?.name ?? '' })} dir="auto">
               {u?.name ?? id}
             </button>
           )
@@ -376,15 +381,15 @@ function PeopleHistory({ task: t, cycle }: { task: Task; cycle?: number }) {
       </div>
       <div className="tline">
         {subs.map(r => {
-          const [cls, label] = SUBMISSION_OUTCOME[r.outcome]
+          const [cls, labelKey] = SUBMISSION_OUTCOME[r.outcome]
           const rev = user(r.reviewerId)
           return (
             <div className="tl-item" key={r.id}>
               <div className="head">
-                <b>Submission</b>
-                <span className="dim">· reported {r.reportedPct}%</span>
-                <span className={'bd ' + cls}>{label}</span>
-                <span className="when" style={{ marginLeft: 'auto' }}>{ago(r.at)} · cycle {r.cycle}</span>
+                <b>{tr('task.submission')}</b>
+                <span className="dim">· {tr('task.reportedPct', { percent: fmtPct(r.reportedPct) })}</span>
+                <span className={'bd ' + cls}>{tr(labelKey)}</span>
+                <span className="when" style={{ marginLeft: 'auto' }}>{tr('task.whenCycle', { time: ago(r.at), cycle: r.cycle })}</span>
               </div>
               {r.note && <div className="why"><ClampedText text={r.note} lines={3} /></div>}
               {r.attachments.length > 0 && (
@@ -392,7 +397,7 @@ function PeopleHistory({ task: t, cycle }: { task: Task; cycle?: number }) {
               )}
               {rev && (
                 <div className="when" style={{ marginTop: 6 }}>
-                  Reviewed by {rev.name}{r.reviewNote ? ` — “${r.reviewNote}”` : ''}
+                  {tr('task.reviewedBy', { name: rev.name })}{r.reviewNote ? <span dir="auto"> — “{r.reviewNote}”</span> : ''}
                 </div>
               )}
             </div>
@@ -401,11 +406,11 @@ function PeopleHistory({ task: t, cycle }: { task: Task; cycle?: number }) {
         {contribs.map(c => (
           <div className="tl-item" key={c.id}>
             <div className="head">
-              <b>Decision</b>
-              <span className="dim">· {c.acceptedPct}% accepted (reported {c.reportedPct}%)</span>
+              <b>{tr('task.decision')}</b>
+              <span className="dim">· {tr('task.decisionLine', { accepted: fmtPct(c.acceptedPct), reported: fmtPct(c.reportedPct) })}</span>
               {c.payout > 0 && <Coin n={c.payout} />}
               <span className={'bd ' + (c.decision === 'APPROVED' ? 'st-done' : c.decision === 'CANCELLED' ? 'st-cancel' : 'bd-important')}>
-                {c.decision === 'APPROVED' ? 'Approved' : c.decision === 'CANCELLED' ? 'Cancelled' : 'Handoff'}
+                {tr(c.decision === 'APPROVED' ? 'task.status.approved' : c.decision === 'CANCELLED' ? 'task.status.cancelled' : 'handoff.title')}
               </span>
               <span className="when" style={{ marginLeft: 'auto' }}>{ago(c.at)} · cycle {c.cycle}</span>
             </div>
@@ -413,7 +418,7 @@ function PeopleHistory({ task: t, cycle }: { task: Task; cycle?: number }) {
           </div>
         ))}
         {subs.length === 0 && contribs.length === 0 && (
-          <div className="faint" style={{ fontSize: 12.5 }}>No submissions or decisions recorded for this person yet.</div>
+          <div className="faint" style={{ fontSize: 12.5 }}>{tr('task.personEmpty')}</div>
         )}
       </div>
     </div>
@@ -422,12 +427,13 @@ function PeopleHistory({ task: t, cycle }: { task: Task; cycle?: number }) {
 
 /* ── inline controls ─────────────────────────────────────────────────────── */
 function ReportProgressInline({ pct, onSet }: { pct: number; onSet: (p: number) => void }) {
+  const { t: tr } = useI18n()
   const [v, setV] = useState(pct)
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
       <input type="range" min={0} max={100} step={5} value={v} style={{ width: 110 }}
         onChange={e => setV(+e.target.value)} />
-      <button className="btn" onClick={() => onSet(v)}>Report {v}%</button>
+      <button className="btn" onClick={() => onSet(v)}>{tr('task.action.reportProgress', { percent: fmtPct(v) })}</button>
     </span>
   )
 }
@@ -435,6 +441,7 @@ function ReportProgressInline({ pct, onSet }: { pct: number; onSet: (p: number) 
 function ReassignInline({ taskId, assigneeId, assignMode, audience }: {
   taskId: string; assigneeId: string | null; assignMode: string; audience: 'EMPLOYEES' | 'MANAGEMENT' | 'PRIVATE'
 }) {
+  const { t: tr } = useI18n()
   const { state, dispatch } = useStore()
   const me = useMe()
   const targets = state.users.filter(u =>
@@ -443,18 +450,18 @@ function ReassignInline({ taskId, assigneeId, assignMode, audience }: {
       : u.role !== 'ADMIN') && u.id !== me.id)
   return (
     <select value={assignMode === 'SPECIFIC_EMPLOYEE' ? assigneeId ?? '' : '__all'}
-      aria-label="Reassign task"
+      aria-label={tr('accessibility.reassignTask')}
       onChange={e => dispatch({
         type: 'REASSIGN', taskId, by: me.id,
         assigneeId: e.target.value === '__all' ? null : e.target.value,
       })}>
       {audience !== 'PRIVATE' && (
-        <option value="__all">{audience === 'MANAGEMENT' ? 'Available to all managers' : 'Available to all employees'}</option>
+        <option value="__all">{audience === 'MANAGEMENT' ? tr('task.assignment.availableAllManagers') : tr('task.assignment.availableAllEmployees')}</option>
       )}
       {targets.map(u => {
         const n = activeCount(state, u.id)
         return <option key={u.id} value={u.id}>
-          Assign: {u.name} · {n}/{MAX_ACTIVE} active{n >= MAX_ACTIVE ? ' · at capacity' : ''}
+          {tr(n >= MAX_ACTIVE ? 'task.assignOptionFull' : 'task.assignOption', { name: u.name, used: n, max: MAX_ACTIVE })}
         </option>
       })}
     </select>
