@@ -1285,7 +1285,7 @@ describe('domain-level role enforcement (M0-B)', () => {
     expect(s.tasks.some(t => t.title === 'Self-made')).toBe(false)
     s = reducer(s, {
       type: 'SAVE_REWARD', by: JONAS,
-      reward: { id: '', name: 'Free money', description: '', cost: 1, stock: null, active: true, category: 'x', eligibility: 'EMPLOYEES', createdBy: 'u-dana' },
+      reward: { id: '', name: 'Free money', description: '', cost: 1, stock: null, active: true, category: 'x', eligibility: 'EMPLOYEES', createdBy: 'u-dana' } as unknown as import('./model').Reward,
     })
     expect(s.rewards.some(r => r.name === 'Free money')).toBe(false)
     expect(ledgerIds(s)).toBe(before)
