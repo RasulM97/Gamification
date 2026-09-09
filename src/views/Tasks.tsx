@@ -3,6 +3,7 @@ import { useStore, useMe } from '../store'
 import { canonicalSort, activeCount, canSeeTask, roleFits, MAX_ACTIVE } from '../domain/engine'
 import type { Priority, Task } from '../domain/engine'
 import { Avatar, Coin, Empty, LinkText, Panel, PriBadge, Progress, Seg, StatusBadge, ago, deadlineInfo, rowProps } from '../ui'
+import { fmtInt, useI18n } from '../i18n'
 
 type Scope = 'all' | 'mine' | 'available'
 
@@ -11,6 +12,7 @@ export function TasksView({ scope, onOpen, onCreate }: {
 }) {
   const { state } = useStore()
   const me = useMe()
+  const { t } = useI18n()
   const [statusF, setStatusF] = useState('ACTIVE')
   const [priF, setPriF] = useState<'ALL' | Priority>('ALL')
   const [sort, setSort] = useState('canonical')
@@ -46,38 +48,38 @@ export function TasksView({ scope, onOpen, onCreate }: {
   }, [state.tasks, scope, statusF, priF, sort, q, me.id])
 
   const opts = [
-    { v: 'ACTIVE', label: 'Active' },
-    { v: 'SUBMITTED', label: 'In review' },
-    { v: 'REJECTED', label: 'Rework' },
-    { v: 'OPEN', label: 'Open' },
-    { v: 'APPROVED', label: 'Approved' },
-    { v: 'CANCELLED', label: 'Cancelled' },
-    { v: 'PRIVATE', label: 'Private' },
-    { v: 'ALL', label: 'All' },
+    { v: 'ACTIVE', label: t('common.active') },
+    { v: 'SUBMITTED', label: t('task.status.submitted') },
+    { v: 'REJECTED', label: t('task.status.rejected') },
+    { v: 'OPEN', label: t('task.status.open') },
+    { v: 'APPROVED', label: t('task.status.approved') },
+    { v: 'CANCELLED', label: t('task.status.cancelled') },
+    { v: 'PRIVATE', label: t('common.private') },
+    { v: 'ALL', label: t('common.all') },
   ]
   const priOpts: { v: 'ALL' | Priority; label: string }[] = [
-    { v: 'ALL', label: 'All priorities' },
-    { v: 'URGENT', label: 'Urgent' },
-    { v: 'IMPORTANT', label: 'Important' },
-    { v: 'NORMAL', label: 'Normal' },
-    { v: 'NONE', label: 'No priority' },
+    { v: 'ALL', label: t('search.allPriorities') },
+    { v: 'URGENT', label: t('task.priority.urgent') },
+    { v: 'IMPORTANT', label: t('task.priority.important') },
+    { v: 'NORMAL', label: t('task.priority.normal') },
+    { v: 'NONE', label: t('task.priority.none') },
   ]
 
   return (
     <Panel pad={false}
-      title={scope === 'mine' ? 'My work' : scope === 'available' ? 'Available work — marketplace' : 'Tasks'}
+      title={scope === 'mine' ? t('nav.myWork') : scope === 'available' ? t('nav.availableWork') : t('common.tasks')}
       right={
         <div className="toolbar">
           <input type="search" value={q} onChange={e => setQ(e.target.value)}
-            placeholder="Search tasks…" style={{ width: 170 }} aria-label="Search tasks" />
+            placeholder={t('search.tasks')} style={{ width: 170 }} aria-label={t('accessibility.searchTasks')} />
           <Seg options={opts} value={statusF} onChange={setStatusF} />
-          <select value={sort} onChange={e => setSort(e.target.value)} aria-label="Sort tasks">
-            <option value="canonical">Sort: Priority</option>
-            <option value="newest">Sort: Newest</option>
-            <option value="updated">Sort: Recently updated</option>
-            <option value="deadline">Sort: Deadline</option>
+          <select value={sort} onChange={e => setSort(e.target.value)} aria-label={t('accessibility.sortTasks')}>
+            <option value="canonical">{t('search.sort.priority')}</option>
+            <option value="newest">{t('search.sort.newest')}</option>
+            <option value="updated">{t('search.sort.updated')}</option>
+            <option value="deadline">{t('search.sort.deadline')}</option>
           </select>
-          {isMgr && scope === 'all' && <button className="btn primary" onClick={onCreate}>+ Create task</button>}
+          {isMgr && scope === 'all' && <button className="btn primary" onClick={onCreate}>+ {t('task.action.create')}</button>}
         </div>
       }>
       {/* N1-C: My Work opens with the two numbers a worker checks first —
@@ -85,21 +87,21 @@ export function TasksView({ scope, onOpen, onCreate }: {
           review queue. */}
       {scope === 'mine' && (
         <div className="mywork-strip" data-testid="mywork-strip">
-          <span>Active work: <b data-testid="mywork-active">{activeCount(state, me.id)}</b> / {MAX_ACTIVE}</span>
+          <span>{t('mywork.active')} <b data-testid="mywork-active">{fmtInt(activeCount(state, me.id))}</b> / {fmtInt(MAX_ACTIVE)}</span>
           <span className="sep">·</span>
-          <span>In review: <b data-testid="mywork-review">{state.tasks.filter(t => t.ownerId === me.id && t.status === 'SUBMITTED').length}</b></span>
+          <span>{t('mywork.inReview')} <b data-testid="mywork-review">{fmtInt(state.tasks.filter(t => t.ownerId === me.id && t.status === 'SUBMITTED').length)}</b></span>
         </div>
       )}
       <div className="filterbar">
-        <span className="fb-label">Priority</span>
+        <span className="fb-label">{t('common.priority')}</span>
         {priOpts.map(p => (
           <button key={p.v} className={'chip' + (priF === p.v ? ' on' : '')}
             onClick={() => setPriF(p.v)}>{p.label}</button>
         ))}
-        <span className="count">{rows.length} task{rows.length === 1 ? '' : 's'}</span>
+        <span className="count">{t(rows.length === 1 ? 'search.resultTask' : 'search.resultTasks', { count: rows.length })}</span>
       </div>
       {rows.length === 0
-        ? <Empty title={scope === 'available' ? 'Nothing available right now' : 'No tasks match'} hint={scope === 'available' ? 'New marketplace work appears here.' : 'Adjust the filters.'} />
+        ? <Empty title={scope === 'available' ? t('task.empty.nothingAvailable') : t('task.empty.noTasksMatch')} hint={scope === 'available' ? t('task.empty.newMarketplaceWork') : t('task.empty.adjustFilters')} />
         : rows.map(t => <TaskRow key={t.id} t={t} meId={me.id} onOpen={onOpen} />)}
     </Panel>
   )
@@ -107,6 +109,7 @@ export function TasksView({ scope, onOpen, onCreate }: {
 
 function TaskRow({ t, meId, onOpen }: { t: Task; meId: string; onOpen: (id: string) => void }) {
   const { state } = useStore()
+  const { t: tr } = useI18n()
   const user = (id: string | null) => state.users.find(u => u.id === id)
   const dl = deadlineInfo(t.deadline)
   const mine = t.ownerId === meId || t.assigneeId === meId
@@ -120,22 +123,27 @@ function TaskRow({ t, meId, onOpen }: { t: Task; meId: string; onOpen: (id: stri
     <div className="trow" {...rowProps(() => onOpen(t.id))}>
       <div>
         <div className="tt">
-          {mine && <span style={{ color: 'var(--accent)', fontSize: 10 }} title="Involves you">●</span>}
-          <span className="t" title={t.title}>{t.title}</span>
+          {mine && <span style={{ color: 'var(--accent)', fontSize: 10 }} title={tr('accessibility.involvesYou')}>●</span>}
+          {/* task title/description are user-authored — verbatim, bidi-safe */}
+          <span className="t" title={t.title} dir="auto">{t.title}</span>
         </div>
         {/* The description must catch the eye — one preview line, never more
             than a clamp; the drawer shows it fully with an expand toggle.
             URLs inside are clickable (safe new-tab links, N2.1-R2 fix). */}
         <div className="sub desc" title={t.description}><LinkText text={t.description} /></div>
         <div className="sub">
-          {owner ? `${owner.name}` : t.assigneeId ? `→ ${user(t.assigneeId)?.name}` : t.audience === 'MANAGEMENT' ? 'Management pool' : 'Marketplace'}
-          {t.cycle > 1 ? ` · cycle ${t.cycle}` : ''}
-          {t.status === 'REJECTED' ? ' · rework requested' : ''}
-          {' · updated '}{ago(t.updatedAt)}
+          {owner
+            ? <span dir="auto">{owner.name}</span>
+            : t.assigneeId
+              ? <span>→ <span dir="auto">{user(t.assigneeId)?.name}</span></span>
+              : t.audience === 'MANAGEMENT' ? tr('task.assignment.managementPool') : tr('common.marketplace')}
+          {t.cycle > 1 ? ` · ${tr('task.row.cycle', { n: t.cycle })}` : ''}
+          {t.status === 'REJECTED' ? ` · ${tr('task.row.rework')}` : ''}
+          {' · '}{tr('common.updatedAgo', { time: ago(t.updatedAt) })}
         </div>
       </div>
       <span className="hide-m" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-        {t.audience === 'PRIVATE' && <span className="chip" title="Private — only the assignee and management can see this">🔒 Private</span>}
+        {t.audience === 'PRIVATE' && <span className="chip" title={tr('task.audience.privateHint')}>🔒 {tr('common.private')}</span>}
         <PriBadge p={t.priority} />
       </span>
       <span className="hide-m"><Progress verified={t.verified} reported={t.reported > t.verified ? t.reported : undefined} /></span>
@@ -146,7 +154,7 @@ function TaskRow({ t, meId, onOpen }: { t: Task; meId: string; onOpen: (id: stri
         {claimableByMe && !limitHit && (
           <button className="btn primary" style={{ padding: '3px 10px', fontSize: 11.5 }}
             onClick={e => { e.stopPropagation(); onOpen(t.id) }}>
-            {t.assigneeId === meId ? 'Review' : 'Claim'}
+            {t.assigneeId === meId ? tr('common.review') : tr('task.action.claimShort')}
           </button>
         )}
         {owner && <span className="hide-m"><Avatar name={owner.name} size={22} /></span>}

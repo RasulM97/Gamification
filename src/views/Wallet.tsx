@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { balanceOf } from '../domain/engine'
 import { Avatar, Coin, LedgerBadge, Panel, ago, coins, downloadCsv } from '../ui'
+import { useI18n } from '../i18n'
 
 /* Wallet: balance is primary, transaction history secondary. The ledger is
    append-only — there is no edit, only compensating transactions. Managers
@@ -9,6 +10,7 @@ import { Avatar, Coin, LedgerBadge, Panel, ago, coins, downloadCsv } from '../ui
 export function WalletView() {
   const { state } = useStore()
   const me = useMe()
+  const { t } = useI18n()
   const isAdmin = me.role === 'ADMIN'
   const isMgr = me.role !== 'EMPLOYEE'
   /* 'company' = admin's whole-ledger view; otherwise a specific user id. */
@@ -27,10 +29,11 @@ export function WalletView() {
   const byType = new Map<string, number>()
   rows.filter(l => l.userId === targetId).forEach(l =>
     byType.set(l.type, (byType.get(l.type) ?? 0) + l.amount))
+  /* N3 §8: ledger types stay canonical codes; plural display names are keys. */
   const typeLabel: Record<string, string> = {
-    TASK_REWARD: 'Task rewards', TASK_PARTIAL_REWARD: 'Partial rewards',
-    ADMIN_ADJUSTMENT: 'Adjustments', REDEMPTION: 'Redemptions',
-    REFUND: 'Refunds', REVERSAL: 'Reversals', TASK_CLAIM_PENALTY: 'Claim penalties',
+    TASK_REWARD: t('wallet.type.taskRewards'), TASK_PARTIAL_REWARD: t('wallet.type.partialRewards'),
+    ADMIN_ADJUSTMENT: t('wallet.type.adjustments'), REDEMPTION: t('wallet.type.redemptions'),
+    REFUND: t('wallet.type.refunds'), REVERSAL: t('wallet.type.reversals'), TASK_CLAIM_PENALTY: t('wallet.type.claimPenalties'),
   }
 
   const exportCsv = () => downloadCsv(
@@ -45,32 +48,33 @@ export function WalletView() {
     <div className="wrap">
       {isMgr && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-          <span className="eyebrow">Viewing wallet</span>
-          <select value={viewing} onChange={e => setViewing(e.target.value)} aria-label="Choose whose wallet to view">
-            {isAdmin && <option value="company">Company ledger (everyone)</option>}
+          <span className="eyebrow">{t('wallet.viewing')}</span>
+          <select value={viewing} onChange={e => setViewing(e.target.value)} aria-label={t('accessibility.chooseWallet')}>
+            {isAdmin && <option value="company">{t('wallet.companyLedger')}</option>}
             {state.users.map(u => (
-              <option key={u.id} value={u.id}>{u.name}{u.id === me.id ? ' (you)' : ''} — {u.position}</option>
+              /* names + positions are user-authored — verbatim */
+              <option key={u.id} value={u.id}>{u.name}{u.id === me.id ? ` (${t('common.you')})` : ''} — {u.position}</option>
             ))}
           </select>
           {!company && target && target.id !== me.id && (
-            <span className="faint" style={{ fontSize: 11.5 }}>read-only inspection — adjustments happen in Admin</span>
+            <span className="faint" style={{ fontSize: 11.5 }}>{t('wallet.readonlyInspect')}</span>
           )}
         </div>
       )}
       <div className="wallet-hero">
         <div>
-          <div className="eyebrow">{company ? 'Company ledger — your balance' : company === false && targetId !== me.id ? `${target?.name}'s balance` : 'Current balance'}</div>
-          <div className="bal num">{coins(bal)}<u>Coins</u></div>
+          <div className="eyebrow">{company ? t('wallet.companyYourBalance') : targetId !== me.id ? t('wallet.userBalance', { name: target?.name ?? '' }) : t('wallet.currentBalance')}</div>
+          <div className="bal num">{coins(bal)}<u>{t('common.coins')}</u></div>
         </div>
         <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap' }}>
-          <div><div className="eyebrow">Earned</div><div className="num pos" style={{ fontSize: 19, fontWeight: 650 }}>+{coins(earned)}</div></div>
-          <div><div className="eyebrow">Spent</div><div className="num neg" style={{ fontSize: 19, fontWeight: 650 }}>−{coins(spent)}</div></div>
-          <div><div className="eyebrow">Ledger</div><div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>append-only · balance = Σ entries</div></div>
+          <div><div className="eyebrow">{t('wallet.earned')}</div><div className="num pos" style={{ fontSize: 19, fontWeight: 650 }}>+{coins(earned)}</div></div>
+          <div><div className="eyebrow">{t('wallet.spent')}</div><div className="num neg" style={{ fontSize: 19, fontWeight: 650 }}>−{coins(spent)}</div></div>
+          <div><div className="eyebrow">{t('wallet.ledgerTitle')}</div><div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>{t('wallet.appendOnly')}</div></div>
         </div>
       </div>
 
       {!company && byType.size > 0 && (
-        <Panel title={targetId === me.id ? 'Economy breakdown' : `Economy breakdown — ${target?.name}`}>
+        <Panel title={targetId === me.id ? t('wallet.breakdown') : t('wallet.breakdownFor', { name: target?.name ?? '' })}>
           <div className="summary">
             {[...byType.entries()].map(([t, sum]) => (
               <div className="srow" key={t}>
@@ -82,19 +86,19 @@ export function WalletView() {
         </Panel>
       )}
 
-      <Panel pad={false} title={company ? 'Company transaction history' : targetId !== me.id ? `Transaction history — ${target?.name}` : 'Transaction history'}
+      <Panel pad={false} title={company ? t('wallet.companyHistory') : targetId !== me.id ? t('wallet.txHistoryFor', { name: target?.name ?? '' }) : t('wallet.txHistory')}
         right={
           <div className="toolbar">
-            <span className="eyebrow">{rows.length} entries</span>
-            <button className="btn" onClick={exportCsv}>Export CSV</button>
+            <span className="eyebrow">{t('wallet.entries', { count: rows.length })}</span>
+            <button className="btn" onClick={exportCsv}>{t('common.exportCsv')}</button>
           </div>
         }>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                {company && <th>Employee</th>}
-                <th>Entry</th><th>Type</th><th className="n">Amount</th><th className="n">When</th>
+                {company && <th>{t('common.employee')}</th>}
+                <th>{t('wallet.entry')}</th><th>{t('common.type')}</th><th className="n">{t('common.amount')}</th><th className="n">{t('common.when')}</th>
               </tr>
             </thead>
             <tbody>
@@ -103,11 +107,12 @@ export function WalletView() {
                   {company && (
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-                        <Avatar name={user(l.userId)?.name ?? '?'} size={20} />{user(l.userId)?.name}
+                        <Avatar name={user(l.userId)?.name ?? '?'} size={20} /><span dir="auto">{user(l.userId)?.name}</span>
                       </span>
                     </td>
                   )}
-                  <td>{l.ref}{l.cycle ? <span className="faint"> · cycle {l.cycle}</span> : null}</td>
+                  {/* ledger ref text is stored history — verbatim, bidi-safe */}
+                  <td dir="auto">{l.ref}{l.cycle ? <span className="faint"> · {t('task.row.cycle', { n: l.cycle })}</span> : null}</td>
                   <td><LedgerBadge t={l.type} /></td>
                   <td className="n"><Coin n={l.amount} sign /></td>
                   <td className="n dim" style={{ fontSize: 11.5 }}>{ago(l.at)}</td>
