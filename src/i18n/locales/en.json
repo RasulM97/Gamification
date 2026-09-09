@@ -211,7 +211,7 @@
   "handoff.back": "Back",
   "handoff.confirm": "Confirm handoff",
   "handoff.continue": "Continue",
-  "handoff.contributionPrompt": "How much of {{name}}’s work do you accept as verified contribution? Accepted contribution pays out now and moves the task’s verified progress. Self-reported: {{percent}}— informational only.",
+  "handoff.contributionPrompt": "How much of {{name}}’s work do you accept as verified contribution? Accepted contribution pays out now and moves the task’s verified progress. Self-reported: {{percent}} — informational only.",
   "handoff.deadlineRemaining": "Deadline for the remaining work",
   "handoff.employeeReported": "Employee reported",
   "handoff.filesToBrief": "Files to the brief",
