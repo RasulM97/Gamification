@@ -721,7 +721,7 @@
   "testLab.addIssue": "문제 추가",
   "testLab.addNote": "메모 추가",
   "testLab.clear": "지우기",
-  "testLab.export": "\\uB0B4보내기",
+  "testLab.export": "보내기",
   "testLab.fail": "실패",
   "testLab.pass": "통과",
   "testLab.sessionRecorder": "UAT 세션 기록기",
