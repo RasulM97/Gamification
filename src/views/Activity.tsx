@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useStore } from '../store'
-import { Avatar, Empty, Panel, Seg, actMarker, ago, downloadCsv, rowProps } from '../ui'
+import { Avatar, Empty, Panel, Seg, actMarker, ago, downloadCsv, localizedHist, rowProps } from '../ui'
+import { useI18n } from '../i18n'
 
 /* Activity: canonical human-readable business history — every event, no raw
    enums, economic effect and cycle shown where relevant. Exportable (N-B). */
 export function ActivityView({ onOpenTask }: { onOpenTask: (id: string) => void }) {
   const { state } = useStore()
+  const { t } = useI18n()
   const [filter, setFilter] = useState('all')
   const user = (id: string) => state.users.find(u => u.id === id)
 
@@ -26,18 +28,18 @@ export function ActivityView({ onOpenTask }: { onOpenTask: (id: string) => void 
 
   return (
     <div className="wrap">
-      <Panel pad={false} title="Activity — business history"
+      <Panel pad={false} title={t('activity.title')}
         right={
           <div className="toolbar">
             <Seg options={[
-              { v: 'all', label: 'All' },
-              { v: 'tasks', label: 'Tasks' },
-              { v: 'economy', label: 'Economic effects' },
+              { v: 'all', label: t('common.all') },
+              { v: 'tasks', label: t('common.tasks') },
+              { v: 'economy', label: t('activity.economicEffects') },
             ]} value={filter} onChange={setFilter} />
-            <button className="btn" onClick={exportCsv}>Export CSV</button>
+            <button className="btn" onClick={exportCsv}>{t('common.exportCsv')}</button>
           </div>
         }>
-        {rows.length === 0 && <Empty title="No activity yet" />}
+        {rows.length === 0 && <Empty title={t('activity.empty')} />}
         {rows.map(a => {
           /* N1-D: the same compact transition markers as Task History, so a
              state change reads identically everywhere it appears. */
@@ -47,11 +49,13 @@ export function ActivityView({ onOpenTask }: { onOpenTask: (id: string) => void 
             {...(a.taskId ? { ...rowProps(() => onOpenTask(a.taskId!)), style: { cursor: 'pointer' } } : {})}>
             <Avatar name={user(a.actorId)?.name ?? '?'} size={22} />
             <div className="aa">
-              <span>
+              {/* actor/action/object/reason are stored immutable history —
+                  verbatim, bidi-safe (N3 §10) */}
+              <span dir="auto">
                 {m && <span className={'bd hist-marker ' + m.cls}>{m.label}</span>}
                 {user(a.actorId)?.name} {a.action}{' '}
-              </span><span className="obj">{a.object}</span>
-              {a.reason && <div className="rs">“{a.reason}”</div>}
+              </span><span className="obj" dir="auto">{a.object}</span>
+              {a.reason && <div className="rs" dir="auto">“{localizedHist(a.reason)}”</div>}
             </div>
             {a.econ && <span className="num" style={{ fontSize: 11.5, color: 'var(--warn)', whiteSpace: 'nowrap' }}>{a.econ}</span>}
             {a.cycle != null && <span className="faint" style={{ fontSize: 11 }}>c{a.cycle}</span>}

@@ -3,6 +3,7 @@ import { useStore, useMe } from '../store'
 import { MUTABLE_LEVELS, isMuted, sortNotices, visibleNotices } from '../domain/engine'
 import type { NotifLevel } from '../domain/engine'
 import { Empty, NotifBadge, Panel, Seg, ago, noticeTab, rowProps } from '../ui'
+import { useI18n } from '../i18n'
 
 /* Notification Center (N1-B): exactly two product tabs — TASKS and REWARDS —
    each with its own unread count, derived client-side from the existing
@@ -16,6 +17,7 @@ export function NotificationsView({ onOpenTask, onOpenRedemption }: {
 }) {
   const { state, dispatch } = useStore()
   const me = useMe()
+  const { t } = useI18n()
   const [tab, setTab] = useState('tasks')
   const [q, setQ] = useState('')
 
@@ -35,41 +37,42 @@ export function NotificationsView({ onOpenTask, onOpenRedemption }: {
   }).filter(n => !q.trim() || n.text.toLowerCase().includes(q.trim().toLowerCase()))
 
   const tabs = [
-    { v: 'tasks', label: `Tasks (${unreadTasks})` },
-    { v: 'rewards', label: `Rewards (${unreadRewards})` },
-    ...(hiddenCount > 0 || tab === 'muted' ? [{ v: 'muted', label: `Muted (${hiddenCount})` }] : []),
-    { v: 'archived', label: 'Archived' },
+    { v: 'tasks', label: t('notification.tab.tasks', { count: unreadTasks }) },
+    { v: 'rewards', label: t('notification.tab.rewards', { count: unreadRewards }) },
+    ...(hiddenCount > 0 || tab === 'muted' ? [{ v: 'muted', label: t('notification.tab.muted', { count: hiddenCount }) }] : []),
+    { v: 'archived', label: t('common.archived') },
   ]
 
-  const LEVEL_LABEL: Record<NotifLevel, string> = {
-    ACTION_REQUIRED: 'Action required', IMPORTANT: 'Important',
-    INFORMATIONAL: 'Informational', AUDIT_ONLY: 'Audit only',
+  /* N3 §8: levels stay canonical codes; display names are keys. */
+  const LEVEL_KEY: Record<NotifLevel, string> = {
+    ACTION_REQUIRED: 'notification.level.actionRequired', IMPORTANT: 'notification.level.important',
+    INFORMATIONAL: 'notification.level.informational', AUDIT_ONLY: 'notification.level.auditOnly',
   }
 
   return (
     <div className="wrap">
-      <Panel pad={false} title="Notifications"
+      <Panel pad={false} title={t('common.notifications')}
         right={
           <div className="toolbar">
             <input type="search" value={q} onChange={e => setQ(e.target.value)}
-              placeholder="Search notifications…" aria-label="Search notifications"
+              placeholder={t('notification.search')} aria-label={t('accessibility.searchNotifications')}
               style={{ maxWidth: 190, padding: '6px 10px', fontSize: 12.5 }} />
             <Seg options={tabs} value={tab} onChange={setTab} />
-            <button className="btn" onClick={() => dispatch({ type: 'MARK_ALL_READ', userId: me.id })}>Mark all read</button>
-            <button className="btn" onClick={() => dispatch({ type: 'ARCHIVE_ALL_READ', userId: me.id })}>Archive all read</button>
+            <button className="btn" onClick={() => dispatch({ type: 'MARK_ALL_READ', userId: me.id })}>{t('notification.action.markAllRead')}</button>
+            <button className="btn" onClick={() => dispatch({ type: 'ARCHIVE_ALL_READ', userId: me.id })}>{t('notification.action.archiveAllRead')}</button>
           </div>
         }>
         <div className="notif-prefs">
-          <span>Notification settings — muted:</span>
+          <span>{t('notification.settingsMuted')}</span>
           {MUTABLE_LEVELS.map(l => (
             <button key={l} className={'chip' + (isMuted(state, me.id, l) ? ' on' : '')}
               onClick={() => dispatch({ type: 'TOGGLE_NOTIF_MUTE', userId: me.id, level: l })}>
-              {LEVEL_LABEL[l]}{isMuted(state, me.id, l) ? ' · muted' : ''}
+              {t(LEVEL_KEY[l])}{isMuted(state, me.id, l) ? ` · ${t('common.mutedLower')}` : ''}
             </button>
           ))}
-          <span className="faint">Action required and Important always deliver.</span>
+          <span className="faint">{t('notification.alwaysDeliver')}</span>
         </div>
-        {filtered.length === 0 && <Empty title="Nothing here" hint="Attention-worthy events land here; routine events stay in Activity." />}
+        {filtered.length === 0 && <Empty title={t('notification.empty')} hint={t('notification.emptyHint')} />}
         {filtered.map(n => {
           /* Task notices always name the person responsible — a manager's
              inbox must never be a list of anonymous titles. */
@@ -86,22 +89,24 @@ export function NotificationsView({ onOpenTask, onOpenRedemption }: {
               else if (n.taskId) onOpenTask(n.taskId)
             })}>
             {!n.read ? <span className="un" /> : <span style={{ width: 7, flex: 'none' }} />}
+            {/* stored notice text + category are immutable history — verbatim,
+                bidi-safe (N3 §10 debt: structured events not yet stored) */}
             <div className="tx">
-              {n.text}
+              <span dir="auto">{n.text}</span>
               <div className="meta">
                 <NotifBadge l={n.level} />
-                <span>{n.category}</span><span>·</span><span>{ago(n.at)}</span>
-                {ownerName && <><span>·</span><span className="bd bd-normal">Owner: {ownerName}</span></>}
-                {rdName && <><span>·</span><span className="bd bd-normal">{rdName}</span></>}
-                {isMuted(state, me.id, n.level) && <span className="bd bd-none">Muted</span>}
-                {n.redemptionId && <span className="linkish">Open redemptions →</span>}
-                {!n.redemptionId && n.taskId && <span className="linkish">Open task →</span>}
+                <span dir="auto">{n.category}</span><span>·</span><span>{ago(n.at)}</span>
+                {ownerName && <><span>·</span><span className="bd bd-normal">{t('notification.owner', { name: ownerName })}</span></>}
+                {rdName && <><span>·</span><span className="bd bd-normal" dir="auto">{rdName}</span></>}
+                {isMuted(state, me.id, n.level) && <span className="bd bd-none">{t('common.muted')}</span>}
+                {n.redemptionId && <span className="linkish">{t('notification.action.openRedemptions')}</span>}
+                {!n.redemptionId && n.taskId && <span className="linkish">{t('notification.action.openTask')}</span>}
               </div>
             </div>
             {!n.archived && (
               <button className="btn" style={{ fontSize: 11, padding: '2px 9px' }}
                 onClick={e => { e.stopPropagation(); dispatch({ type: 'ARCHIVE_NOTICE', id: n.id }) }}>
-                Archive
+                {t('notification.action.archive')}
               </button>
             )}
           </div>
