@@ -45,3 +45,17 @@ Added four Reward fulfillment workflow strings to all 10 locales:
 - `activity.reward.executorsClearedFallback`
 
 All prior reviewed translation values were preserved. Canonical key count: **348**.
+
+## N3 integration update
+
+The pack is now wired into the app through the internal i18n runtime
+(`src/i18n/index.tsx`) — locale switching, direction preference, Intl
+formatting, en fallback, and the translation boundary are all live. N3 added
+**431 keys** to every locale for the previously hard-coded UI surfaces (all
+views, task drawer/modals, handoff wizard, create/edit flows, login, wallet,
+admin, notifications, overview). All prior reviewed translation values were
+preserved. Canonical key count: **779**.
+
+Guards: `src/i18n/parity.test.ts` (file-level key/placeholder parity, fails
+on break) and `src/n3.test.tsx` (40-case §28 matrix). Founder UAT:
+`e2e/n3.spec.ts` (5 checks). Day-to-day rules: see `workflow.md`.
