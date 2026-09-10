@@ -126,7 +126,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
 
       {step === 1 && (
         <Field label={tr('handoff.whyRequired')}>
-          <textarea value={reason} onChange={e => setReason(e.target.value)} autoFocus
+          <textarea dir="auto" value={reason} onChange={e => setReason(e.target.value)} autoFocus
             placeholder={tr('handoff.placeholder.why')} />
         </Field>
       )}
@@ -161,7 +161,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
           {(mode === 'SPECIFIC' || audience === 'PRIVATE') && (
             <div style={{ marginTop: 11 }}>
               {targets.length > 3 && (
-                <input type="search" value={pick} onChange={e => setPick(e.target.value)}
+                <input dir="auto" type="search" value={pick} onChange={e => setPick(e.target.value)}
                   placeholder={tr('handoff.searchPeople')} aria-label={tr('accessibility.searchNextOwner')}
                   style={{ width: '100%', marginBottom: 10 }} />
               )}
@@ -208,7 +208,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
           </Field>
           {overriding && (
             <Field label={tr('handoff.overrideReason')}>
-              <textarea value={overrideReason} onChange={e => setOverrideReason(e.target.value)} autoFocus
+              <textarea dir="auto" value={overrideReason} onChange={e => setOverrideReason(e.target.value)} autoFocus
                 placeholder={tr('handoff.placeholder.override')} />
             </Field>
           )}
@@ -234,7 +234,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
           <div className="srow" style={{ display: 'block' }}>
             <span style={{ display: 'block', color: 'var(--muted)', marginBottom: 5 }}>{tr('common.reason')}</span>
             <span dir="auto" data-testid="handoff-confirm-reason"
-              style={{ display: 'block', textAlign: 'left', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.55, color: 'var(--ink)' }}>{reason}</span>
+              style={{ display: 'block', textAlign: 'start', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.55, color: 'var(--ink)' }}>{reason}</span>
           </div>
           {files.length > 0 && (
             <div className="srow"><span>{tr('handoff.filesToBrief')}</span>
@@ -247,7 +247,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
             <div className="srow" style={{ display: 'block' }}>
               <span style={{ display: 'block', color: 'var(--muted)', marginBottom: 5 }}>{tr('handoff.overrideExplanation')}</span>
               <span dir="auto" data-testid="handoff-confirm-override"
-                style={{ display: 'block', textAlign: 'left', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.55, color: 'var(--ink)' }}>{overrideReason}</span>
+                style={{ display: 'block', textAlign: 'start', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.55, color: 'var(--ink)' }}>{overrideReason}</span>
             </div>
           )}
         </div>

@@ -154,6 +154,23 @@ async function switchTo(page: Page, name: RegExp) {
 const navBtn = (page: Page, label: string) => page.locator('.nav').locator('button', { hasText: label })
 const rewardsNav = (page: Page) => page.locator('.nav').getByRole('button', { name: /^. Rewards$/ })
 
+test('N3.1 server RTL Rewards retains authored content at 768px', async ({ page }) => {
+  const { getState } = await mockApi(page)
+  await uiLogin(page, 'marcus@aster.demo')
+  await rewardsNav(page).click()
+  const names = await page.locator('.rw-card .nm').allTextContents()
+  await page.getByTestId('locale-switcher').click()
+  await page.getByTestId('locale-fa').click()
+  await page.getByTestId('locale-switcher').click()
+  await page.setViewportSize({ width:768, height:1000 })
+  await expect(page.locator('html')).toHaveAttribute('dir','rtl')
+  expect(await page.locator('.rw-card .nm').allTextContents()).toEqual(names)
+  expect(getState().rewards.some(r => r.name === names[0])).toBe(true)
+  expect(await page.locator('.content').evaluate(e => e.scrollWidth <= e.clientWidth)).toBe(true)
+  expect(await page.locator('.rw-card .nm').first().evaluate(e => getComputedStyle(e).direction)).toBe('ltr')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
 test.beforeEach(async ({ page }) => {
   /* Fresh context per test: clear storage on FIRST boot only — a later
      page.reload() must keep the auth token so the session restores. */

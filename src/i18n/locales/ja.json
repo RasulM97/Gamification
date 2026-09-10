@@ -777,5 +777,7 @@
   "welcome.manager3Text": "使用を履行し、追加専用の元帳を監視し、管理画面でアップロードポリシーを設定しましょう。",
   "welcome.manager3Title": "経済の運営",
   "welcome.titleEmployee": "{{name}}さん、マイワーク経済へようこそ",
-  "welcome.titleManager": "{{name}}さん、運用デスクへようこそ"
+  "welcome.titleManager": "{{name}}さん、運用デスクへようこそ",
+  "admin.demoStorageNote": "デモデータはこのブラウザーに保存されます。リセットすると初期のデモデータに戻ります。",
+  "notification.category.assignments": "割り当て"
 }

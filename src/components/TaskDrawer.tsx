@@ -108,7 +108,7 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
       {t.instructions && (isOwner || t.assigneeId === me.id || isMgr) && (
         <div className="dsec">
           <span className="eyebrow">{tr('task.field.managementInstructions')}</span>
-          <div className="panel" style={{ padding: '11px 14px', marginTop: 8, fontSize: 12.5, borderLeft: '3px solid var(--accent, var(--pos))' }}>
+          <div className="panel" style={{ padding: '11px 14px', marginTop: 8, fontSize: 12.5, borderInlineStart: '3px solid var(--accent, var(--pos))' }}>
             <ClampedText text={t.instructions} lines={4} style={{ lineHeight: 1.55 }} />
           </div>
         </div>
@@ -119,7 +119,7 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
       {t.status === 'REJECTED' && t.rejectionReason && (
         <div className="dsec">
           <span className="eyebrow">{tr('task.field.rejectionReason')}</span>
-          <div className="panel" style={{ padding: '11px 14px', marginTop: 8, fontSize: 12.5, borderLeft: '3px solid var(--neg)' }}>
+          <div className="panel" style={{ padding: '11px 14px', marginTop: 8, fontSize: 12.5, borderInlineStart: '3px solid var(--neg)' }}>
             <ClampedText text={t.rejectionReason} lines={4} style={{ lineHeight: 1.55 }} />
           </div>
         </div>
@@ -290,7 +290,7 @@ function CyclesHistory({ task: t, taskActs }: { task: Task; taskActs: Act[] }) {
                 <span className="dim" style={{ fontSize: 11.5 }}>
                   {cycleOutcome(c.outcome)} · {tr('task.cycle.verifiedPct', { percent: fmtPct(c.verified) })} · <Coin n={c.paid} /> {tr('common.paid')}
                 </span>
-                <span className="faint" style={{ marginLeft: 'auto', fontSize: 12 }}>{expanded ? '▾' : '▸'}</span>
+                <span className="faint" style={{ marginInlineStart: 'auto', fontSize: 12 }}>{expanded ? '▾' : <span className="directional-icon">▸</span>}</span>
               </div>
               {expanded && <CycleBody task={t} cycle={c.cycle} acts={taskActs.filter(a => actCycle(a, t) === c.cycle)} />}
             </div>
@@ -389,7 +389,7 @@ function PeopleHistory({ task: t, cycle }: { task: Task; cycle?: number }) {
                 <b>{tr('task.submission')}</b>
                 <span className="dim">· {tr('task.reportedPct', { percent: fmtPct(r.reportedPct) })}</span>
                 <span className={'bd ' + cls}>{tr(labelKey)}</span>
-                <span className="when" style={{ marginLeft: 'auto' }}>{tr('task.whenCycle', { time: ago(r.at), cycle: r.cycle })}</span>
+                <span className="when" style={{ marginInlineStart: 'auto' }}>{tr('task.whenCycle', { time: ago(r.at), cycle: r.cycle })}</span>
               </div>
               {r.note && <div className="why"><ClampedText text={r.note} lines={3} /></div>}
               {r.attachments.length > 0 && (
@@ -412,7 +412,7 @@ function PeopleHistory({ task: t, cycle }: { task: Task; cycle?: number }) {
               <span className={'bd ' + (c.decision === 'APPROVED' ? 'st-done' : c.decision === 'CANCELLED' ? 'st-cancel' : 'bd-important')}>
                 {tr(c.decision === 'APPROVED' ? 'task.status.approved' : c.decision === 'CANCELLED' ? 'task.status.cancelled' : 'handoff.title')}
               </span>
-              <span className="when" style={{ marginLeft: 'auto' }}>{ago(c.at)} · cycle {c.cycle}</span>
+              <span className="when" style={{ marginInlineStart: 'auto' }}>{tr('task.whenCycle', { time: ago(c.at), cycle: c.cycle })}</span>
             </div>
             <div className="why"><LinkText text={c.reason} /></div>
           </div>

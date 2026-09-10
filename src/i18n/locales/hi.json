@@ -777,5 +777,7 @@
   "welcome.manager3Text": "रिडेम्प्शन डिलीवर करें, केवल-जोड़ने वाला लेज़र देखें, और एडमिन में अपलोड नीति सेट करें।",
   "welcome.manager3Title": "अर्थव्यवस्था चलाएँ",
   "welcome.titleEmployee": "आपकी कार्य-अर्थव्यवस्था में स्वागत है, {{name}}",
-  "welcome.titleManager": "परिचालन डेक में स्वागत है, {{name}}"
+  "welcome.titleManager": "परिचालन डेक में स्वागत है, {{name}}",
+  "admin.demoStorageNote": "डेमो डेटा इस ब्राउज़र में सहेजा जाता है। रीसेट करने से मूल डेमो डेटा वापस आ जाता है।",
+  "notification.category.assignments": "असाइनमेंट"
 }

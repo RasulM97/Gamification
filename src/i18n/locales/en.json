@@ -777,5 +777,7 @@
   "welcome.manager3Text": "Fulfill redemptions, watch the append-only ledger, and set the upload policy in Admin.",
   "welcome.manager3Title": "Run the economy",
   "welcome.titleEmployee": "Welcome to your work economy, {{name}}",
-  "welcome.titleManager": "Welcome to the operations deck, {{name}}"
+  "welcome.titleManager": "Welcome to the operations deck, {{name}}",
+  "admin.demoStorageNote": "Demo data is saved in this browser. Reset restores the original demo data.",
+  "notification.category.assignments": "Assignments"
 }

@@ -12,13 +12,13 @@ export default defineConfig({
   use: { headless: true },
   webServer: [
     {
-      command: 'npm run dev -- --port 4173 --strictPort',
-      port: 4173,
+      command: 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173 --strictPort',
+      url: 'http://127.0.0.1:4173',
       timeout: 60_000,
     },
     {
-      command: 'npm run dev:server -- --port 4321 --strictPort',
-      port: 4321,
+      command: 'node node_modules/vite/bin/vite.js --mode server --host 127.0.0.1 --port 4321 --strictPort',
+      url: 'http://127.0.0.1:4321',
       timeout: 60_000,
     },
   ],
@@ -26,12 +26,12 @@ export default defineConfig({
     {
       name: 'demo',
       testIgnore: '**/*-server.spec.ts',
-      use: { baseURL: 'http://localhost:4173' },
+      use: { baseURL: 'http://127.0.0.1:4173' },
     },
     {
       name: 'server-dev',
       testMatch: '**/*-server.spec.ts',
-      use: { baseURL: 'http://localhost:4321' },
+      use: { baseURL: 'http://127.0.0.1:4321' },
     },
   ],
 })

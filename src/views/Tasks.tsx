@@ -70,7 +70,7 @@ export function TasksView({ scope, onOpen, onCreate }: {
       title={scope === 'mine' ? t('nav.myWork') : scope === 'available' ? t('nav.availableWork') : t('common.tasks')}
       right={
         <div className="toolbar">
-          <input type="search" value={q} onChange={e => setQ(e.target.value)}
+          <input dir="auto" type="search" value={q} onChange={e => setQ(e.target.value)}
             placeholder={t('search.tasks')} style={{ width: 170 }} aria-label={t('accessibility.searchTasks')} />
           <Seg options={opts} value={statusF} onChange={setStatusF} />
           <select value={sort} onChange={e => setSort(e.target.value)} aria-label={t('accessibility.sortTasks')}>

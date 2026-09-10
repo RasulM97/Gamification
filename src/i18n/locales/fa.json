@@ -777,5 +777,7 @@
   "welcome.manager3Text": "درخواست‌ها را تحویل دهید، دفتر فقط‌افزایشی را زیر نظر بگیرید و سیاست بارگذاری را در «مدیریت» تنظیم کنید.",
   "welcome.manager3Title": "اقتصاد را اداره کنید",
   "welcome.titleEmployee": "به اقتصاد کاری خود خوش آمدید، {{name}}",
-  "welcome.titleManager": "به میز عملیات خوش آمدید، {{name}}"
+  "welcome.titleManager": "به میز عملیات خوش آمدید، {{name}}",
+  "admin.demoStorageNote": "داده‌های نمایشی در این مرورگر ذخیره می‌شوند. بازنشانی، داده‌های نمایشی اولیه را بازیابی می‌کند.",
+  "notification.category.assignments": "تخصیص‌ها"
 }

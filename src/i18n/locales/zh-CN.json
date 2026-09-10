@@ -777,5 +777,7 @@
   "welcome.manager3Text": "交付兑换、关注仅追加账本，并在\"管理\"中设置上传策略。",
   "welcome.manager3Title": "运营经济",
   "welcome.titleEmployee": "欢迎来到你的工作经济体系，{{name}}",
-  "welcome.titleManager": "欢迎来到运营驾驶舱，{{name}}"
+  "welcome.titleManager": "欢迎来到运营驾驶舱，{{name}}",
+  "admin.demoStorageNote": "演示数据保存在此浏览器中。重置将恢复原始演示数据。",
+  "notification.category.assignments": "任务分配"
 }

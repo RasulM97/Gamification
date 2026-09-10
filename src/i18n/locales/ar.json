@@ -777,5 +777,7 @@
   "welcome.manager3Text": "سلّم الاستبدالات، وراقب الدفتر الإلحاقي، واضبط سياسة الرفع في «الإدارة».",
   "welcome.manager3Title": "أدِر الاقتصاد",
   "welcome.titleEmployee": "مرحبًا بك في اقتصاد عملك، {{name}}",
-  "welcome.titleManager": "مرحبًا بك في منصة العمليات، {{name}}"
+  "welcome.titleManager": "مرحبًا بك في منصة العمليات، {{name}}",
+  "admin.demoStorageNote": "تُحفظ البيانات التجريبية في هذا المتصفح. تؤدي إعادة الضبط إلى استعادة البيانات التجريبية الأصلية.",
+  "notification.category.assignments": "التكليفات"
 }

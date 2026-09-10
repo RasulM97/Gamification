@@ -49,7 +49,7 @@ export function SubmitModal({ open, onClose, task }: { open: boolean; onClose: (
   return (
     <Modal open={open} onClose={onClose} title={<>{tr('task.action.submit')}<small dir="auto">{task.title}</small></>}>
       <Field label={tr('task.field.submissionNote')}>
-        <textarea value={note} onChange={e => setNote(e.target.value)}
+        <textarea dir="auto" value={note} onChange={e => setNote(e.target.value)}
           placeholder={tr('task.placeholder.submissionNote')} />
       </Field>
       {/* Employee-reported completion: defaults to 100%, informational only —
@@ -100,7 +100,7 @@ export function RejectModal({ open, onClose, task }: { open: boolean; onClose: (
   return (
     <Modal open={open} onClose={onClose} title={<>{tr('task.rejectTitle')}<small dir="auto">{tr('task.rejectSub', { title: task.title })}</small></>}>
       <Field label={tr('task.rejectReasonRequired')}>
-        <textarea value={reason} onChange={e => setReason(e.target.value)}
+        <textarea dir="auto" value={reason} onChange={e => setReason(e.target.value)}
           placeholder={tr('task.placeholder.rejectLooksLike')} autoFocus />
       </Field>
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
@@ -122,7 +122,7 @@ export function DeclineModal({ open, onClose, task }: { open: boolean; onClose: 
   return (
     <Modal open={open} onClose={onClose} title={<>{tr('task.action.decline')}<small dir="auto">{tr('task.declineSub', { title: task.title })}</small></>}>
       <Field label={tr('common.reasonRequired')}>
-        <textarea value={reason} onChange={e => setReason(e.target.value)}
+        <textarea dir="auto" value={reason} onChange={e => setReason(e.target.value)}
           placeholder={tr('task.placeholder.declineReason')} autoFocus />
       </Field>
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
@@ -161,7 +161,7 @@ export function CancelModal({ open, onClose, task }: { open: boolean; onClose: (
         </Field>
       )}
       <Field label={tr('common.reasonRequired')}>
-        <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder={tr('task.placeholder.cancelReason')} autoFocus />
+        <textarea dir="auto" value={reason} onChange={e => setReason(e.target.value)} placeholder={tr('task.placeholder.cancelReason')} autoFocus />
       </Field>
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
         <button className="btn" onClick={onClose}>{tr('common.back')}</button>
@@ -190,7 +190,7 @@ export function ReturnModal({ open, onClose, task }: { open: boolean; onClose: (
         {tr('task.returnPenaltyCap')}
       </div>
       <Field label={tr('common.reasonRequired')}>
-        <textarea value={reason} onChange={e => setReason(e.target.value)}
+        <textarea dir="auto" value={reason} onChange={e => setReason(e.target.value)}
           placeholder={tr('task.placeholder.returnReason')} autoFocus />
       </Field>
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
@@ -231,7 +231,7 @@ function BriefChoice({ task, update, setUpdate, desc, setDesc, files, setFiles }
       {update && (
         <>
           <Field label={tr('common.description')}>
-            <textarea value={desc} onChange={e => setDesc(e.target.value)} style={{ minHeight: 88 }} />
+            <textarea dir="auto" value={desc} onChange={e => setDesc(e.target.value)} style={{ minHeight: 88 }} />
           </Field>
           <AttachField files={files} onChange={setFiles} settings={state.settings}
             label={tr('task.addFilesBrief')} />
@@ -330,7 +330,7 @@ export function ReactivateModal({ open, onClose, task }: { open: boolean; onClos
         {tr('task.reactivateExplainer')}
       </div>
       <Field label={tr('common.reasonRequired')}>
-        <textarea value={reason} onChange={e => setReason(e.target.value)}
+        <textarea dir="auto" value={reason} onChange={e => setReason(e.target.value)}
           placeholder={tr('task.placeholder.reactivateReason')} autoFocus />
       </Field>
       <NewCycleRouting task={task} audience={audience} setAudience={setAudience}
@@ -369,10 +369,10 @@ export function EditTaskModal({ open, onClose, task }: { open: boolean; onClose:
   return (
     <Modal open={open} onClose={onClose} title={<>{tr('task.editTitle')}<small dir="auto">{tr('task.editSub', { title: task.title })}</small></>}>
       <Field label={tr('common.title')}>
-        <input value={title} onChange={e => setTitle(e.target.value)} />
+        <input dir="auto" type="text" value={title} onChange={e => setTitle(e.target.value)} />
       </Field>
       <Field label={tr('common.description')}>
-        <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} />
+        <textarea dir="auto" value={description} onChange={e => setDescription(e.target.value)} rows={4} />
       </Field>
       <Field label={tr('common.priority')}>
         <select value={priority} onChange={e => setPriority(e.target.value as typeof priority)}>

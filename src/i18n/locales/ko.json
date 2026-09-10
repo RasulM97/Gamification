@@ -777,5 +777,7 @@
   "welcome.manager3Text": "사용을 전달하고, 추가 전용 원장을 지켜보고, 관리자에서 업로드 정책을 설정하세요.",
   "welcome.manager3Title": "경제 운영",
   "welcome.titleEmployee": "{{name}}님, 나의 업무 경제에 오신 것을 환영합니다",
-  "welcome.titleManager": "{{name}}님, 운영 데크에 오신 것을 환영합니다"
+  "welcome.titleManager": "{{name}}님, 운영 데크에 오신 것을 환영합니다",
+  "admin.demoStorageNote": "데모 데이터는 이 브라우저에 저장됩니다. 초기화하면 원래 데모 데이터로 복원됩니다.",
+  "notification.category.assignments": "배정"
 }

@@ -153,9 +153,7 @@ export function AdminView() {
 
       <Panel title={t('admin.demoControls')}>
         <p className="dim" style={{ fontSize: 12.5, marginBottom: 12 }}>
-          This build runs fully in the browser: the domain engine (lifecycle, ledger, payouts) executes
-          client-side against demo data persisted in localStorage. The production architecture is
-          FastAPI + PostgreSQL with the backend authoritative — see the project handoff.
+          {t('admin.demoStorageNote')}
         </p>
         <button className="btn" onClick={() => {
           if (confirm(t('admin.resetConfirm'))) reset()
@@ -171,11 +169,11 @@ export function AdminView() {
             <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder={t('admin.amountPlaceholder')} autoFocus />
           </Field>
           <Field label={t('wallet.currentBalance')}>
-            <input type="text" disabled value={coins(balanceOf(state, adjustFor ?? ''))} />
+            <input dir="auto" type="text" disabled value={coins(balanceOf(state, adjustFor ?? ''))} />
           </Field>
         </div>
         <Field label={t('admin.reasonRequired')}>
-          <textarea value={reason} onChange={e => setReason(e.target.value)}
+          <textarea dir="auto" value={reason} onChange={e => setReason(e.target.value)}
             placeholder={t('admin.reasonPlaceholder')} />
         </Field>
         <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>

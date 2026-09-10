@@ -202,7 +202,7 @@ export const Avatar = ({ name, size = 26 }: { name: string; size?: number }) => 
 }
 
 export const Coin = ({ n, sign = false }: { n: number; sign?: boolean }) => (
-  <span className={'coin num' + (sign ? (n >= 0 ? ' pos' : ' neg') : '')}>
+  <span dir="ltr" className={'coin num' + (sign ? (n >= 0 ? ' pos' : ' neg') : '')}>
     ◈ {sign && n > 0 ? '+' : ''}{coins(n)}
   </span>
 )
@@ -324,7 +324,7 @@ export const Progress = ({ verified, reported }: { verified: number; reported?: 
     : tActive('task.progress.verified', { verified })}>
     <div className="pfill" style={{ width: verified + '%' }} />
     {reported != null && reported > verified && (
-      <div className="pghost" style={{ left: verified + '%', width: (reported - verified) + '%' }} />
+      <div className="pghost" style={{ insetInlineStart: verified + '%', width: (reported - verified) + '%' }} />
     )}
     <span className="pval num">{fmtPct(verified)}</span>
   </div>

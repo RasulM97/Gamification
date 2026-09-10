@@ -214,7 +214,7 @@ thead th {
   top: 0;
   z-index: 2;
   background: var(--panel);
-  text-align: left;
+  text-align:start;
   font-size: 10.5px;
   font-weight: 500;
   letter-spacing: .07em;
@@ -227,13 +227,13 @@ thead th {
 }
 thead th.sortable { cursor: pointer }
 thead th.sortable:hover { color: var(--ink) }
-thead th .caret { opacity: 0; margin-left: 4px; transition: opacity var(--fast) }
+thead th .caret { opacity: 0; margin-inline-start: 4px; transition: opacity var(--fast) }
 thead th[data-dir] .caret { opacity: 1; color: var(--accent) }
 tbody td { padding: 9px var(--pad); border-bottom: 1px solid var(--line-soft) }
 tbody tr { transition: background var(--fast) }
 tbody tr:hover { background: var(--raised) }
 tbody tr:last-child td { border-bottom: 0 }
-td.n, th.n { text-align: right }
+td.n, th.n { text-align:end }
 
 /* ── motion ──────────────────────────────────────────────────────────────── */
 /* Entrance is opacity plus a 6px rise — enough to register as arrival, small
@@ -290,7 +290,7 @@ td.n, th.n { text-align: right }
 .kit-theme svg{ width: 15px; height: 15px }
 /* The floating variant is for pages whose header has nowhere to put it. */
 .kit-theme-float{
-  position: fixed; right: 16px; bottom: 16px; z-index: 9998;
+  position: fixed; inset-inline-end: 16px; bottom: 16px; z-index: 9998;
   width: 34px; height: 34px;
   background: var(--panel);
   border-color: var(--line);

@@ -777,5 +777,7 @@
   "welcome.manager3Text": "Kullanımları teslim edin, yalnızca ekleme defterini izleyin ve Yönetici'de yükleme politikasını ayarlayın.",
   "welcome.manager3Title": "Ekonomiyi yönetin",
   "welcome.titleEmployee": "İş ekonominize hoş geldiniz, {{name}}",
-  "welcome.titleManager": "Operasyon paneline hoş geldiniz, {{name}}"
+  "welcome.titleManager": "Operasyon paneline hoş geldiniz, {{name}}",
+  "admin.demoStorageNote": "Demo verileri bu tarayıcıda saklanır. Sıfırlama, başlangıçtaki demo verilerini geri yükler.",
+  "notification.category.assignments": "Atamalar"
 }

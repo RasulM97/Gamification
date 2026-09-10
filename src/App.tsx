@@ -221,7 +221,7 @@ function Shell() {
           <button className="side-collapse" onClick={toggleCollapsed}
             title={collapsed ? t('accessibility.expandSidebar') : t('accessibility.collapseSidebar')}
             aria-label={collapsed ? t('accessibility.expandSidebar') : t('accessibility.collapseSidebar')}>
-            {collapsed ? '»' : '«'}
+            <span className="directional-icon">{collapsed ? '»' : '«'}</span>
           </button>
           <div style={{ position: 'relative' }} ref={whoRef}>
             <button className="who" onClick={() => setWhoOpen(o => !o)}>
@@ -331,7 +331,7 @@ function Shell() {
 
         <div className="content">
           {persistError && (
-            <div className="panel" style={{ padding: '9px 14px', marginBottom: 12, fontSize: 12.5, borderLeft: '3px solid var(--neg)', color: 'var(--neg)' }}>
+            <div className="panel" style={{ padding: '9px 14px', marginBottom: 12, fontSize: 12.5, borderInlineStart: '3px solid var(--neg)', color: 'var(--neg)' }}>
               ⚠ {persistError}
             </div>
           )}

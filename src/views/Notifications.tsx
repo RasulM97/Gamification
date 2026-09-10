@@ -1,9 +1,15 @@
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { MUTABLE_LEVELS, isMuted, sortNotices, visibleNotices } from '../domain/engine'
-import type { NotifLevel } from '../domain/engine'
+import type { NotifCategory, NotifLevel } from '../domain/engine'
 import { Empty, NotifBadge, Panel, Seg, ago, noticeTab, rowProps } from '../ui'
 import { useI18n } from '../i18n'
+
+// Canonical categories are system metadata, unlike the stored notice prose.
+const CATEGORY_KEY: Record<NotifCategory, string> = {
+  Tasks:'common.tasks', Reviews:'common.reviews', Assignments:'notification.category.assignments',
+  Rewards:'common.rewards', Economy:'common.economy',
+}
 
 /* Notification Center (N1-B): exactly two product tabs — TASKS and REWARDS —
    each with its own unread count, derived client-side from the existing
@@ -54,7 +60,7 @@ export function NotificationsView({ onOpenTask, onOpenRedemption }: {
       <Panel pad={false} title={t('common.notifications')}
         right={
           <div className="toolbar">
-            <input type="search" value={q} onChange={e => setQ(e.target.value)}
+            <input dir="auto" type="search" value={q} onChange={e => setQ(e.target.value)}
               placeholder={t('notification.search')} aria-label={t('accessibility.searchNotifications')}
               style={{ maxWidth: 190, padding: '6px 10px', fontSize: 12.5 }} />
             <Seg options={tabs} value={tab} onChange={setTab} />
@@ -89,13 +95,12 @@ export function NotificationsView({ onOpenTask, onOpenRedemption }: {
               else if (n.taskId) onOpenTask(n.taskId)
             })}>
             {!n.read ? <span className="un" /> : <span style={{ width: 7, flex: 'none' }} />}
-            {/* stored notice text + category are immutable history — verbatim,
-                bidi-safe (N3 §10 debt: structured events not yet stored) */}
+            {/* Stored notice prose remains verbatim; typed category metadata localizes at display time. */}
             <div className="tx">
               <span dir="auto">{n.text}</span>
               <div className="meta">
                 <NotifBadge l={n.level} />
-                <span dir="auto">{n.category}</span><span>·</span><span>{ago(n.at)}</span>
+                <span>{CATEGORY_KEY[n.category] ? t(CATEGORY_KEY[n.category]) : n.category}</span><span>·</span><span>{ago(n.at)}</span>
                 {ownerName && <><span>·</span><span className="bd bd-normal">{t('notification.owner', { name: ownerName })}</span></>}
                 {rdName && <><span>·</span><span className="bd bd-normal" dir="auto">{rdName}</span></>}
                 {isMuted(state, me.id, n.level) && <span className="bd bd-none">{t('common.muted')}</span>}

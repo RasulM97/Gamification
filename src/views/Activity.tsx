@@ -58,7 +58,7 @@ export function ActivityView({ onOpenTask }: { onOpenTask: (id: string) => void 
               {a.reason && <div className="rs" dir="auto">“{localizedHist(a.reason)}”</div>}
             </div>
             {a.econ && <span className="num" style={{ fontSize: 11.5, color: 'var(--warn)', whiteSpace: 'nowrap' }}>{a.econ}</span>}
-            {a.cycle != null && <span className="faint" style={{ fontSize: 11 }}>c{a.cycle}</span>}
+            {a.cycle != null && <span className="faint" style={{ fontSize: 11 }}>{t('task.row.cycle', { n: a.cycle })}</span>}
             <span className="at">{ago(a.at)}</span>
           </div>
           )

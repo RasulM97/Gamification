@@ -256,7 +256,7 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
               <Avatar name={user(a.actorId)?.name ?? '?'} size={20} />
               <div className="aa">
                 <span dir="auto">{user(a.actorId)?.name} {a.action} </span><span className="obj" dir="auto">{a.object}</span>
-                {a.econ && <span className="num warn" style={{ fontSize: 11, marginLeft: 6 }}>{a.econ}</span>}
+                {a.econ && <span className="num warn" style={{ fontSize: 11, marginInlineStart: 6 }}>{a.econ}</span>}
               </div>
               <span className="at">{ago(a.at)}</span>
             </div>

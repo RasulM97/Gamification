@@ -777,5 +777,7 @@
   "welcome.manager3Text": "ספקו מימושים, עקבו אחר פנקס ההוספה בלבד, והגדירו את מדיניות ההעלאה ב«ניהול».",
   "welcome.manager3Title": "הפעילו את הכלכלה",
   "welcome.titleEmployee": "ברוכים הבאים לכלכלת העבודה שלך, {{name}}",
-  "welcome.titleManager": "ברוכים הבאים לדשבורד התפעולי, {{name}}"
+  "welcome.titleManager": "ברוכים הבאים לדשבורד התפעולי, {{name}}",
+  "admin.demoStorageNote": "נתוני ההדגמה נשמרים בדפדפן זה. איפוס משחזר את נתוני ההדגמה המקוריים.",
+  "notification.category.assignments": "הקצאות"
 }

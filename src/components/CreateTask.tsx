@@ -90,11 +90,11 @@ export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () 
       <div className="form-sec">
         <span className="eyebrow">{tr('task.field.whatNeedsDone')}</span>
         <Field label={tr('common.title')}>
-          <input type="text" value={title} onChange={e => setTitle(e.target.value)}
+          <input dir="auto" type="text" value={title} onChange={e => setTitle(e.target.value)}
             placeholder={tr('task.placeholder.title')} autoFocus />
         </Field>
         <Field label={tr('common.description')} hint={tr('task.help.descriptionHint')}>
-          <textarea value={desc} onChange={e => setDesc(e.target.value)} style={{ minHeight: 96 }}
+          <textarea dir="auto" value={desc} onChange={e => setDesc(e.target.value)} style={{ minHeight: 96 }}
             placeholder={tr('task.placeholder.description')} />
         </Field>
         {/* Brief files: specs, templates, source data — attached at creation,
