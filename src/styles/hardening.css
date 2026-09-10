@@ -8,6 +8,27 @@ html[lang="ja"] { --sans:"Noto Sans JP Variable","Hiragino Kaku Gothic ProN","Yu
 html[lang="ko"] { --sans:"Noto Sans KR Variable","Apple SD Gothic Neo","Malgun Gothic",sans-serif }
 html:is([lang="fa"],[lang="ar"],[lang="he"],[lang="hi"]) :is(h1,h2,h3,.drawer-title,.who .nm,.trow .tt,.bd,.nitem .tx) { line-height:1.6;letter-spacing:normal }
 .chip { font-family:var(--sans) }
+/* N3.3: controls inherit UI direction while empty (see their dir props).
+   Populated authored fields use native dir=auto and logical text alignment. */
+input,textarea,select { text-align:start }
+:is(input,textarea)::placeholder { text-align:start }
+.field { text-align:start }
+.ulink { direction:ltr;unicode-bidi:isolate }
+
+/* A filename can shrink; metadata and actions must remain visible. Both
+   image/video uploads use these same cards; file bytes/native viewers are
+   deliberately unaffected. */
+.attachment-list { display:flex;gap:6px;flex-wrap:wrap;min-inline-size:0;max-inline-size:100% }
+.chip.attachment-card { display:inline-flex;align-items:center;gap:4px;max-inline-size:100%;min-inline-size:0;text-align:start }
+.attachment-name { min-inline-size:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;unicode-bidi:isolate }
+.attachment-meta,.attachment-action { flex:none;white-space:nowrap;unicode-bidi:isolate }
+.attachment-meta { direction:ltr }
+.attachment-card> :first-child { flex:none }
+.dropzone>* { min-inline-size:0;max-inline-size:100% }
+.drawer-head { gap:12px }
+.drawer-title { min-inline-size:0;overflow-wrap:anywhere }
+.drawer-head>.btn { flex:none }
+.range-row>input { min-inline-size:0 }
 .num,.mono,.coin,.at,time { unicode-bidi:isolate }
 [dir="auto"] { overflow-wrap:anywhere }
 .toolbar>*,.filterbar>*,.panel-head>*,.topbar>*,.rw-card,.field,.kv dd { min-width:0 }

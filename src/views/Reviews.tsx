@@ -180,7 +180,7 @@ function ReviewDrawer({ task: t, onClose }: { task: Task | null; onClose: () => 
             <div className="srow"><span>{tr('review.handoffPartial', { percent: remainingPct })}</span><span className="dim">{tr('review.handoffPartialHint')}</span></div>
           </div>
           <Field label={tr('review.rejectReasonLabel')}>
-            <textarea dir="auto" value={reason} onChange={e => setReason(e.target.value)}
+            <textarea dir={reason ? 'auto' : undefined} value={reason} onChange={e => setReason(e.target.value)}
               placeholder={tr('review.placeholder.rejectReason')} />
           </Field>
           <div className="actions">

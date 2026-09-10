@@ -173,7 +173,7 @@ export function AdminView() {
           </Field>
         </div>
         <Field label={t('admin.reasonRequired')}>
-          <textarea dir="auto" value={reason} onChange={e => setReason(e.target.value)}
+          <textarea dir={reason ? 'auto' : undefined} value={reason} onChange={e => setReason(e.target.value)}
             placeholder={t('admin.reasonPlaceholder')} />
         </Field>
         <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>

@@ -60,7 +60,7 @@ export function NotificationsView({ onOpenTask, onOpenRedemption }: {
       <Panel pad={false} title={t('common.notifications')}
         right={
           <div className="toolbar">
-            <input dir="auto" type="search" value={q} onChange={e => setQ(e.target.value)}
+            <input dir={q ? 'auto' : undefined} type="search" value={q} onChange={e => setQ(e.target.value)}
               placeholder={t('notification.search')} aria-label={t('accessibility.searchNotifications')}
               style={{ maxWidth: 190, padding: '6px 10px', fontSize: 12.5 }} />
             <Seg options={tabs} value={tab} onChange={setTab} />

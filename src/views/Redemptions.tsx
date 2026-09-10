@@ -196,7 +196,7 @@ export function RedemptionsView() {
         {decision === 'cancel' && (
           <>
             <Field label={t('redemption.cancelReason')}>
-              <textarea dir="auto" value={reason} onChange={e => setReason(e.target.value)}
+              <textarea dir={reason ? 'auto' : undefined} value={reason} onChange={e => setReason(e.target.value)}
                 placeholder={t('redemption.placeholder.cancelReason')} autoFocus />
             </Field>
             <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
@@ -244,10 +244,10 @@ function FulfillModal({ redemption, rewardName, redeemerName, onClose }: {
             <div className="srow"><span>{t('reward.redemption.cost')}</span><Coin n={redemption.cost} /></div>
           </div>
           <Field label={t('redemption.field.reference')} hint={t('redemption.field.referenceHint')}>
-            <input dir="auto" type="text" value={reference} onChange={e => setReference(e.target.value)} aria-label={t('accessibility.fulfillmentReference')} />
+            <input dir={reference ? 'auto' : undefined} type="text" value={reference} onChange={e => setReference(e.target.value)} aria-label={t('accessibility.fulfillmentReference')} />
           </Field>
           <Field label={t('redemption.field.note')} hint={t('redemption.field.noteHint')}>
-            <textarea dir="auto" value={note} onChange={e => setNote(e.target.value)} aria-label={t('accessibility.fulfillmentNote')} />
+            <textarea dir={note ? 'auto' : undefined} value={note} onChange={e => setNote(e.target.value)} aria-label={t('accessibility.fulfillmentNote')} />
           </Field>
           <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
             <button className="btn" onClick={onClose}>{t('common.back')}</button>

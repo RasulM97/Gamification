@@ -97,7 +97,7 @@ export function RewardsView() {
       </div>
 
       <div className="toolbar" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-        <input dir="auto" type="search" value={q} onChange={e => setQ(e.target.value)}
+        <input dir={q ? 'auto' : undefined} type="search" value={q} onChange={e => setQ(e.target.value)}
           placeholder={t('reward.filter.searchPlaceholder')} aria-label={t('accessibility.searchRewards')} style={{ width: 190 }} />
         {cats.length > 1 && (
           <select value={catF} onChange={e => setCatF(e.target.value)} aria-label={t('accessibility.filterCategory')}>
@@ -238,7 +238,7 @@ function CategoryManagerModal({ open, onClose }: { open: boolean; onClose: () =>
         const draft = renaming[c.id] ?? c.name
         return (
           <div key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-            <input dir="auto" type="text" value={draft} aria-label={t('reward.category.ariaPrefix', { name: c.name })}
+            <input dir={draft ? 'auto' : undefined} type="text" value={draft} aria-label={t('reward.category.ariaPrefix', { name: c.name })}
               onChange={e => setRenaming({ ...renaming, [c.id]: e.target.value })} />
             <button className="btn" disabled={!draft.trim() || draft.trim() === c.name}
               onClick={() => {
@@ -253,7 +253,7 @@ function CategoryManagerModal({ open, onClose }: { open: boolean; onClose: () =>
         )
       })}
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        <input dir="auto" type="text" value={newName} placeholder={t('reward.category.newName')} aria-label={t('reward.category.newName')}
+        <input dir={newName ? 'auto' : undefined} type="text" value={newName} placeholder={t('reward.category.newName')} aria-label={t('reward.category.newName')}
           onChange={e => setNewName(e.target.value)} />
         <button className="btn primary" disabled={!newName.trim()} onClick={() => {
           dispatch({ type: 'SAVE_REWARD_CATEGORY', by: me.id, category: { id: '', name: newName.trim(), active: true } })
@@ -316,8 +316,8 @@ function RewardEditModal({ open, reward, onClose }: { open: boolean; reward: Rew
   return (
     <Modal open={open} onClose={onClose} title={reward ? t('reward.title.manage') : t('reward.title.new')}>
       <div className="faint" style={{ fontSize: 11, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>{t('reward.section.basic')}</div>
-      <Field label={t('reward.field.name')}><input dir="auto" type="text" value={name} onChange={e => setName(e.target.value)} /></Field>
-      <Field label={t('common.description')}><textarea dir="auto" value={desc} onChange={e => setDesc(e.target.value)} /></Field>
+      <Field label={t('reward.field.name')}><input dir={name ? 'auto' : undefined} type="text" value={name} onChange={e => setName(e.target.value)} /></Field>
+      <Field label={t('common.description')}><textarea dir={desc ? 'auto' : undefined} value={desc} onChange={e => setDesc(e.target.value)} /></Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
         <Field label={t('reward.field.cost')}><input type="number" min={1} value={cost} onChange={e => setCost(e.target.value)} /></Field>
         <Field label={t('reward.field.stock')}><input type="number" min={0} value={stock} onChange={e => setStock(e.target.value)} placeholder="∞" /></Field>

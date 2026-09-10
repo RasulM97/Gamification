@@ -37,7 +37,7 @@ export function LoginScreen() {
         </p>
         <form onSubmit={e => { e.preventDefault(); if (!busy && email && password) doLogin(email, password) }}>
           <Field label={tr('auth.email')}>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+            <input type="email" dir={email ? 'ltr' : undefined} value={email} onChange={e => setEmail(e.target.value)}
               placeholder={tr('auth.emailPlaceholder')} autoFocus autoComplete="username" />
           </Field>
           <Field label={tr('auth.password')}>

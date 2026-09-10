@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
 import type { Attachment, Notice, Priority, TaskStatus, NotifLevel, LedgerType } from './domain/engine'
 import { validateAttachments } from './domain/engine'
@@ -178,14 +178,29 @@ export function openAttachment(f: Attachment) {
 }
 
 export const AttachmentChips = ({ files }: { files: Attachment[] }) => (
-  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+  <div className="attachment-list">
     {files.map(f => (
-      <button key={f.name} className="chip att-open"
+      <button key={f.name} className="chip att-open attachment-card"
         title={IS_DEMO
           ? tActive('file.titleDemo', { fileName: f.name })
           : tActive('file.titleOpen', { fileName: f.name })}
         onClick={e => { e.stopPropagation(); openAttachment(f) }}>
-        📎 <span dir="auto">{f.name}</span>{f.size > 0 ? ` · ${(f.size / 1048576).toFixed(1)} MB` : ''}{IS_DEMO ? ` · ${tActive('file.demoMarker')}` : ' ↗'}
+        <span aria-hidden="true">📎</span> <span className="attachment-name" dir="auto">{f.name}</span>
+        {f.size > 0 && <span className="attachment-meta">{` · ${(f.size / 1048576).toFixed(1)} MB`}</span>}
+        <span className="attachment-action">{IS_DEMO ? ` · ${tActive('file.demoMarker')}` : ' ↗'}</span>
+      </button>
+    ))}
+  </div>
+)
+
+export const AttachmentQueue = ({ files, onRemove }: { files: Attachment[]; onRemove: (index: number) => void }) => (
+  <div className="attachment-list">
+    {files.map((f, i) => (
+      <button key={i} type="button" className="chip attachment-card" onClick={() => onRemove(i)}
+        title={`${tActive('file.clickRemove')} — ${f.name}`}>
+        <span aria-hidden="true">📎</span> <span className="attachment-name" dir="auto">{f.name}</span>
+        {f.size > 0 && <span className="attachment-meta">{` · ${(f.size / 1048576).toFixed(1)} MB`}</span>}
+        <span className="attachment-action" aria-hidden="true">✕</span>
       </button>
     ))}
   </div>
@@ -358,15 +373,30 @@ export const Seg = ({ options, value, onChange }: {
   options: { v: string; label: ReactNode }[]; value: string; onChange: (v: string) => void
 }) => {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
-  const [pill, setPill] = useState({ x: 0, w: 0 })
+  const container = useRef<HTMLDivElement>(null)
+  const [pill, setPill] = useState({ x: 0, y: 0, w: 0, h: 0 })
   const idx = options.findIndex(o => o.v === value)
-  useEffect(() => {
-    const el = refs.current[idx]
-    if (el) setPill({ x: el.offsetLeft, w: el.offsetWidth })
-  }, [idx, options.length])
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = refs.current[idx]
+      if (el) {
+        const next = { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight }
+        setPill(prev => Object.keys(next).every(k => prev[k as keyof typeof next] === next[k as keyof typeof next]) ? prev : next)
+      }
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const resize = new ResizeObserver(measure)
+    if (container.current) resize.observe(container.current)
+    refs.current.forEach(el => { if (el) resize.observe(el) })
+    const direction = new MutationObserver(measure)
+    direction.observe(document.documentElement, { attributes:true, attributeFilter:['dir', 'lang'] })
+    return () => { resize.disconnect(); direction.disconnect() }
+  }, [idx, options])
   return (
-    <div className="seg">
-      <span className="pill" style={{ transform: `translateX(${pill.x}px)`, width: pill.w }} />
+    <div className="seg" ref={container}>
+      {/* offsetLeft is a physical measurement, so its anchor stays physical. */}
+      <span className="pill" aria-hidden="true" style={{ left:0, top:0, bottom:'auto', padding:0, transform: `translate(${pill.x}px, ${pill.y}px)`, width: pill.w, height:pill.h }} />
       {options.map((o, i) => (
         <button key={o.v} ref={el => { refs.current[i] = el }}
           className={o.v === value ? 'on' : ''} onClick={() => onChange(o.v)}>{o.label}</button>
@@ -450,7 +480,6 @@ export function AttachField({ files, onChange, settings, label, hint }: {
   const [dragOver, setDragOver] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
-  const mb = (n: number) => (n / 1048576).toFixed(1)
   const addFiles = (list: FileList | null) => {
     if (!list) return
     /* Server mode keeps the real File object — the store's dispatch shim
@@ -480,11 +509,8 @@ export function AttachField({ files, onChange, settings, label, hint }: {
           design in N3 — see docs/localization); file names stay verbatim */}
       {errors.map(e => <div key={e} className="neg" style={{ fontSize: 12, marginTop: 6 }} dir="auto">⚠ {e}</div>)}
       {files.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-          {files.map((f, i) => (
-            <span key={i} className="chip" onClick={() => remove(i)}
-              title={tActive('file.clickRemove')}>📎 <span dir="auto">{f.name}</span>{f.size > 0 ? ` · ${mb(f.size)} MB` : ''} ✕</span>
-          ))}
+        <div style={{ marginTop: 8 }}>
+          <AttachmentQueue files={files} onRemove={remove} />
         </div>
       )}
     </Field>

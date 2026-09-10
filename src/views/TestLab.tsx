@@ -138,7 +138,7 @@ export function TestLabView() {
                 {e.actual}{e.errorCode ? ` [${e.errorCode}]` : ''}{e.error ? ` — ${e.error}` : ''}
                 {e.after?.length ? ` · ${e.after.map(d => `${d.entity}: ${d.fields.join(', ')}`).join(' · ')}` : ''}
               </span>
-              <span className="dim" style={{ fontSize: 11, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+              <span className="dim" style={{ fontSize: 11, marginInlineStart: 'auto', whiteSpace: 'nowrap' }}>
                 {e.actorName} · {e.page} · {new Date(e.ts).toLocaleTimeString()}
               </span>
             </div>
@@ -186,16 +186,16 @@ export function TestLabView() {
             </Field>
           </div>
           <Field label="Short title">
-            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Modal closed when clicking backdrop and lost my form" />
+            <input dir={title ? 'auto' : undefined} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Modal closed when clicking backdrop and lost my form" />
           </Field>
           <Field label="Expected behavior">
-            <input value={expected} onChange={e => setExpected(e.target.value)} placeholder="What should have happened" />
+            <input dir={expected ? 'auto' : undefined} value={expected} onChange={e => setExpected(e.target.value)} placeholder="What should have happened" />
           </Field>
           <Field label="Actual behavior">
-            <input value={actual} onChange={e => setActual(e.target.value)} placeholder="What actually happened" />
+            <input dir={actual ? 'auto' : undefined} value={actual} onChange={e => setActual(e.target.value)} placeholder="What actually happened" />
           </Field>
           <Field label="Details (optional)">
-            <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="Steps to reproduce, context…" />
+            <textarea dir={desc ? 'auto' : undefined} value={desc} onChange={e => setDesc(e.target.value)} placeholder="Steps to reproduce, context…" />
           </Field>
           <div className="dim" style={{ fontSize: 11.5, marginBottom: 10 }}>
             Auto-attached: current page, runtime mode, your identity, app version, last 10 test events. No secrets.

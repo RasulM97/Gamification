@@ -126,7 +126,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
 
       {step === 1 && (
         <Field label={tr('handoff.whyRequired')}>
-          <textarea dir="auto" value={reason} onChange={e => setReason(e.target.value)} autoFocus
+          <textarea dir={reason ? 'auto' : undefined} value={reason} onChange={e => setReason(e.target.value)} autoFocus
             placeholder={tr('handoff.placeholder.why')} />
         </Field>
       )}
@@ -161,7 +161,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
           {(mode === 'SPECIFIC' || audience === 'PRIVATE') && (
             <div style={{ marginTop: 11 }}>
               {targets.length > 3 && (
-                <input dir="auto" type="search" value={pick} onChange={e => setPick(e.target.value)}
+                <input dir={pick ? 'auto' : undefined} type="search" value={pick} onChange={e => setPick(e.target.value)}
                   placeholder={tr('handoff.searchPeople')} aria-label={tr('accessibility.searchNextOwner')}
                   style={{ width: '100%', marginBottom: 10 }} />
               )}
@@ -208,7 +208,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
           </Field>
           {overriding && (
             <Field label={tr('handoff.overrideReason')}>
-              <textarea dir="auto" value={overrideReason} onChange={e => setOverrideReason(e.target.value)} autoFocus
+              <textarea dir={overrideReason ? 'auto' : undefined} value={overrideReason} onChange={e => setOverrideReason(e.target.value)} autoFocus
                 placeholder={tr('handoff.placeholder.override')} />
             </Field>
           )}
