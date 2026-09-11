@@ -1,7 +1,8 @@
 import { EventText, EventReason } from '../components/EventText'
+import { CapacityControl } from '../components/CapacityControl'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
-import { MAX_ACTIVE, activeCount, balanceOf } from '../domain/engine'
+import { capacityLimit, activeCount, balanceOf } from '../domain/engine'
 import { Avatar, Coin, Drawer, Field, LedgerBadge, Modal, Panel, ago, coins, roleKey } from '../ui'
 import { useI18n } from '../i18n'
 
@@ -34,7 +35,7 @@ function PersonDrawer({ userId, onClose }: { userId: string | null; onClose: () 
           <Coin n={balanceOf(state, u.id)} />
         </div>
         <dl className="kv">
-          <dt>{t('admin.activeWork')}</dt><dd className="num">{t(active === 1 ? 'admin.activeTasksOne' : 'admin.activeTasksMany', { active, max: MAX_ACTIVE })}</dd>
+          <dt>{t('admin.activeWork')}</dt><dd className="num">{u.role === 'ADMIN' ? t('capacity.notApplicable') : t(active === 1 ? 'admin.activeTasksOne' : 'admin.activeTasksMany', { active, max: capacityLimit(u) })}</dd>
           <dt>{t('admin.waitingReview')}</dt><dd className="num">{t(waiting.length === 1 ? 'admin.submissionsOne' : 'admin.submissionsMany', { count: waiting.length })}</dd>
           <dt>{t('admin.completedContrib')}</dt><dd className="num">{myContribs.filter(c => c.decision === 'APPROVED').length}</dd>
           <dt>{t('admin.partialContrib')}</dt><dd className="num">{myContribs.filter(c => c.decision !== 'APPROVED').length} <span className="faint" style={{ fontSize: 11 }}>{t('admin.partialContribHint')}</span></dd>
@@ -103,8 +104,8 @@ export function AdminView() {
     <div className="wrap">
       <Panel pad={false} title={t('admin.peopleWallets')} right={<span className="eyebrow" dir="auto">{state.company}</span>}>
         <div className="table-wrap">
-          <table>
-            <thead><tr><th>{t('common.person')}</th><th>{t('admin.systemRole')}</th><th>{t('common.position')}</th><th>{t('admin.fulfillment')}</th><th className="n">{t('common.balance')}</th><th className="n"></th></tr></thead>
+          <table className="people-table">
+            <thead><tr><th>{t('common.person')}</th><th>{t('admin.systemRole')}</th><th>{t('common.position')}</th><th>{t('capacity.label')}</th><th>{t('admin.fulfillment')}</th><th className="n">{t('common.balance')}</th><th className="n"></th></tr></thead>
             <tbody>
               {state.users.map(u => {
                 const admin = u.role === 'ADMIN'
@@ -114,7 +115,7 @@ export function AdminView() {
                   <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                     <Avatar name={u.name} size={22} /><b dir="auto">{u.name}</b></span></td>
                   <td><span className="bd bd-normal">{t(roleKey(u.role))}</span></td>
-                  <td className="dim" dir="auto">{u.position}</td>
+                  <td className="dim" dir="auto">{u.position}</td><td><CapacityControl user={u} /></td>
                   {/* N2.2 §6: REWARD_FULFILL is a capability, separate from
                       the system Role — admin-granted to employees/managers,
                       it unlocks nothing but executor seats on rewards.

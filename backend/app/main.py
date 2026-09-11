@@ -29,7 +29,7 @@ STATIC_DIR = os.environ.get('CVE_STATIC_DIR') or str(
     Path(__file__).resolve().parents[2] / 'dist')
 
 _ERROR_STATUS = {'FORBIDDEN': 403, 'NOT_FOUND': 404, 'VALIDATION': 422,
-                 'UPLOAD_REJECTED': 422, 'CAPACITY': 409, 'BAD_STATE': 409,
+                 'UPLOAD_REJECTED': 422, 'CAPACITY_REACHED': 409, 'BAD_STATE': 409,
                  'OUT_OF_STOCK': 409, 'INSUFFICIENT_FUNDS': 409,
                  'LIMIT_REACHED': 409, 'NO_CHANGE': 409}
 
@@ -51,7 +51,7 @@ app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list,
 @app.exception_handler(DomainError)
 async def domain_error_handler(_: Request, exc: DomainError):
     return JSONResponse(status_code=_ERROR_STATUS.get(exc.code, 409),
-                        content={'code': exc.code, 'message': exc.message})
+                        content={'code': exc.code, 'message': exc.message, **exc.details})
 
 
 app.include_router(router)

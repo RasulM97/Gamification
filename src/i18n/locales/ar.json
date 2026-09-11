@@ -824,5 +824,14 @@
   "event.refund": "{{actor}} أصدر استردادًا — {{reward}}",
   "event.reversal": "{{actor}} عكس قيد السجل — {{task}}",
   "event.uploadPolicyUpdated": "{{actor}} حدّث سياسة الرفع",
-  "event.unknown": "تفاصيل الحدث غير متاحة"
+  "event.unknown": "تفاصيل الحدث غير متاحة",
+  "capacity.label": "سعة العمل",
+  "capacity.notApplicable": "لا ينطبق",
+  "capacity.usage": "{{active}} / {{limit}} نشطة",
+  "capacity.editFor": "تعديل سعة {{name}}",
+  "capacity.range": "عدد صحيح من ١ إلى ١٠٠",
+  "capacity.preserveWork": "تبقى المهام الحالية مسندة عند خفض الحد.",
+  "capacity.full": "السعة مكتملة",
+  "capacity.reached": "تم بلوغ حد المهام النشطة ({{active}} من {{limit}})",
+  "event.userCapacityUpdated": "غيّر {{actor}} حد المهام النشطة لـ {{target}} من {{previousLimit}} إلى {{newLimit}}."
 }

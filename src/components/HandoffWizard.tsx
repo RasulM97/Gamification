@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
-import { partialPayout, activeCount } from '../domain/engine'
+import { partialPayout, activeCount, capacityLimit, capacityReached } from '../domain/engine'
 import type { Attachment, Audience, Task } from '../domain/engine'
 import { AttachField, Coin, DateInput, Field, Modal, PriBadge, Seg, coins, fmtDate, roleKey } from '../ui'
 import { useI18n, fmtPct } from '../i18n'
@@ -78,7 +78,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
   const canNext =
     step === 0 ? true :
     step === 1 ? reason.trim().length > 0 :
-    step === 2 ? (mode === 'AVAILABLE' && audience !== 'PRIVATE' ? true : !!next) :
+    step === 2 ? (mode === 'AVAILABLE' && audience !== 'PRIVATE' ? true : !!next && !capacityReached(state, next)) :
     step === 3 ? (!overriding || overrideReason.trim().length > 0) && effRemaining >= 0 : true
 
   const finish = () => {
@@ -167,9 +167,9 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
               )}
               <div className="choice choicelist" style={{ flexDirection: 'column' }}>
                 {shownTargets.map(u => (
-                  <button key={u.id} className={next === u.id ? 'on' : ''} onClick={() => setNext(u.id)}>
+                  <button key={u.id} disabled={capacityReached(state, u.id)} className={next === u.id ? 'on' : ''} onClick={() => setNext(u.id)}>
                     <b dir="auto">{tr('handoff.assignTo', { name: u.name })}</b>
-                    <small><span dir="auto">{u.position}</span> · <b data-testid={`role-tag-${u.role.toLowerCase()}`}>{tr(roleKey(u.role))}</b> · {tr(activeCount(state, u.id) === 1 ? 'handoff.activeTaskOne' : 'handoff.activeTaskMany', { count: activeCount(state, u.id) })}
+                    <small><span dir="auto">{u.position}</span> · <b data-testid={`role-tag-${u.role.toLowerCase()}`}>{tr(roleKey(u.role))}</b> · {tr('capacity.usage', { active: '\u2066' + activeCount(state, u.id), limit: capacityLimit(u) + '\u2069' })}{capacityReached(state, u.id) ? ' · ' + tr('capacity.full') : ''}
                       {u.id === task.ownerId ? ' · ' + tr('handoff.previousContributor') : ''}</small>
                   </button>
                 ))}

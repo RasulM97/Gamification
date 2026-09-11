@@ -824,5 +824,14 @@
   "event.refund": "{{actor}} ביצע החזר — {{reward}}",
   "event.reversal": "{{actor}} ביצע רישום נגדי — {{task}}",
   "event.uploadPolicyUpdated": "{{actor}} עדכן מדיניות העלאה",
-  "event.unknown": "פרטי האירוע אינם זמינים"
+  "event.unknown": "פרטי האירוע אינם זמינים",
+  "capacity.label": "מכסת משימות",
+  "capacity.notApplicable": "לא חל",
+  "capacity.usage": "{{active}} / {{limit}} פעילות",
+  "capacity.editFor": "עריכת המכסה של {{name}}",
+  "capacity.range": "מספר שלם בין 1 ל־100",
+  "capacity.preserveWork": "המשימות הקיימות נשארות משויכות גם כשהמכסה מופחתת.",
+  "capacity.full": "המכסה מלאה",
+  "capacity.reached": "הגעת למכסת המשימות הפעילות ({{active}} מתוך {{limit}})",
+  "event.userCapacityUpdated": "{{actor}} שינה את מכסת המשימות הפעילות של {{target}} מ־{{previousLimit}} ל־{{newLimit}}."
 }

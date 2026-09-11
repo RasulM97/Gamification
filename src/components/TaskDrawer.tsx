@@ -1,7 +1,7 @@
 import { ActivityEvent } from './EventText'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
-import { MAX_ACTIVE, activeCount, roleFits } from '../domain/engine'
+import { capacityLimit, activeCount, roleFits } from '../domain/engine'
 import type { Task } from '../domain/engine'
 import { rowProps, cycleOutcome, localizedHist } from '../ui'
 import { useI18n, fmtPct } from '../i18n'
@@ -39,7 +39,7 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
     t.status === 'OPEN' &&
     ((t.assignMode === 'ALL_EMPLOYEES') || t.assigneeId === me.id) &&
     audienceFit
-  const claimBlocked = canClaim && activeCount(state, me.id) >= MAX_ACTIVE
+  const claimBlocked = canClaim && activeCount(state, me.id) >= capacityLimit(me)
   /* Assigned work stays declinable even after acceptance (duties change);
      marketplace claims exit via Return claim with the penalty instead. */
   const canHandBack = isOwner && (t.status === 'IN_PROGRESS' || t.status === 'REJECTED') && t.assignMode === 'SPECIFIC_EMPLOYEE'
@@ -130,7 +130,7 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
         <div className="actions" style={{ marginTop: 8 }}>
           {canClaim && (
             <button className="btn primary" disabled={claimBlocked}
-              title={claimBlocked ? tr('task.help.activeLimit', { maxActive: MAX_ACTIVE }) : ''}
+              title={claimBlocked ? tr('capacity.reached', { active: activeCount(state, me.id), limit: capacityLimit(me) }) : ''}
               onClick={() => dispatch({ type: 'CLAIM_TASK', taskId: t.id, userId: me.id })}>
               {t.assigneeId === me.id ? tr('task.action.acceptStart') : tr('task.action.claim')}
             </button>
@@ -149,17 +149,17 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
             <button className="btn" onClick={() => setModal('decline')}>{tr('task.action.declineHandBack')}</button>
           )}
           {isOwner && t.status === 'REJECTED' && (() => {
-            const blocked = activeCount(state, me.id) >= MAX_ACTIVE
+            const blocked = activeCount(state, me.id) >= capacityLimit(me)
             return (
               <button className="btn primary" disabled={blocked}
-                title={blocked ? tr('task.help.activeLimitFinish', { maxActive: MAX_ACTIVE }) : ''}
+                title={blocked ? tr('capacity.reached', { active: activeCount(state, me.id), limit: capacityLimit(me) }) : ''}
                 onClick={() => dispatch({ type: 'RESUME_WORK', taskId: t.id, userId: me.id })}>
                 {tr('task.action.resumeRework')}
               </button>
             )
           })()}
 
-          {claimBlocked && <span className="neg" style={{ fontSize: 12 }}>{tr('task.help.claimLimit', { maxActive: MAX_ACTIVE })}</span>}
+          {claimBlocked && <span className="neg" style={{ fontSize: 12 }}>{tr('capacity.reached', { active: activeCount(state, me.id), limit: capacityLimit(me) })}</span>}
           {canReviewDecision && <>
             <button className="btn primary" onClick={() => onGo('reviews', t.id)}>{tr('task.action.openReviews')}</button>
             <button className="btn" onClick={() => setModal('reject')}>{tr('review.rejectShort')}</button>
@@ -454,8 +454,8 @@ function ReassignInline({ taskId, assigneeId, assignMode, audience }: {
       )}
       {targets.map(u => {
         const n = activeCount(state, u.id)
-        return <option key={u.id} value={u.id}>
-          {tr(n >= MAX_ACTIVE ? 'task.assignOptionFull' : 'task.assignOption', { name: u.name, used: n, max: MAX_ACTIVE })}
+        return <option key={u.id} value={u.id} disabled={n >= capacityLimit(u)}>
+          {tr(n >= capacityLimit(u) ? 'task.assignOptionFull' : 'task.assignOption', { name: u.name, used: n, max: capacityLimit(u) })}
         </option>
       })}
     </select>

@@ -6,12 +6,13 @@ import type {
   Priority, Redemption, Reward, RewardCategory, Settings, State, Task,
 } from './model'
 import {
-  MAX_ACTIVE, MUTABLE_LEVELS, activeCount, balanceOf, canCreateReward, canDecideRedemption,
+  capacityReached, capacityLimit, activeCount, canEditCapacity, validCapacity, MUTABLE_LEVELS, balanceOf, canCreateReward, canDecideRedemption,
   canFulfillReward, canManageReward, claimPenalty,
   normalizeDeadline, partialPayout, remainingQuota, rewardFits, rewardOpen, roleFits, validateAttachments,
 } from './model'
 /* ── reducer ───────────────────────────────────────────────────────────── */
 export type Action =
+  | { type: 'UPDATE_CAPACITY'; by: string; userId: string; maxActiveTasks: number }
   | { type: 'CREATE_TASK'; by: string; title: string; description: string; priority: Priority; deadline: string | null; reward: number; audience: Audience; assignMode: AssignMode; assigneeId: string | null; attachments?: Attachment[] }
   | { type: 'CLAIM_TASK'; taskId: string; userId: string }
   | { type: 'DECLINE_ASSIGNMENT'; taskId: string; userId: string; reason: string }
@@ -48,7 +49,19 @@ export type Action =
   | { type: 'TOGGLE_NOTIF_MUTE'; userId: string; level: NotifLevel }
   | { type: 'UPDATE_SETTINGS'; by: string; settings: Settings }
 
+/** Structured refusal shared by demo dispatch and the reducer. */
+export function capacityRefusal(s: State, a: Action) {
+  const id = a.type === 'CLAIM_TASK' || a.type === 'RESUME_WORK' ? a.userId
+    : a.type === 'HANDOFF' ? (a.next.kind === 'EMPLOYEE' ? a.next.id : null)
+    : a.type === 'REASSIGN' || a.type === 'REOPEN' || a.type === 'REACTIVATE' ? a.assigneeId
+    : a.type === 'CREATE_TASK' && (a.audience === 'PRIVATE' || a.assignMode === 'SPECIFIC_EMPLOYEE') ? a.assigneeId : null
+  const u = s.users.find(u => u.id === id)
+  return u && u.role !== 'ADMIN' && capacityReached(s, u.id)
+    ? {code: 'CAPACITY_REACHED', active: activeCount(s, u.id), limit: capacityLimit(u), targetUserId: u.id} : null
+}
+
 export function reducer(prev: State, a: Action): State {
+  if (capacityRefusal(prev, a)) return prev
   const s: State = structuredClone(prev)
   const now = Date.now()
   const nid = (p: string) => `${p}${s.seq++}`
@@ -117,6 +130,18 @@ export function reducer(prev: State, a: Action): State {
   }
 
   switch (a.type) {
+    case 'UPDATE_CAPACITY': {
+      const target = user(a.userId)
+      if (!target || !canEditCapacity(user(a.by), target) || !validCapacity(a.maxActiveTasks)) return prev
+      const previousLimit = capacityLimit(target)
+      if (previousLimit === a.maxActiveTasks) return prev
+      target.maxActiveTasks = a.maxActiveTasks
+      const params = snap(undefined, {targetUserId: target.id, target: target.name,
+        previousLimit, newLimit: a.maxActiveTasks, objectType: 'USER', objectId: target.id})
+      act(a.by, 'USER_CAPACITY_UPDATED', params)
+      note(target.id, 'INFORMATIONAL', 'Assignments', 'USER_CAPACITY_UPDATED', params)
+      break
+    }
     case 'CREATE_TASK': {
       if (!isMgmt(a.by)) break // creating work is a management act
       /* Economy exclusion (M1-C): the founder/admin arranges and reviews work
@@ -162,7 +187,7 @@ export function reducer(prev: State, a: Action): State {
       const specific = t.assignMode === 'SPECIFIC_EMPLOYEE' && t.assigneeId === a.userId
       const open_ = t.assignMode === 'ALL_EMPLOYEES'
       if (!specific && !open_) break
-      if (activeCount(s, a.userId) >= MAX_ACTIVE) break
+      if (capacityReached(s, a.userId)) break
       t.ownerId = a.userId; t.status = 'IN_PROGRESS'; t.assigneeId = null; t.updatedAt = now
       act(a.userId, specific ? 'TASK_ACCEPTED' : 'TASK_CLAIMED', snap(t,{}))
       break
@@ -292,7 +317,7 @@ export function reducer(prev: State, a: Action): State {
       const t = task(a.taskId)
       if (t.ownerId !== a.userId || t.status !== 'REJECTED') break
       /* Same canonical capacity rule as claiming — one definition only. */
-      if (activeCount(s, a.userId) >= MAX_ACTIVE) break
+      if (capacityReached(s, a.userId)) break
       t.status = 'IN_PROGRESS'; t.updatedAt = now
       act(a.userId, 'TASK_RESUMED', snap(t,{}))
       break

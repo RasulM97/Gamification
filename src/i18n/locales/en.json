@@ -824,5 +824,14 @@
   "event.refund": "{{actor}} issued refund — {{reward}}",
   "event.reversal": "{{actor}} reversed ledger entry — {{task}}",
   "event.uploadPolicyUpdated": "{{actor}} updated upload policy",
-  "event.unknown": "Event details unavailable"
+  "event.unknown": "Event details unavailable",
+  "capacity.label": "Capacity",
+  "capacity.notApplicable": "Not applicable",
+  "capacity.usage": "{{active}} / {{limit}} active",
+  "capacity.editFor": "Edit capacity for {{name}}",
+  "capacity.range": "Whole number from 1 to 100",
+  "capacity.preserveWork": "Existing work stays assigned when the limit is reduced.",
+  "capacity.full": "At capacity",
+  "capacity.reached": "Active task limit reached ({{active}} of {{limit}})",
+  "event.userCapacityUpdated": "{{actor}} changed {{target}}’s active-task limit from {{previousLimit}} to {{newLimit}}."
 }

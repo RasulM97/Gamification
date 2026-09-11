@@ -17,6 +17,7 @@ export function seed(): State {
     { id: 'u-jonas', name: 'Jonas Berg', role: 'EMPLOYEE', position: 'Field Coordinator', canFulfillRewards: true },
     { id: 'u-aisha', name: 'Aisha Khan', role: 'EMPLOYEE', position: 'Business Analyst', canFulfillRewards: false },
   ]
+  users.forEach(u => { u.maxActiveTasks = u.role === 'ADMIN' ? null : 2 })
   const dl = (d: number) => new Date(now + d * D).toISOString().slice(0, 10)
 
   const tasks: Task[] = [

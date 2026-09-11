@@ -69,16 +69,16 @@ test.describe('manager flows', () => {
 
   test('assign specific → decline → reassignment surfaces; reject → resume → resubmit', async ({ page }) => {
     await startAs(page, 'marcus')
-    // assign private-mode specific task to Jonas
+    // N4: assign to Aisha, who has capacity; Jonas is full in the seed.
     await page.getByRole('button', { name: '+ Create task' }).first().click()
     await page.getByPlaceholder('e.g. Reconcile October supplier invoices').fill('E2E assigned job')
     await page.getByPlaceholder('Scope, deliverables, definition of done…').fill('Do the thing.')
     await page.getByRole('button', { name: /Specific employee/ }).click()
-    await page.locator('.modal select').first().selectOption('u-jonas')
+    await page.locator('.modal select').first().selectOption('u-aisha')
     await page.getByRole('button', { name: 'Review & create' }).click()
     await page.getByRole('button', { name: 'Confirm & create' }).click()
-    // Jonas declines
-    await switchTo(page, 'Jonas Berg')
+    // Aisha declines
+    await switchTo(page, 'Aisha Khan')
     await openTask(page, 'E2E assigned job')
     await page.getByRole('button', { name: 'Decline assignment' }).click()
     await page.locator('.modal textarea').fill('On field duty this week')

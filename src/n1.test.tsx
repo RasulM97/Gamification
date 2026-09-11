@@ -106,14 +106,14 @@ describe('N1-C — dashboard work status', () => {
   })
 
   it('3 · employee Active / In Review counts are correct (overview + My Work strip)', async () => {
-    /* Seed: Priya owns t-northstar (SUBMITTED) → 0 actively worked, 1 in
-       review, canonical capacity use 1/2 (review occupies a slot). */
+    /* N4: both capacity displays use the canonical owned-active count.
+       Priya owns t-northstar (SUBMITTED): 1/2, including the review slot. */
     persona('u-priya')
     await render(h('div', null,
       h(Overview, { onGo: () => {} }),
       h(TasksView, { scope: 'mine', onOpen: () => {}, onCreate: () => {} }),
     ))
-    expect(host.querySelector('[data-testid=emp-active-count]')?.textContent).toContain('0')
+    expect(host.querySelector('[data-testid=emp-active-count]')?.textContent).toContain('1/ 2')
     expect(host.querySelector('[data-testid=emp-review-count]')?.textContent).toBe('1')
     expect(host.querySelector('[data-testid=mywork-active]')?.textContent).toBe('1')
     expect(host.querySelector('[data-testid=mywork-review]')?.textContent).toBe('1')

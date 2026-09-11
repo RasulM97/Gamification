@@ -824,5 +824,14 @@
   "event.refund": "{{actor}} بازپرداخت کرد — {{reward}}",
   "event.reversal": "{{actor}} ثبت دفتر کل را معکوس کرد — {{task}}",
   "event.uploadPolicyUpdated": "{{actor}} سیاست بارگذاری را به‌روزرسانی کرد",
-  "event.unknown": "جزئیات رویداد در دسترس نیست"
+  "event.unknown": "جزئیات رویداد در دسترس نیست",
+  "capacity.label": "ظرفیت کار",
+  "capacity.notApplicable": "قابل اعمال نیست",
+  "capacity.usage": "{{active}} / {{limit}} فعال",
+  "capacity.editFor": "ویرایش ظرفیت {{name}}",
+  "capacity.range": "عدد صحیح از ۱ تا ۱۰۰",
+  "capacity.preserveWork": "با کاهش سقف، کارهای فعلی همچنان به فرد واگذار می‌مانند.",
+  "capacity.full": "ظرفیت تکمیل است",
+  "capacity.reached": "سقف کارهای فعال پر شده است ({{active}} از {{limit}})",
+  "event.userCapacityUpdated": "{{actor}} سقف کارهای فعال {{target}} را از {{previousLimit}} به {{newLimit}} تغییر داد."
 }

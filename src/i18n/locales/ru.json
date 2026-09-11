@@ -824,5 +824,14 @@
   "event.refund": "{{actor}} выполнил(а) возврат — {{reward}}",
   "event.reversal": "{{actor}} сторнировал(а) проводку — {{task}}",
   "event.uploadPolicyUpdated": "{{actor}} обновил(а) политику загрузки",
-  "event.unknown": "Сведения о событии недоступны"
+  "event.unknown": "Сведения о событии недоступны",
+  "capacity.label": "Лимит задач",
+  "capacity.notApplicable": "Не применяется",
+  "capacity.usage": "Активных: {{active}} / {{limit}}",
+  "capacity.editFor": "Изменить лимит для {{name}}",
+  "capacity.range": "Целое число от 1 до 100",
+  "capacity.preserveWork": "При снижении лимита текущие задачи остаются назначенными.",
+  "capacity.full": "Лимит достигнут",
+  "capacity.reached": "Достигнут лимит активных задач ({{active}} из {{limit}})",
+  "event.userCapacityUpdated": "{{actor}} изменил(а) лимит активных задач для {{target}} с {{previousLimit}} на {{newLimit}}."
 }

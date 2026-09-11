@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .domain import (
-    MUTABLE_LEVELS, MAX_ACTIVE, DomainError, claim_penalty, normalize_deadline,
+    MUTABLE_LEVELS, ACTIVE_TASK_STATUSES, CAPACITY_POLICY, DomainError, claim_penalty, normalize_deadline,
     partial_payout, role_fits,
 )
 from .models import (
@@ -101,10 +101,54 @@ def balance_of(db: Session, company_id: str, user_id: str) -> float:
                         LedgerTransaction.user_id == user_id)))
 
 
-def active_count(db: Session, company_id: str, user_id: str) -> int:
+def active_owned_task_count(db: Session, company_id: str, user_id: str) -> int:
     return int(db.scalar(select(func.count(Task.id))
                .where(Task.company_id == company_id, Task.owner_id == user_id,
-                      Task.status.in_(('IN_PROGRESS', 'SUBMITTED')))))
+                      Task.status.in_(ACTIVE_TASK_STATUSES))))
+
+
+# Compatibility name; all counting delegates to the canonical rule above.
+active_count = active_owned_task_count
+
+
+def lock_capacity_user(db: Session, company_id: str, user_id: str) -> User:
+    # NO KEY UPDATE serializes capacity changes/acquisition without conflicting
+    # with FK key-share locks. Refresh the identity map after waiting: the actor
+    # may have been loaded by authentication before another capacity edit commits.
+    u = db.scalar(select(User).where(User.company_id == company_id, User.id == user_id)
+                  .with_for_update(key_share=True).execution_options(populate_existing=True))
+    if u is None:
+        raise DomainError('NOT_FOUND', 'User not found')
+    return u
+
+
+def require_capacity(db: Session, company_id: str, user_id: str) -> User:
+    u = lock_capacity_user(db, company_id, user_id)
+    if u.role == 'ADMIN':
+        raise DomainError('FORBIDDEN', 'Admin cannot own work')
+    active = active_owned_task_count(db, company_id, user_id)
+    if active >= u.max_active_tasks:
+        raise DomainError('CAPACITY_REACHED', 'Active task limit reached',
+                          active=active, limit=u.max_active_tasks, targetUserId=u.id)
+    return u
+
+
+def update_capacity(db: Session, actor: User, user_id: str, limit: int):
+    u = lock_capacity_user(db, actor.company_id, user_id)
+    if not (u.role != 'ADMIN' and (actor.role == 'ADMIN' or
+            (actor.role == 'MANAGER' and u.role == 'EMPLOYEE' and actor.id != u.id))):
+        raise DomainError('FORBIDDEN', 'Cannot change this user capacity')
+    if type(limit) is not int or not CAPACITY_POLICY['minMaxActiveTasks'] <= limit <= CAPACITY_POLICY['maxMaxActiveTasks']:
+        raise DomainError('VALIDATION', 'Capacity must be an integer from 1 to 100')
+    previous = u.max_active_tasks
+    if previous == limit:
+        return u
+    u.max_active_tasks = limit
+    params = snap(db, actor, targetUserId=u.id, target=u.name,
+                  previousLimit=previous, newLimit=limit, objectType='USER', objectId=u.id)
+    act(db, actor.company_id, actor.id, 'USER_CAPACITY_UPDATED', params)
+    note(db, actor.company_id, u.id, 'INFORMATIONAL', 'Assignments', 'USER_CAPACITY_UPDATED', params)
+    return u
 
 
 def snap(db, actor, task=None, **extra):
@@ -218,6 +262,8 @@ def create_task(db: Session, actor: User, *, title: str, description: str,
         target = get_user(db, cid, eff_assignee)
         if not role_fits(audience, target.role):
             raise DomainError('FORBIDDEN', 'The chosen person is not eligible for this audience')
+    if eff_assignee:
+        require_capacity(db, cid, eff_assignee)
     t = Task(company_id=cid, title=title, description=description,
              priority=priority, deadline=_dl(deadline), reward=reward,
              audience=audience, assign_mode=eff_mode, assignee_id=eff_assignee,
@@ -247,8 +293,7 @@ def claim_task(db: Session, actor: User, task_id: str) -> Task:
     open_ = t.assign_mode == 'ALL_EMPLOYEES'
     if not specific and not open_:
         raise DomainError('FORBIDDEN', 'This task is assigned to someone else')
-    if active_count(db, actor.company_id, actor.id) >= MAX_ACTIVE:
-        raise DomainError('CAPACITY', f'You already have {MAX_ACTIVE} active tasks')
+    require_capacity(db, actor.company_id, actor.id)
     t.owner_id = actor.id
     t.status = 'IN_PROGRESS'
     t.assignee_id = None
@@ -355,6 +400,8 @@ def reassign(db: Session, actor: User, task_id: str, assignee_id: Optional[str])
         target = get_user(db, actor.company_id, assignee_id)
         if not role_fits(t.audience, target.role):
             raise DomainError('FORBIDDEN', 'The chosen person is not eligible for this audience')
+    if assignee_id:
+        require_capacity(db, actor.company_id, assignee_id)
     t.assign_mode = 'SPECIFIC_EMPLOYEE' if assignee_id else 'ALL_EMPLOYEES'
     t.assignee_id = assignee_id
     t.updated_at = now_ms()
@@ -405,8 +452,7 @@ def resume_work(db: Session, actor: User, task_id: str) -> Task:
     t = get_task(db, actor.company_id, task_id)
     if t.owner_id != actor.id or t.status != 'REJECTED':
         raise DomainError('BAD_STATE', 'Only your own rejected task can be resumed')
-    if active_count(db, actor.company_id, actor.id) >= MAX_ACTIVE:
-        raise DomainError('CAPACITY', f'You already have {MAX_ACTIVE} active tasks')
+    require_capacity(db, actor.company_id, actor.id)
     t.status = 'IN_PROGRESS'
     t.updated_at = now_ms()
     act(db, actor.company_id, actor.id, 'TASK_RESUMED', snap(db,actor,t,))
@@ -495,6 +541,8 @@ def handoff(db: Session, actor: User, task_id: str, *, accepted_pct: float,
         raise DomainError('VALIDATION', 'Private work stays one-to-one — pick a person')
     if nu is not None and not role_fits(eff_audience, nu.role):
         raise DomainError('FORBIDDEN', 'The chosen person is not eligible for this audience')
+    if nu is not None:
+        require_capacity(db, cid, nu.id)
     # remaining-reward suggestion + audited override, validated BEFORE mutation
     pct_probe = max(0, min(100 - t.verified, _round(accepted_pct)))
     probe = (min(partial_payout(t.reward, pct_probe), max(0.0, t.reward - t.paid))
@@ -572,6 +620,8 @@ def _new_cycle_reset(db: Session, actor: User, t: Task, *, description=None,
         nu = get_user(db, actor.company_id, assignee_id)
         if not role_fits(eff_audience, nu.role):
             raise DomainError('FORBIDDEN', 'The chosen person is not eligible for this audience')
+    if nu is not None:
+        require_capacity(db, actor.company_id, nu.id)
     t.cycle += 1
     t.status = 'OPEN'
     t.owner_id = None

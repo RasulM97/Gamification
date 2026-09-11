@@ -824,5 +824,14 @@
   "event.refund": "{{actor}} iade yaptı — {{reward}}",
   "event.reversal": "{{actor}} defter kaydını ters çevirdi — {{task}}",
   "event.uploadPolicyUpdated": "{{actor}} yükleme politikasını güncelledi",
-  "event.unknown": "Olay ayrıntıları kullanılamıyor"
+  "event.unknown": "Olay ayrıntıları kullanılamıyor",
+  "capacity.label": "İş kapasitesi",
+  "capacity.notApplicable": "Uygulanamaz",
+  "capacity.usage": "{{active}} / {{limit}} aktif",
+  "capacity.editFor": "{{name}} için kapasiteyi düzenle",
+  "capacity.range": "1 ile 100 arasında tam sayı",
+  "capacity.preserveWork": "Limit düşürüldüğünde mevcut görevlerin ataması korunur.",
+  "capacity.full": "Kapasite dolu",
+  "capacity.reached": "Aktif görev limitine ulaşıldı ({{active}} / {{limit}})",
+  "event.userCapacityUpdated": "{{actor}}, {{target}} için aktif görev limitini {{previousLimit}} değerinden {{newLimit}} değerine değiştirdi."
 }

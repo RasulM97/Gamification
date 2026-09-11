@@ -824,5 +824,14 @@
   "event.refund": "{{actor}} ने राशि वापस की — {{reward}}",
   "event.reversal": "{{actor}} ने लेजर प्रविष्टि उलटी की — {{task}}",
   "event.uploadPolicyUpdated": "{{actor}} ने अपलोड नीति अपडेट की",
-  "event.unknown": "घटना का विवरण उपलब्ध नहीं है"
+  "event.unknown": "घटना का विवरण उपलब्ध नहीं है",
+  "capacity.label": "कार्य क्षमता",
+  "capacity.notApplicable": "लागू नहीं",
+  "capacity.usage": "{{active}} / {{limit}} सक्रिय",
+  "capacity.editFor": "{{name}} की क्षमता बदलें",
+  "capacity.range": "1 से 100 तक पूर्णांक",
+  "capacity.preserveWork": "सीमा कम करने पर मौजूदा कार्य सौंपे हुए रहेंगे।",
+  "capacity.full": "क्षमता पूरी",
+  "capacity.reached": "सक्रिय कार्य सीमा पूरी ({{limit}} में से {{active}})",
+  "event.userCapacityUpdated": "{{actor}} ने {{target}} की सक्रिय कार्य सीमा {{previousLimit}} से {{newLimit}} कर दी।"
 }

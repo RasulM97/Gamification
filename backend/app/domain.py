@@ -26,7 +26,11 @@ NOTIF_CATEGORIES = ('Tasks', 'Reviews', 'Assignments', 'Rewards', 'Economy')
 MUTABLE_LEVELS = ('INFORMATIONAL', 'AUDIT_ONLY')
 
 CLAIM_PENALTY = 5
-MAX_ACTIVE = 2
+import json
+from pathlib import Path
+CAPACITY_POLICY = json.loads(Path(__file__).with_name('capacity_policy.json').read_text())
+DEFAULT_MAX_ACTIVE_TASKS = CAPACITY_POLICY['defaultMaxActiveTasks']
+ACTIVE_TASK_STATUSES = tuple(CAPACITY_POLICY['activeStatuses'])
 CLAIM_PENALTY_MULT = {'NONE': 1, 'NORMAL': 1, 'IMPORTANT': 1.5, 'URGENT': 2}
 
 DEFAULT_MAX_FILE_MB = 10
@@ -41,8 +45,9 @@ BLOCKED_MIME = {'application/x-msdownload', 'application/x-msdos-program',
 
 class DomainError(Exception):
     """A refused business transition — maps to HTTP 409 with a stable code."""
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, **details):
         super().__init__(message)
+        self.details = details
         self.code = code
         self.message = message
 

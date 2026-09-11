@@ -35,6 +35,9 @@ input,textarea,select { text-align:start }
 .tasks-toolbar { padding:12px var(--pad);border-bottom:1px solid var(--rim-soft);justify-content:flex-start }
 .tasks-toolbar>.seg { max-inline-size:100%;min-inline-size:0 }
 .tasks-toolbar>select { max-inline-size:100% }
+.people-table { min-inline-size:960px;table-layout:auto }
+.capacity-control { display:flex;flex-wrap:wrap;gap:6px;align-items:center }
+.capacity-control>.num { white-space:nowrap }
 /* System layout belongs to the shell/dialog; authored descendants alone
    can resolve a different direction. Headers consistently close at end. */
 .drawer-head,.panel-head { text-align:start }

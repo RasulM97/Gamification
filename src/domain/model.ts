@@ -1,3 +1,4 @@
+import capacityPolicy from '../../backend/app/capacity_policy.json' with { type: 'json' }
 import type { EventRecord } from './events'
 /* Corporate Virtual Economy — domain engine.
  *
@@ -11,7 +12,7 @@ import type { EventRecord } from './events'
  *  - Partial payout formula: payout = ceil(reward × pct / 100 × 2) / 2 (.0/.5)
  *  - Employee-reported progress is informational; manager-verified
  *    contribution drives canonical task progress. APPROVED ⇒ 100%.
- *  - First valid claim wins; max 2 active tasks per employee.
+ *  - First valid claim wins; per-user capacity for active work.
  *  - Decline (reason, no penalty — also mid-work for ASSIGNED tasks) ≠
  *    Return claim (penalty) ≠ Manager reject (rework) ≠ Handoff (partial
  *    credit + re-ownership).
@@ -37,7 +38,7 @@ export type LedgerType =
 export type NotifLevel = 'ACTION_REQUIRED' | 'IMPORTANT' | 'INFORMATIONAL' | 'AUDIT_ONLY'
 export type NotifCategory = 'Tasks' | 'Reviews' | 'Assignments' | 'Rewards' | 'Economy'
 
-export interface User { id: string; name: string; role: Role; position: string
+export interface User { maxActiveTasks?: number | null; id: string; name: string; role: Role; position: string
   /* N2.2 §6: the REWARD_FULFILL capability — the smallest clean permission
      representation (no enterprise permission-builder). Separate from the
      system Role: an employee or manager with this flag may EXECUTE assigned
@@ -273,7 +274,7 @@ export interface State {
 
 /* ── constants ─────────────────────────────────────────────────────────── */
 export const CLAIM_PENALTY = 5
-export const MAX_ACTIVE = 2
+export const DEFAULT_MAX_ACTIVE_TASKS = capacityPolicy.defaultMaxActiveTasks
 export const PRIORITIES: Priority[] = ['URGENT', 'IMPORTANT', 'NORMAL', 'NONE']
 const PRI_RANK: Record<Priority, number> = { URGENT: 0, IMPORTANT: 1, NORMAL: 2, NONE: 3 }
 
@@ -289,8 +290,18 @@ export const partialPayout = (reward: number, pct: number) =>
 export const balanceOf = (s: State, userId: string) =>
   s.ledger.filter(l => l.userId === userId).reduce((a, l) => a + l.amount, 0)
 
-export const activeCount = (s: State, userId: string) =>
-  s.tasks.filter(t => t.ownerId === userId && (t.status === 'IN_PROGRESS' || t.status === 'SUBMITTED')).length
+/** Pending offers and REJECTED rework reserve no slot; resume rechecks. */
+export const activeOwnedTaskCount = (s: State, userId: string) =>
+  s.tasks.filter(t => t.ownerId === userId && capacityPolicy.activeStatuses.includes(t.status)).length
+export const activeCount = activeOwnedTaskCount
+export const capacityLimit = (u: User) => u.role === 'ADMIN' ? 0 : u.maxActiveTasks ?? DEFAULT_MAX_ACTIVE_TASKS
+export const canEditCapacity = (actor: User, target: User) => target.role !== 'ADMIN' &&
+  (actor.role === 'ADMIN' || (actor.role === 'MANAGER' && target.role === 'EMPLOYEE' && actor.id !== target.id))
+export const validCapacity = (n: number) => Number.isInteger(n) && n >= capacityPolicy.minMaxActiveTasks && n <= capacityPolicy.maxMaxActiveTasks
+export const capacityReached = (s: State, id: string) => {
+  const u = s.users.find(u => u.id === id)
+  return !u || u.role === 'ADMIN' || activeOwnedTaskCount(s, id) >= capacityLimit(u)
+}
 
 /* Role eligibility for a task's audience — claims, assignments, handoffs.
    The founder/admin arranges and reviews work but never owns it: admins are

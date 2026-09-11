@@ -192,8 +192,10 @@ test.describe('C — handoff reason readable', () => {
     await page.getByRole('button', { name: 'Continue' }).click()
     const long = 'This is a very long handoff reason that must wrap and remain fully readable rather than being visually clipped or truncated in the confirmation summary step.'
     await page.locator('.modal textarea').first().fill(long)
-    /* step through the wizard to the confirmation summary */
-    for (let i = 0; i < 3; i++) {
+    /* N4: private routing needs an explicit recipient with capacity. */
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.locator('.modal .choice button', { hasText: 'Aisha Khan' }).click()
+    for (let i = 0; i < 2; i++) {
       const next = page.getByRole('button', { name: 'Continue' })
       if (await next.count()) await next.first().click()
     }

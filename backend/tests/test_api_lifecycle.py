@@ -108,13 +108,13 @@ def test_no_self_review_and_bad_states(client, auth):
 def test_capacity_max_active(client, auth):
     # jonas owns t-commission + t-crm (2 active) → claim refused
     r = client.post('/api/tasks/t-recount/claim', headers=auth['jonas'])
-    assert r.status_code == 409 and r.json()['code'] == 'CAPACITY'
+    assert r.status_code == 409 and r.json()['code'] == 'CAPACITY_REACHED'
     # resume also respects capacity: give aisha a second active task, then she
     # can't resume the rejected t-leads
     assert client.post('/api/tasks/t-pricing/claim', headers=auth['aisha']).status_code == 200
     assert client.post('/api/tasks/t-recount/claim', headers=auth['aisha']).status_code == 200
     r = client.post('/api/tasks/t-leads/resume', headers=auth['aisha'])
-    assert r.status_code == 409 and r.json()['code'] == 'CAPACITY'
+    assert r.status_code == 409 and r.json()['code'] == 'CAPACITY_REACHED'
 
 
 def test_report_progress_ownership(client, auth):

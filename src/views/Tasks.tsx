@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useStore, useMe } from '../store'
-import { canonicalSort, activeCount, canSeeTask, roleFits, MAX_ACTIVE } from '../domain/engine'
+import { canonicalSort, activeCount, canSeeTask, roleFits, capacityLimit } from '../domain/engine'
 import type { Priority, Task } from '../domain/engine'
 import { Avatar, Coin, Empty, LinkText, Panel, PriBadge, Progress, Seg, StatusBadge, ago, deadlineInfo, rowProps } from '../ui'
 import { fmtInt, useI18n } from '../i18n'
@@ -85,11 +85,12 @@ export function TasksView({ scope, onOpen, onCreate }: {
           review queue. */}
       {scope === 'mine' && (
         <div className="mywork-strip" data-testid="mywork-strip">
-          <span>{t('mywork.active')} <b data-testid="mywork-active">{fmtInt(activeCount(state, me.id))}</b> / {fmtInt(MAX_ACTIVE)}</span>
+          <span>{t('mywork.active')} <b data-testid="mywork-active">{fmtInt(activeCount(state, me.id))}</b> / {fmtInt(capacityLimit(me))}</span>
           <span className="sep">·</span>
           <span>{t('mywork.inReview')} <b data-testid="mywork-review">{fmtInt(state.tasks.filter(t => t.ownerId === me.id && t.status === 'SUBMITTED').length)}</b></span>
         </div>
       )}
+      {scope === 'available' && me.role !== 'ADMIN' && activeCount(state, me.id) >= capacityLimit(me) && <p className="warn" role="status">{t('capacity.reached', { active: activeCount(state, me.id), limit: capacityLimit(me) })}</p>}
       <div className="filterbar">
         <span className="fb-label">{t('common.priority')}</span>
         {priOpts.map(p => (
@@ -115,7 +116,7 @@ function TaskRow({ t, meId, onOpen }: { t: Task; meId: string; onOpen: (id: stri
   const meUser = user(meId)
   const claimableByMe = t.status === 'OPEN' && (t.assignMode === 'ALL_EMPLOYEES' || t.assigneeId === meId)
     && !!meUser && roleFits(t, meUser)
-  const limitHit = claimableByMe && activeCount(state, meId) >= MAX_ACTIVE
+  const limitHit = claimableByMe && activeCount(state, meId) >= capacityLimit(meUser!)
 
   return (
     <div className="trow" {...rowProps(() => onOpen(t.id))}>

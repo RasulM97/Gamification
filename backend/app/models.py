@@ -15,7 +15,7 @@ import time
 import uuid
 
 from sqlalchemy import (Boolean, Float, ForeignKey, Integer, String, Text, Date,
-                        UniqueConstraint)
+                        UniqueConstraint, CheckConstraint)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -41,6 +41,8 @@ class Company(Base):
 
 class User(Base):
     __tablename__ = 'users'
+    __table_args__ = (CheckConstraint('max_active_tasks BETWEEN 1 AND 100', name='ck_users_capacity'),)
+    max_active_tasks: Mapped[int] = mapped_column(Integer, default=2, server_default='2', nullable=False)
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id('u'))
     company_id: Mapped[str] = mapped_column(ForeignKey('companies.id'), index=True)
     name: Mapped[str] = mapped_column(String(120))

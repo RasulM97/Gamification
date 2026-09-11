@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore, useMe } from '../store'
-import { MAX_ACTIVE, activeCount, partialPayout, validateAttachments, claimPenalty } from '../domain/engine'
+import { capacityLimit, activeCount, partialPayout, validateAttachments, claimPenalty } from '../domain/engine'
 import type { Audience, Task, Attachment } from '../domain/engine'
 import { AttachField, AttachmentQueue, Coin, DateInput, Field, Modal, coins } from '../ui'
 import { useI18n, fmtPct, fmtInt } from '../i18n'
@@ -267,8 +267,8 @@ function NewCycleRouting({ task, audience, setAudience, assigneeId, setAssigneeI
           {audience === 'PRIVATE' && <option value="">{tr('task.choosePerson')}</option>}
           {targets.map(u => {
             const n = activeCount(state, u.id)
-            return <option key={u.id} value={u.id}>
-              {tr(n >= MAX_ACTIVE ? 'task.assignOptionRoleFull' : 'task.assignOptionRole', { name: u.name, role: tr(roleKey(u.role)), used: n, max: MAX_ACTIVE })}
+            return <option key={u.id} value={u.id} disabled={n >= capacityLimit(u)}>
+              {tr(n >= capacityLimit(u) ? 'task.assignOptionRoleFull' : 'task.assignOptionRole', { name: u.name, role: tr(roleKey(u.role)), used: n, max: capacityLimit(u) })}
             </option>
           })}
         </select>

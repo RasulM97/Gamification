@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   reducer, seed, partialPayout, balanceOf, activeCount, canonicalSort, canSeeTask,
-  validateAttachments, visibleNotices, isMuted, CLAIM_PENALTY, MAX_ACTIVE, DEFAULT_SETTINGS,
+  validateAttachments, visibleNotices, isMuted, CLAIM_PENALTY, DEFAULT_MAX_ACTIVE_TASKS, DEFAULT_SETTINGS,
 } from './engine'
 import type { State, Task } from './engine'
 import { sortNotices } from './engine'
@@ -58,7 +58,7 @@ describe('claim semantics (§9)', () => {
     s = freshTask(s)
     const t2 = newest(s).id
     s = reducer(s, { type: 'CLAIM_TASK', taskId: t2, userId: PRIYA })
-    expect(activeCount(s, PRIYA)).toBe(MAX_ACTIVE)
+    expect(activeCount(s, PRIYA)).toBe(DEFAULT_MAX_ACTIVE_TASKS)
     s = freshTask(s)
     const t3 = newest(s).id
     s = reducer(s, { type: 'CLAIM_TASK', taskId: t3, userId: PRIYA })
@@ -564,7 +564,7 @@ describe('decline after assignment / handoff (post-acceptance decline)', () => {
     // t-leads is SPECIFIC — use a claimed marketplace task pushed to REJECTED
     s = freshTask(s, 20)
     const id = newest(s).id
-    s = reducer(s, { type: 'CLAIM_TASK', taskId: id, userId: PRIYA }) // Jonas is at MAX_ACTIVE in the seed
+    s = reducer(s, { type: 'CLAIM_TASK', taskId: id, userId: PRIYA }) // Jonas is at DEFAULT_MAX_ACTIVE_TASKS in the seed
     s = reducer(s, { type: 'SUBMIT_WORK', taskId: id, userId: PRIYA, note: 'done-ish', attachments: [] })
     s = reducer(s, { type: 'REJECT', taskId: id, managerId: MGR, reason: 'Not enough' })
     expect(task(s, id).status).toBe('REJECTED')
@@ -1313,12 +1313,12 @@ describe('domain-level role enforcement (M0-B)', () => {
 })
 
 describe('RESUME_WORK capacity consistency (M0-B)', () => {
-  it('resume respects the same MAX_ACTIVE rule as claiming', () => {
+  it('resume respects the same DEFAULT_MAX_ACTIVE_TASKS rule as claiming', () => {
     let s = seed()
     // Aisha owns t-leads (REJECTED). Give her two more active tasks.
     s = reducer(s, { type: 'CLAIM_TASK', taskId: 't-recount', userId: AISHA })
     s = reducer(s, { type: 'CLAIM_TASK', taskId: 't-pricing', userId: AISHA })
-    expect(activeCount(s, AISHA)).toBe(MAX_ACTIVE) // 2 active; REJECTED doesn't count
+    expect(activeCount(s, AISHA)).toBe(DEFAULT_MAX_ACTIVE_TASKS) // 2 active; REJECTED doesn't count
     const s2 = reducer(s, { type: 'RESUME_WORK', taskId: 't-leads', userId: AISHA })
     expect(task(s2, 't-leads').status).toBe('REJECTED') // blocked at capacity
   })

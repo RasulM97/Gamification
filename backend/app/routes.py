@@ -14,7 +14,7 @@ from typing import Optional
 from fastapi import (APIRouter, Depends, File, Form, HTTPException, Request,
                      UploadFile)
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, StrictInt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -78,6 +78,17 @@ async def stage_files(db: Session, actor: User,
     return [StoredFile(name=n, size=len(d), type=t,
                        storage_path=storage.save(actor.company_id, n, d))
             for n, t, d in read]
+
+
+class CapacityIn(BaseModel):
+    maxActiveTasks: StrictInt
+
+
+@router.patch('/users/{user_id}/capacity')
+def update_capacity(user_id: str, body: CapacityIn, actor: User = Depends(current_user),
+                    db: Session = Depends(get_db)):
+    return mutate(db, actor, 'update_capacity', user_id,
+                  lambda: svc.update_capacity(db, actor, user_id, body.maxActiveTasks))
 
 
 # ── auth ────────────────────────────────────────────────────────────────────

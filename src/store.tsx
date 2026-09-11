@@ -1,3 +1,5 @@
+import { capacityRefusal } from './domain/reducer'
+import { currentLocale, translate } from './i18n'
 /* Store (M1-A) — dual-runtime data boundary.
  *
  * DEMO MODE (default; sandbox preview):
@@ -85,6 +87,7 @@ export function endpointOf(a: Action): { method: string; path: string } | null {
     case 'ADMIN_ADJUST': return { method: 'POST', path: '/admin/adjust' }
     case 'SAVE_REWARD': return { method: 'POST', path: '/rewards' }
     case 'SAVE_REWARD_CATEGORY': return { method: 'POST', path: '/reward-categories' }
+    case 'UPDATE_CAPACITY': return { method: 'PATCH', path: `/users/${id}/capacity` }
     case 'TOGGLE_FULFILL_PERMISSION': return { method: 'POST', path: `/users/${id}/fulfill-permission` }
     case 'MARK_READ': return { method: 'POST', path: `/notices/${id}/read` }
     case 'MARK_ALL_READ': return { method: 'POST', path: '/notices/read-all' }
@@ -158,7 +161,7 @@ function migrate(s: State): State {
     r.executorIds = r.executorIds ?? []
   })
   /* N2.2 §6: pre-capability persisted users never held REWARD_FULFILL. */
-  s.users.forEach(u => { u.canFulfillRewards = u.canFulfillRewards ?? false })
+  s.users.forEach(u => { u.maxActiveTasks = u.role === 'ADMIN' ? null : u.maxActiveTasks ?? 2; u.canFulfillRewards = u.canFulfillRewards ?? false })
   /* N2.2 §1: pre-category persisted states get the canonical flat list. */
   if (!s.rewardCategories) s.rewardCategories = seed().rewardCategories
   s.tasks.forEach(t => {
@@ -243,12 +246,14 @@ function useDemoStore(): Ctx {
      refused (reducer returned state unchanged) → PASS "refused as expected"
      (an expected rejection is a successful UAT result, not a failure). */
   const demoDispatch = (a: Action) => {
+    const refusal = capacityRefusal(state, a)
     const actor = state.users.find(u => u.id === meId) ?? state.users[0]
     const t0 = performance.now()
     try {
       const prev = state
       const next = reducer(prev, a)
       const refused = !UAT_ALWAYS_INFO.has(a.type) && next === prev
+      if (refusal) setPersistError(translate(currentLocale(), 'capacity.reached', refusal))
       dispatch(a)
       uatRecord(actor, {
         action: a.type,
@@ -370,6 +375,7 @@ async function send(a: Action): Promise<State | null> {
       return api.post('/admin/adjust', { userId: a.userId, amount: a.amount, reason: a.reason })
     case 'SAVE_REWARD': return api.post('/rewards', a.reward)
     case 'SAVE_REWARD_CATEGORY': return api.post('/reward-categories', a.category)
+    case 'UPDATE_CAPACITY': return api.patch(`/users/${a.userId}/capacity`, { maxActiveTasks: a.maxActiveTasks })
     case 'TOGGLE_FULFILL_PERMISSION': return api.post(`/users/${a.userId}/fulfill-permission`)
     case 'MARK_READ': return api.post(`/notices/${a.id}/read`)
     case 'MARK_ALL_READ': return api.post('/notices/read-all')
@@ -403,7 +409,7 @@ function useServerStore(): Ctx {
       setPersistError(null)
     }).catch((e: unknown) => {
       if (e instanceof ApiError && e.status === 401) { logout(); return }
-      const msg = e instanceof ApiError ? e.message : 'Network error — the action may not have been applied.'
+      const msg = e instanceof ApiError ? (e.code === 'CAPACITY_REACHED' ? translate(currentLocale(), 'capacity.reached', e.details) : e.message) : 'Network error — the action may not have been applied.'
       setPersistError(msg)
     })
     return queue.current

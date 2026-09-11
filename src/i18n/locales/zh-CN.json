@@ -824,5 +824,14 @@
   "event.refund": "{{actor}} 进行了退款 — {{reward}}",
   "event.reversal": "{{actor}} 冲销了账目 — {{task}}",
   "event.uploadPolicyUpdated": "{{actor}} 更新了上传策略",
-  "event.unknown": "事件详情不可用"
+  "event.unknown": "事件详情不可用",
+  "capacity.label": "任务容量",
+  "capacity.notApplicable": "不适用",
+  "capacity.usage": "进行中 {{active}} / {{limit}}",
+  "capacity.editFor": "修改{{name}}的任务容量",
+  "capacity.range": "1 到 100 之间的整数",
+  "capacity.preserveWork": "降低上限不会取消现有任务分配。",
+  "capacity.full": "已达上限",
+  "capacity.reached": "已达到进行中任务上限（{{active}} / {{limit}}）",
+  "event.userCapacityUpdated": "{{actor}}将{{target}}的进行中任务上限从{{previousLimit}}改为{{newLimit}}。"
 }

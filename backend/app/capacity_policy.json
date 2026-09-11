@@ -1,0 +1,6 @@
+{
+  "defaultMaxActiveTasks": 2,
+  "minMaxActiveTasks": 1,
+  "maxMaxActiveTasks": 100,
+  "activeStatuses": ["IN_PROGRESS", "SUBMITTED"]
+}

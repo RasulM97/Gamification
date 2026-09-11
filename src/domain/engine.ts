@@ -10,7 +10,7 @@
  *  - Partial payout formula: payout = ceil(reward × pct / 100 × 2) / 2 (.0/.5)
  *  - Employee-reported progress is informational; manager-verified
  *    contribution drives canonical task progress. APPROVED ⇒ 100%.
- *  - First valid claim wins; max 2 active tasks per employee.
+ *  - First valid claim wins; per-user capacity for active work.
  *  - Decline (pre-start, reason, no penalty) ≠ Return claim (penalty)
  *    ≠ Manager reject (rework) ≠ Handoff (partial credit + re-ownership).
  *  - Reopen/reactivate creates a new immutable Task Cycle.

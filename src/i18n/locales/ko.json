@@ -824,5 +824,14 @@
   "event.refund": "{{actor}} 환불했습니다 — {{reward}}",
   "event.reversal": "{{actor}} 원장 항목을 취소했습니다 — {{task}}",
   "event.uploadPolicyUpdated": "{{actor}} 업로드 정책을 수정했습니다",
-  "event.unknown": "이벤트 세부 정보를 사용할 수 없습니다"
+  "event.unknown": "이벤트 세부 정보를 사용할 수 없습니다",
+  "capacity.label": "업무 한도",
+  "capacity.notApplicable": "해당 없음",
+  "capacity.usage": "진행 중 {{active}} / {{limit}}",
+  "capacity.editFor": "{{name}}의 업무 한도 수정",
+  "capacity.range": "1~100 사이의 정수",
+  "capacity.preserveWork": "한도를 낮춰도 기존 업무 배정은 유지됩니다.",
+  "capacity.full": "한도 도달",
+  "capacity.reached": "진행 중 업무 한도에 도달했습니다 ({{active}} / {{limit}})",
+  "event.userCapacityUpdated": "{{actor}}님이 {{target}}님의 진행 중 업무 한도를 {{previousLimit}}에서 {{newLimit}}(으)로 변경했습니다."
 }

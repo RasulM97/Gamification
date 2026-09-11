@@ -79,7 +79,8 @@ test.describe('D5 — handoff confirmation shows the FULL reason', () => {  test
     await page.locator('.modal textarea').first().fill(LONG_REASON)
     await page.getByRole('button', { name: 'Continue' }).click()
     /* step 2 → next ownership (PRIVATE task → specific person required) */
-    await page.locator('.modal .choice button', { hasText: 'Jonas Berg' }).click()
+    // N4: Jonas is full in the seed; the readability probe uses a free recipient.
+    await page.locator('.modal .choice button', { hasText: 'Aisha Khan' }).click()
     await page.getByRole('button', { name: 'Continue' }).click()
     /* step 3 → remaining work */
     await page.getByRole('button', { name: 'Continue' }).click()

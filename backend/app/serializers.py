@@ -159,6 +159,7 @@ def bootstrap(db: Session, company: Company, viewer: User | None = None) -> dict
         'users': [{'id': u.id, 'name': u.name, 'role': u.role,
                    'position': u.position,
                    # N2.2 §6: REWARD_FULFILL capability — separate from role
+                   'maxActiveTasks': None if u.role == 'ADMIN' else u.max_active_tasks,
                    'canFulfillRewards': bool(u.can_fulfill_rewards)} for u in users],
         'tasks': [_task(db, t) for t in tasks],
         'ledger': [_ledger(l) for l in ledger_rows],

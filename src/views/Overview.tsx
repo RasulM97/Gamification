@@ -1,8 +1,9 @@
+import { CapacityControl } from '../components/CapacityControl'
 import { ActivityEvent } from '../components/EventText'
 import { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
 import { useStore, useMe } from '../store'
-import { MAX_ACTIVE, activeCount, balanceOf, canSeeTask, rewardFits, rewardOpen, coinsInCirculation, canonicalSort } from '../domain/engine'
+import { capacityLimit, activeCount, balanceOf, canSeeTask, rewardFits, rewardOpen, coinsInCirculation, canonicalSort } from '../domain/engine'
 import { Avatar, Coin, Empty, Panel, PriBadge, Progress, StatusBadge, ago, coins, roleKey, rowProps } from '../ui'
 import { fmtInt, useI18n } from '../i18n'
 
@@ -180,7 +181,7 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
         <>
           <div className="kpi-group-label" data-testid="personal-work-label">{tr('overview.personalWork')}</div>
           <div className="kpis" data-testid="personal-work-kpis">
-            <div className="kpi2"><div className="l">{tr('overview.kpi.activeOwned')}</div><div className="v">{fmtInt(myActiveOwned.length)}<u>/ {fmtInt(MAX_ACTIVE)}</u></div><div className="s">{tr('overview.kpi.capacityWorker')}</div></div>
+            <div className="kpi2"><div className="l">{tr('overview.kpi.activeOwned')}</div><div className="v">{fmtInt(activeCount(state, me.id))}<u>/ {fmtInt(capacityLimit(me))}</u></div><div className="s">{tr('overview.kpi.capacityWorker')}</div></div>
             <div className="kpi2"><div className="l">{tr('overview.kpi.inReviewWorker')}</div><div className="v">{fmtInt(myInReviewWorker.length)}</div><div className="s">{tr('overview.kpi.decidedByOther')}</div></div>
             <div className="kpi2"><div className="l">{tr('wallet.balance')}</div><div className="v">{coins(myBal)}<u>{tr('common.coins')}</u></div><div className="s">{tr('overview.kpi.rewardsAffordable', { count: myAffordable.length })}</div></div>
           </div>
@@ -207,7 +208,7 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
           is earning — without opening each wallet. */}
       <Panel title={tr('overview.teamOps')} pad={false} right={<span className="eyebrow">{tr('overview.peopleCount', { count: state.users.length })}</span>}>
         <div className="table-wrap">
-          <table>
+          <table className="people-table">
             <thead><tr>
               <th>{tr('common.person')}</th><th className="n">{tr('common.active')}</th><th className="n">{tr('overview.team.waitingReview')}</th>
               <th className="n">{tr('common.earned')}</th><th className="n">{tr('common.balance')}</th>
@@ -222,7 +223,7 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
                     <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                       <Avatar name={u.name} size={20} /><b dir="auto">{u.name}</b>
                       <span className="faint" style={{ fontSize: 11 }}>{u.role === 'EMPLOYEE' ? '' : tr(roleKey(u.role))}</span></span></td>
-                    <td className={'n num' + (act >= MAX_ACTIVE ? ' neg' : '')}>{act} / {MAX_ACTIVE}</td>
+                    <td className="n"><CapacityControl user={u} /></td>
                     <td className={'n num' + (wait > 0 ? ' warn' : '')}>{wait}</td>
                     <td className="n"><Coin n={earned} /></td>
                     <td className="n"><Coin n={balanceOf(state, u.id)} /></td>
@@ -289,7 +290,7 @@ function EmployeeOverview({ onGo }: { onGo: (view: string, taskId?: string) => v
       {/* N1-C: the employee's work status reads left to right — active work,
           review queue, marketplace, then wallet and pending rewards. */}
       <div className="kpis">
-        <div className="kpi2"><div className="l">{tr('overview.emp.activeWork')}</div><div className="v" data-testid="emp-active-count">{fmtInt(myActive.length)}<u>/ {fmtInt(MAX_ACTIVE)}</u></div><div className="s">{tr('overview.emp.capacityInUse', { used: activeCount(state, me.id), max: MAX_ACTIVE })}</div></div>
+        <div className="kpi2"><div className="l">{tr('overview.emp.activeWork')}</div><div className="v" data-testid="emp-active-count">{fmtInt(activeCount(state, me.id))}<u>/ {fmtInt(capacityLimit(me))}</u></div><div className="s">{tr('overview.emp.capacityInUse', { used: activeCount(state, me.id), max: capacityLimit(me) })}</div></div>
         <div className="kpi2"><div className="l">{tr('task.status.submitted')}</div><div className="v" data-testid="emp-review-count">{fmtInt(mySubmitted.length)}</div><div className="s">{tr('overview.emp.inReviewSub')}</div></div>
         <div className="kpi2"><div className="l">{tr('common.marketplace')}</div><div className="v">{fmtInt(state.tasks.filter(t => t.status === 'OPEN' && t.assignMode === 'ALL_EMPLOYEES' && canSeeTask(t, me)).length)}</div><div className="s">{tr('overview.emp.openToClaim')}</div></div>
         <div className="kpi2"><div className="l">{tr('wallet.balance')}</div><div className="v">{coins(bal)}<u>{tr('common.coins')}</u></div><div className="s">{tr('overview.emp.affordableLifetime', { count: affordable.length, coins: coins(earned) })}</div></div>

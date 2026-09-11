@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
-import { PRIORITIES, MAX_ACTIVE, activeCount } from '../domain/engine'
+import { PRIORITIES, capacityLimit, activeCount } from '../domain/engine'
 import type { Attachment, Audience, Priority } from '../domain/engine'
 import { AttachField, Coin, DateInput, Field, Modal, PriBadge, Seg, fmtDate } from '../ui'
 import { useI18n } from '../i18n'
@@ -140,8 +140,8 @@ export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () 
                 <option value="">{tr(audience === 'MANAGEMENT' ? 'task.chooseManager' : audience === 'PRIVATE' ? 'task.choosePersonEllipsis' : 'task.chooseEmployee')}</option>
                 {targets.map(u => {
                   const n = activeCount(state, u.id)
-                  return <option key={u.id} value={u.id}>
-                    {tr(n >= MAX_ACTIVE ? 'task.assignOptionPosFull' : 'task.assignOptionPos', { name: u.name, position: u.position, used: n, max: MAX_ACTIVE })}
+                  return <option key={u.id} value={u.id} disabled={n >= capacityLimit(u)}>
+                    {tr(n >= capacityLimit(u) ? 'task.assignOptionPosFull' : 'task.assignOptionPos', { name: u.name, position: u.position, used: n, max: capacityLimit(u) })}
                   </option>
                 })}
               </select>

@@ -25,7 +25,7 @@ export function apiUrl(path: string): string {
 export class ApiError extends Error {
   code: string
   status: number
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, public details: Record<string, string | number> = {}) {
     super(message)
     this.code = code
     this.status = status
@@ -55,14 +55,15 @@ async function req<T>(path: string, opts: { method?: string; json?: unknown; for
   }
   const res = await fetch(apiUrl(path), { method: opts.method ?? 'GET', headers, body })
   if (!res.ok) {
+    let details = {}
     let code = 'ERROR', message = `Request failed (${res.status})`
     try {
       const b = await res.json()
       const d = b?.detail ?? b
-      if (d?.code) { code = d.code; message = d.message ?? message }
+      if (d?.code) { details = d; code = d.code; message = d.message ?? message }
       else if (typeof b?.detail === 'string') message = b.detail
     } catch { /* non-JSON error body */ }
-    throw new ApiError(res.status, code, message)
+    throw new ApiError(res.status, code, message, details)
   }
   return res.json() as Promise<T>
 }
