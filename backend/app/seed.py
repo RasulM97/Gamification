@@ -8,6 +8,13 @@ Idempotent: runs only when the companies table is empty.
 from __future__ import annotations
 
 from datetime import date, timedelta
+import json
+from pathlib import Path
+
+_SEED_EVENTS = json.loads(Path(__file__).with_name('seed_events.json').read_text())
+def seed_event(kind, id):
+    e = _SEED_EVENTS[kind][id]
+    return {'event_type':e['eventType'], 'params':e['params']}
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -108,7 +115,7 @@ def run(db: Session) -> None:
                    reviewer_id='u-marcus', review_note=None, reviewed_at=now - 5 * D),
         Contribution(id='c0', company_id=co.id, task_id='t-audit', cycle=1, employee_id='u-jonas',
                      reported_pct=100, accepted_pct=100, payout=40, decision='APPROVED',
-                     reason='Work approved', at=now - 34 * D),
+                     reason='', at=now - 34 * D),
         Contribution(id='c1', company_id=co.id, task_id='t-audit', cycle=2, employee_id='u-priya',
                      reported_pct=45, accepted_pct=20, payout=8, decision='HANDOFF',
                      reason='Pulled onto a client escalation mid-audit', at=now - 9 * D),
@@ -238,17 +245,17 @@ def run(db: Session) -> None:
     db.add_all([
         # N2: pre-seed economy for Marcus's manager reward redemption (r3),
         # same pre-seed-history pattern as l2–l4.
-        LedgerTransaction(id='l11', company_id=co.id, at=now - 2 * H, user_id='u-marcus', type='REDEMPTION', amount=-150, ref='Reward redemption — Ergonomic home-office upgrade'),
-        LedgerTransaction(id='l10', company_id=co.id, at=now - 10 * D, user_id='u-marcus', type='TASK_REWARD', amount=150, ref='Task reward — Q3 partner enablement program'),
-        LedgerTransaction(id='l9', company_id=co.id, at=now - 5 * H, user_id='u-priya', type='REDEMPTION', amount=-30, ref='Reward redemption — Lunch voucher'),
-        LedgerTransaction(id='l8', company_id=co.id, at=now - 1 * D, user_id='u-jonas', type='REDEMPTION', amount=-60, ref='Reward redemption — Company hoodie'),
-        LedgerTransaction(id='l7', company_id=co.id, at=now - 3 * D, user_id='u-priya', type='TASK_PARTIAL_REWARD', amount=6, ref='Partial reward (20%) — Quarterly commission reconciliation', task_id='t-commission', cycle=1),
-        LedgerTransaction(id='l6', company_id=co.id, at=now - 5 * D, user_id='u-jonas', type='TASK_REWARD', amount=32, ref='Task reward — Q3 inventory audit', task_id='t-audit', cycle=2),
-        LedgerTransaction(id='l5', company_id=co.id, at=now - 9 * D, user_id='u-priya', type='TASK_PARTIAL_REWARD', amount=8, ref='Partial reward (20%) — Q3 inventory audit', task_id='t-audit', cycle=2),
-        LedgerTransaction(id='l4', company_id=co.id, at=now - 14 * D, user_id='u-aisha', type='TASK_REWARD', amount=20, ref='Task reward — Sales ops handbook refresh'),
-        LedgerTransaction(id='l3', company_id=co.id, at=now - 20 * D, user_id='u-priya', type='TASK_REWARD', amount=45, ref='Task reward — Spring campaign recap'),
-        LedgerTransaction(id='l2', company_id=co.id, at=now - 26 * D, user_id='u-jonas', type='TASK_REWARD', amount=38, ref='Task reward — Distributor visit program'),
-        LedgerTransaction(id='l1', company_id=co.id, at=now - 33 * D, user_id='u-jonas', type='TASK_REWARD', amount=40, ref='Task reward — Q3 inventory audit (cycle 1)', task_id='t-audit', cycle=1),
+        LedgerTransaction(id='l11', **seed_event('ledger','l11'), ref='', company_id=co.id, at=now - 2 * H, user_id='u-marcus', type='REDEMPTION', amount=-150),
+        LedgerTransaction(id='l10', **seed_event('ledger','l10'), ref='', company_id=co.id, at=now - 10 * D, user_id='u-marcus', type='TASK_REWARD', amount=150),
+        LedgerTransaction(id='l9', **seed_event('ledger','l9'), ref='', company_id=co.id, at=now - 5 * H, user_id='u-priya', type='REDEMPTION', amount=-30),
+        LedgerTransaction(id='l8', **seed_event('ledger','l8'), ref='', company_id=co.id, at=now - 1 * D, user_id='u-jonas', type='REDEMPTION', amount=-60),
+        LedgerTransaction(id='l7', **seed_event('ledger','l7'), ref='', company_id=co.id, at=now - 3 * D, user_id='u-priya', type='TASK_PARTIAL_REWARD', amount=6, task_id='t-commission', cycle=1),
+        LedgerTransaction(id='l6', **seed_event('ledger','l6'), ref='', company_id=co.id, at=now - 5 * D, user_id='u-jonas', type='TASK_REWARD', amount=32, task_id='t-audit', cycle=2),
+        LedgerTransaction(id='l5', **seed_event('ledger','l5'), ref='', company_id=co.id, at=now - 9 * D, user_id='u-priya', type='TASK_PARTIAL_REWARD', amount=8, task_id='t-audit', cycle=2),
+        LedgerTransaction(id='l4', **seed_event('ledger','l4'), ref='', company_id=co.id, at=now - 14 * D, user_id='u-aisha', type='TASK_REWARD', amount=20),
+        LedgerTransaction(id='l3', **seed_event('ledger','l3'), ref='', company_id=co.id, at=now - 20 * D, user_id='u-priya', type='TASK_REWARD', amount=45),
+        LedgerTransaction(id='l2', **seed_event('ledger','l2'), ref='', company_id=co.id, at=now - 26 * D, user_id='u-jonas', type='TASK_REWARD', amount=38),
+        LedgerTransaction(id='l1', **seed_event('ledger','l1'), ref='', company_id=co.id, at=now - 33 * D, user_id='u-jonas', type='TASK_REWARD', amount=40, task_id='t-audit', cycle=1),
     ])
 
     # ── rewards & redemptions ────────────────────────────────────────────
@@ -292,30 +299,30 @@ def run(db: Session) -> None:
 
     # ── notices & activity ───────────────────────────────────────────────
     db.add_all([
-        Notification(id='n7', company_id=co.id, user_id='u-marcus', level='ACTION_REQUIRED', category='Assignments', text='New assignment — Q4 sales incentive plan (worth 50 Coins). Accept or decline.', task_id='t-incentive', pri='IMPORTANT', at=now - 3 * H),
-        Notification(id='n6', company_id=co.id, user_id='u-marcus', level='ACTION_REQUIRED', category='Reviews', text='Submission ready for review — Client onboarding pack — Northstar Labs by Priya Nair.', task_id='t-northstar', at=now - 5 * H),
-        Notification(id='n5', company_id=co.id, user_id='u-marcus', level='ACTION_REQUIRED', category='Rewards', text='Reward approval needed — Lunch voucher for Priya Nair (30 Coins).', at=now - 5 * H, redemption_id='r2'),
-        Notification(id='n5b', company_id=co.id, user_id='u-dana', level='ACTION_REQUIRED', category='Reviews', text='Submission ready for review — Client onboarding pack — Northstar Labs by Priya Nair.', task_id='t-northstar', at=now - 5 * H),
-        Notification(id='n4', company_id=co.id, user_id='u-aisha', level='IMPORTANT', category='Tasks', text='Urgent task available — Urgent inventory recount — Warehouse B (worth 25 Coins), posted by Dana Cole. First valid claim wins.', task_id='t-recount', pri='URGENT', at=now - 7 * H),
-        Notification(id='n3', company_id=co.id, user_id='u-priya', level='ACTION_REQUIRED', category='Assignments', text='New assignment — Expense policy one-pager (worth 10 Coins). Accept or decline.', task_id='t-policy', at=now - 8 * H),
-        Notification(id='n2', company_id=co.id, user_id='u-aisha', level='ACTION_REQUIRED', category='Tasks', text='Rework required — Trade-show lead list cleanup. Reason: duplicates remain in rows 200–260…', task_id='t-leads', at=now - 26 * H, read=True),
-        Notification(id='n1', company_id=co.id, user_id='u-jonas', level='IMPORTANT', category='Economy', text='Approved — Q3 inventory audit. +32 Coins credited to your wallet.', task_id='t-audit', at=now - 5 * D, read=True),
+        Notification(id='n7', **seed_event('notices','n7'), text='', company_id=co.id, user_id='u-marcus', level='ACTION_REQUIRED', category='Assignments', task_id='t-incentive', pri='IMPORTANT', at=now - 3 * H),
+        Notification(id='n6', **seed_event('notices','n6'), text='', company_id=co.id, user_id='u-marcus', level='ACTION_REQUIRED', category='Reviews', task_id='t-northstar', at=now - 5 * H),
+        Notification(id='n5', **seed_event('notices','n5'), text='', company_id=co.id, user_id='u-marcus', level='ACTION_REQUIRED', category='Rewards', at=now - 5 * H, redemption_id='r2'),
+        Notification(id='n5b', **seed_event('notices','n5b'), text='', company_id=co.id, user_id='u-dana', level='ACTION_REQUIRED', category='Reviews', task_id='t-northstar', at=now - 5 * H),
+        Notification(id='n4', **seed_event('notices','n4'), text='', company_id=co.id, user_id='u-aisha', level='IMPORTANT', category='Tasks', task_id='t-recount', pri='URGENT', at=now - 7 * H),
+        Notification(id='n3', **seed_event('notices','n3'), text='', company_id=co.id, user_id='u-priya', level='ACTION_REQUIRED', category='Assignments', task_id='t-policy', at=now - 8 * H),
+        Notification(id='n2', **seed_event('notices','n2'), text='', company_id=co.id, user_id='u-aisha', level='ACTION_REQUIRED', category='Tasks', task_id='t-leads', at=now - 26 * H, read=True),
+        Notification(id='n1', **seed_event('notices','n1'), text='', company_id=co.id, user_id='u-jonas', level='IMPORTANT', category='Economy', task_id='t-audit', at=now - 5 * D, read=True),
     ])
     # N2: manager redemption decisions go to admins only — here Dana.
     # Mirrors exactly what redeem() emits for managers.
-    db.add(Notification(id='n8', company_id=co.id, user_id='u-dana', level='ACTION_REQUIRED', category='Rewards', text='Reward approval needed — Ergonomic home-office upgrade for Marcus Webb (150 Coins).', at=now - 2 * H, redemption_id='r3'))
+    db.add(Notification(id='n8', **seed_event('notices','n8'), text='', company_id=co.id, user_id='u-dana', level='ACTION_REQUIRED', category='Rewards', at=now - 2 * H, redemption_id='r3'))
     db.add_all([
-        Activity(id='a11', company_id=co.id, at=now - 2 * H, actor_id='u-marcus', action='redeemed reward', object='Ergonomic home-office upgrade', econ='-150 Coins'),
-        Activity(id='a10', company_id=co.id, at=now - 3 * H, actor_id='u-dana', action='created task', object='Q4 sales incentive plan', task_id='t-incentive', cycle=1),
-        Activity(id='a9', company_id=co.id, at=now - 5 * H, actor_id='u-priya', action='submitted work for review', object='Client onboarding pack — Northstar Labs', task_id='t-northstar', cycle=1),
-        Activity(id='a8', company_id=co.id, at=now - 5 * H, actor_id='u-priya', action='redeemed reward', object='Lunch voucher', econ='-30 Coins'),
-        Activity(id='a7', company_id=co.id, at=now - 7 * H, actor_id='u-dana', action='created task', object='Urgent inventory recount — Warehouse B', task_id='t-recount', cycle=1),
-        Activity(id='a6', company_id=co.id, at=now - 8 * H, actor_id='u-dana', action='created task', object='Expense policy one-pager', task_id='t-policy', cycle=1),
-        Activity(id='a5', company_id=co.id, at=now - 20 * H, actor_id='u-jonas', action='reported progress', object='Quarterly commission reconciliation — 35% (self-reported)', task_id='t-commission', cycle=1),
-        Activity(id='a4', company_id=co.id, at=now - 26 * H, actor_id='u-marcus', action='rejected submission', object='Trade-show lead list cleanup', task_id='t-leads', reason='Duplicates remain in rows 200–260 and 40 leads have no region tag.', cycle=1),
-        Activity(id='a3', company_id=co.id, at=now - 3 * D, actor_id='u-marcus', action='handed off (20% accepted)', object='Quarterly commission reconciliation', task_id='t-commission', reason='Deal-level extract done; field verification needed', econ='+6 Coins', cycle=1),
-        Activity(id='a2', company_id=co.id, at=now - 5 * D, actor_id='u-marcus', action='approved work', object='Q3 inventory audit', task_id='t-audit', econ='+32 Coins', cycle=2),
-        Activity(id='a1', company_id=co.id, at=now - 9 * D, actor_id='u-marcus', action='handed off (20% accepted)', object='Q3 inventory audit', task_id='t-audit', reason='Pulled onto a client escalation mid-audit', econ='+8 Coins', cycle=2),
-        Activity(id='a0', company_id=co.id, at=now - 34 * D, actor_id='u-marcus', action='approved work', object='Q3 inventory audit', task_id='t-audit', econ='+40 Coins', cycle=1),
+        Activity(id='a11', **seed_event('activity','a11'), action='',object='', company_id=co.id, at=now - 2 * H, actor_id='u-marcus'),
+        Activity(id='a10', **seed_event('activity','a10'), action='',object='', company_id=co.id, at=now - 3 * H, actor_id='u-dana', task_id='t-incentive', cycle=1),
+        Activity(id='a9', **seed_event('activity','a9'), action='',object='', company_id=co.id, at=now - 5 * H, actor_id='u-priya', task_id='t-northstar', cycle=1),
+        Activity(id='a8', **seed_event('activity','a8'), action='',object='', company_id=co.id, at=now - 5 * H, actor_id='u-priya'),
+        Activity(id='a7', **seed_event('activity','a7'), action='',object='', company_id=co.id, at=now - 7 * H, actor_id='u-dana', task_id='t-recount', cycle=1),
+        Activity(id='a6', **seed_event('activity','a6'), action='',object='', company_id=co.id, at=now - 8 * H, actor_id='u-dana', task_id='t-policy', cycle=1),
+        Activity(id='a5', **seed_event('activity','a5'), action='',object='', company_id=co.id, at=now - 20 * H, actor_id='u-jonas', task_id='t-commission', cycle=1),
+        Activity(id='a4', **seed_event('activity','a4'), action='',object='', company_id=co.id, at=now - 26 * H, actor_id='u-marcus', task_id='t-leads', cycle=1),
+        Activity(id='a3', **seed_event('activity','a3'), action='',object='', company_id=co.id, at=now - 3 * D, actor_id='u-marcus', task_id='t-commission', cycle=1),
+        Activity(id='a2', **seed_event('activity','a2'), action='',object='', company_id=co.id, at=now - 5 * D, actor_id='u-marcus', task_id='t-audit', cycle=2),
+        Activity(id='a1', **seed_event('activity','a1'), action='',object='', company_id=co.id, at=now - 9 * D, actor_id='u-marcus', task_id='t-audit', cycle=2),
+        Activity(id='a0', **seed_event('activity','a0'), action='',object='', company_id=co.id, at=now - 34 * D, actor_id='u-marcus', task_id='t-audit', cycle=1),
     ])
     db.flush()

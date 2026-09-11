@@ -1,0 +1,4 @@
+{
+  "approval": {"eventType":"TASK_APPROVED","params":{"actorId":"u-marcus","actor":"Marcus Webb","taskId":"t-northstar","task":"Client onboarding pack — Northstar Labs","employeeId":"u-priya","employee":"Priya Nair","coins":37,"percent":100,"objectType":"TASK","objectId":"t-northstar","cycle":1}},
+  "fulfillment": {"eventType":"REDEMPTION_FULFILLED","params":{"actorId":"u-jonas","actor":"Jonas Berg","rewardId":"rw-lunch","reward":"Lunch voucher","employeeId":"u-priya","employee":"Priya Nair","coins":30,"redemptionId":"r2","objectType":"REDEMPTION","objectId":"r2"}}
+}

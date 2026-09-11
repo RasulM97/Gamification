@@ -1,13 +1,14 @@
+import type { EventParams, EventType } from './events'
 /* Domain reducer — every state transition lives here (see engine.ts header
  * for the canonical rule list). Pure: structuredClone in, new State out. */
 import type {
-  Act, Attachment, AssignMode, Audience, LedgerType, NotifCategory, NotifLevel,
+  Attachment, AssignMode, Audience, LedgerType, NotifCategory, NotifLevel,
   Priority, Redemption, Reward, RewardCategory, Settings, State, Task,
 } from './model'
 import {
   MAX_ACTIVE, MUTABLE_LEVELS, activeCount, balanceOf, canCreateReward, canDecideRedemption,
   canFulfillReward, canManageReward, claimPenalty,
-  fmtCoins, normalizeDeadline, partialPayout, remainingQuota, rewardFits, rewardOpen, roleFits, validateAttachments,
+  normalizeDeadline, partialPayout, remainingQuota, rewardFits, rewardOpen, roleFits, validateAttachments,
 } from './model'
 /* ── reducer ───────────────────────────────────────────────────────────── */
 export type Action =
@@ -73,16 +74,32 @@ export function reducer(prev: State, a: Action): State {
     if (rec) { rec.outcome = outcome; rec.reviewerId = reviewerId; rec.reviewNote = reviewNote }
   }
 
-  const act = (actorId: string, action: string, object: string, extra?: Partial<Act>) =>
-    s.activity.unshift({ id: nid('a'), at: now, actorId, action, object, ...extra })
-  const note = (userId: string, level: NotifLevel, category: NotifCategory, text: string, taskId?: string, redemptionId?: string) =>
-    s.notices.unshift({
-      id: nid('n'), userId, level, category, text, taskId, redemptionId,
-      pri: taskId ? s.tasks.find(t => t.id === taskId)?.priority : undefined,
-      at: now, read: false, archived: false,
-    })
-  const ledger = (userId: string, type: LedgerType, amount: number, ref: string, t?: Task) =>
-    s.ledger.unshift({ id: nid('l'), at: now, userId, type, amount, ref, taskId: t?.id, cycle: t?.cycle })
+  const actorId = 'by' in a ? a.by : 'managerId' in a ? a.managerId : 'userId' in a ? a.userId : ''
+  const snap = (t?: Task, extra: EventParams = {}): EventParams => ({
+    actorId, actor:user(actorId)?.name ?? '',
+    ...('reason' in a ? {reason:a.reason} : {}),
+    ...(t ? {task:t.title,taskId:t.id,objectType:'TASK',objectId:t.id,cycle:t.cycle,coins:t.reward,
+      employeeId:t.ownerId,employee:t.ownerId ? user(t.ownerId).name : '',percent:t.reported,priority:t.priority,audience:t.audience,assigneeId:t.assigneeId,
+      assignee:t.assigneeId ? user(t.assigneeId).name : '',deadline:t.deadline} : {}), ...extra,
+  })
+  const rewardSnapshot = (r:Reward, userId?:string, rd?:Redemption):EventParams => snap(undefined,{
+    reward:r.name,rewardId:r.id,category:r.category,active:r.active,archived:r.archived,
+    eligibility:r.eligibility,stock:r.stock,description:r.description ?? '',objectType:rd ? 'REDEMPTION' : 'REWARD',objectId:rd?.id ?? r.id,
+    ...(rd ? {redemptionId:rd.id} : {}),coins:rd?.cost ?? r.cost,
+    ...(userId ? {employeeId:userId,employee:user(userId).name} : {}),
+    executorIds:[...r.executorIds],executors:r.executorIds.map(id=>user(id)?.name ?? id),
+  })
+  const act = (actorId:string,eventType:EventType,params:EventParams) =>
+    s.activity.unshift({id:nid('a'),at:now,actorId,action:'',object:'',eventType,params,
+      taskId:typeof params.taskId==='string'?params.taskId:undefined,cycle:typeof params.cycle==='number'?params.cycle:undefined})
+  const note = (userId:string,level:NotifLevel,category:NotifCategory,eventType:EventType,params:EventParams) =>
+    s.notices.unshift({id:nid('n'),userId,level,category,text:'',eventType,params,
+      taskId:typeof params.taskId==='string'?params.taskId:undefined,
+      redemptionId:typeof params.redemptionId==='string'?params.redemptionId:undefined,
+      pri:typeof params.taskId==='string'?task(params.taskId)?.priority:undefined,at:now,read:false,archived:false})
+  const ledger = (userId:string,type:LedgerType,amount:number,params:EventParams) =>
+    s.ledger.unshift({id:nid('l'),at:now,userId,type,amount,ref:'',eventType:type,params:{...params,coins:amount},
+      taskId:typeof params.taskId==='string'?params.taskId:undefined,cycle:typeof params.cycle==='number'?params.cycle:undefined})
 
   /* New-cycle routing (M1-D D7): a reopened/reactivated cycle is NEW work —
      the previous cycle's worker type must not permanently restrict it.
@@ -127,14 +144,14 @@ export function reducer(prev: State, a: Action): State {
       }
       if (t.assigneeId && !roleFits(t, user(t.assigneeId))) break // wrong audience — refuse
       s.tasks.unshift(t)
-      act(a.by, 'created task', t.title, { taskId: t.id, cycle: 1 })
-      if (t.assigneeId) note(t.assigneeId, 'ACTION_REQUIRED', 'Assignments', `New assignment — ${t.title} (worth ${t.reward} Coins) from ${user(a.by).name}. Accept or decline.`, t.id)
+      act(a.by, 'TASK_CREATED', snap(t,{}))
+      if (t.assigneeId) note(t.assigneeId, 'ACTION_REQUIRED', 'Assignments', 'TASK_ASSIGNED', snap(t,{}))
       else if (t.priority === 'URGENT' || t.priority === 'IMPORTANT')
         /* L.2-C: public urgent/important work notifies everyone eligible for
            the task's audience so it gets claimed fast; NORMAL/NONE rely on
            Available Work. Management work never pings employees. */
         s.users.filter(u => roleFits(t, u) && u.id !== a.by)
-          .forEach(e => note(e.id, 'IMPORTANT', 'Tasks', `${t.priority === 'URGENT' ? 'Urgent' : 'Important'} task available — ${t.title} (worth ${t.reward} Coins), posted by ${user(a.by).name}. First valid claim wins.`, t.id))
+          .forEach(e => note(e.id, 'IMPORTANT', 'Tasks', 'TASK_AVAILABLE', snap(t,{})))
       break
     }
 
@@ -147,7 +164,7 @@ export function reducer(prev: State, a: Action): State {
       if (!specific && !open_) break
       if (activeCount(s, a.userId) >= MAX_ACTIVE) break
       t.ownerId = a.userId; t.status = 'IN_PROGRESS'; t.assigneeId = null; t.updatedAt = now
-      act(a.userId, specific ? 'accepted assignment' : 'claimed task', t.title, { taskId: t.id, cycle: t.cycle })
+      act(a.userId, specific ? 'TASK_ACCEPTED' : 'TASK_CLAIMED', snap(t,{}))
       break
     }
 
@@ -167,10 +184,10 @@ export function reducer(prev: State, a: Action): State {
         t.rejectionReason = null; t.submittedAt = null
       }
       t.assigneeId = null; t.updatedAt = now
-      act(a.userId, owned ? 'handed back assignment' : 'declined assignment', t.title, { taskId: t.id, reason: a.reason, cycle: t.cycle })
+      act(a.userId, owned ? 'TASK_HANDED_BACK' : 'TASK_DECLINED', snap(t,{}))
       const lvl: NotifLevel = (t.priority === 'URGENT' || t.priority === 'IMPORTANT') ? 'ACTION_REQUIRED' : 'IMPORTANT'
       managers().filter(m => m.id !== a.userId)
-        .forEach(m => note(m.id, lvl, 'Assignments', `${user(a.userId).name} ${owned ? 'handed back' : 'declined'} “${t.title}” — ${a.reason}. Reassignment needed.`, t.id))
+        .forEach(m => note(m.id, lvl, 'Assignments', owned ? 'TASK_HANDED_BACK' : 'TASK_DECLINED', snap(t,{})))
       break
     }
 
@@ -182,13 +199,13 @@ export function reducer(prev: State, a: Action): State {
       /* Priority-scaled penalty, clamped so the balance can never go negative
          (MVP rule); no zero-value ledger rows (Ledger §13.7). */
       const pen = Math.min(claimPenalty(t.priority), Math.max(0, balanceOf(s, a.userId)))
-      if (pen > 0) ledger(a.userId, 'TASK_CLAIM_PENALTY', -pen, `Claim return penalty — ${t.title}`, t)
+      if (pen > 0) ledger(a.userId, 'TASK_CLAIM_PENALTY', -pen, snap(t,{coins:-pen}))
       t.ownerId = null; t.status = 'OPEN'; t.reported = 0; t.updatedAt = now
       t.submissionNote = null; t.attachments = []; t.rejectionReason = null; t.submittedAt = null
-      act(a.userId, 'returned claimed task', t.title, { taskId: t.id, reason: a.reason, econ: pen > 0 ? `-${pen} Coins` : 'no penalty (empty wallet)', cycle: t.cycle })
+      act(a.userId, 'TASK_RETURNED', snap(t,{coins:-pen}))
       if (t.priority === 'URGENT' || t.priority === 'IMPORTANT')
-        managers().forEach(m => note(m.id, 'IMPORTANT', 'Tasks', `${user(a.userId).name} returned “${t.title}” to the marketplace${pen > 0 ? ` (−${pen} Coins penalty)` : ''} — ${a.reason}`, t.id))
-      if (pen > 0) note(a.userId, 'INFORMATIONAL', 'Economy', `Claim return penalty applied: −${pen} Coins for “${t.title}”.`, t.id)
+        managers().forEach(m => note(m.id, 'IMPORTANT', 'Tasks', 'TASK_RETURNED', snap(t,{coins:-pen})))
+      if (pen > 0) note(a.userId, 'INFORMATIONAL', 'Economy', 'TASK_CLAIM_PENALTY', snap(t,{coins:-pen}))
       break
     }
 
@@ -208,19 +225,19 @@ export function reducer(prev: State, a: Action): State {
       const changed: string[] = []
       if (a.title != null && a.title.trim() && a.title !== t.title) { changed.push('title'); t.title = a.title.trim() }
       if (a.description != null && a.description.trim() && a.description !== t.description) { changed.push('description'); t.description = a.description.trim() }
-      if (a.priority != null && a.priority !== t.priority) { changed.push(`priority → ${a.priority}`); t.priority = a.priority }
+      if (a.priority != null && a.priority !== t.priority) { changed.push('priority'); t.priority = a.priority }
       if (a.deadline !== undefined) {
         const nd = normalizeDeadline(a.deadline)
         if (nd !== t.deadline) { changed.push('deadline'); t.deadline = nd }
       }
-      if (a.reward != null && a.reward !== t.reward) { changed.push(`reward → ${a.reward} Coins`); t.reward = a.reward }
+      if (a.reward != null && a.reward !== t.reward) { changed.push('reward'); t.reward = a.reward }
       if (changed.length === 0) break
       t.updatedAt = now
-      act(a.by, 'edited task', t.title, { taskId: t.id, reason: changed.join(', '), cycle: t.cycle })
+      act(a.by, 'TASK_UPDATED', snap(t,{changedFields:changed}))
       if (t.ownerId && t.ownerId !== a.by)
-        note(t.ownerId, 'IMPORTANT', 'Tasks', `“${t.title}” was updated by management (${changed.join(', ')}).`, t.id)
+        note(t.ownerId, 'IMPORTANT', 'Tasks', 'TASK_UPDATED', snap(t,{changedFields:changed}))
       else if (t.assigneeId && t.assigneeId !== a.by)
-        note(t.assigneeId, 'IMPORTANT', 'Tasks', `“${t.title}” was updated by management (${changed.join(', ')}).`, t.id)
+        note(t.assigneeId, 'IMPORTANT', 'Tasks', 'TASK_UPDATED', snap(t,{changedFields:changed}))
       break
     }
 
@@ -232,8 +249,8 @@ export function reducer(prev: State, a: Action): State {
       if (a.assigneeId && !roleFits(t, user(a.assigneeId))) break
       t.assignMode = a.assigneeId ? 'SPECIFIC_EMPLOYEE' : 'ALL_EMPLOYEES'
       t.assigneeId = a.assigneeId; t.updatedAt = now
-      act(a.by, a.assigneeId ? `reassigned to ${user(a.assigneeId).name}` : 'made available to all employees', t.title, { taskId: t.id, cycle: t.cycle })
-      if (a.assigneeId) note(a.assigneeId, 'ACTION_REQUIRED', 'Assignments', `New assignment — ${t.title} (worth ${t.reward} Coins). Accept or decline.`, t.id)
+      act(a.by, a.assigneeId ? 'TASK_REASSIGNED' : 'TASK_AVAILABLE', snap(t,{}))
+      if (a.assigneeId) note(a.assigneeId, 'ACTION_REQUIRED', 'Assignments', 'TASK_ASSIGNED', snap(t,{}))
       break
     }
 
@@ -244,7 +261,7 @@ export function reducer(prev: State, a: Action): State {
       if (t.ownerId !== a.userId) break
       if (t.status !== 'IN_PROGRESS' && t.status !== 'REJECTED') break
       t.reported = Math.max(0, Math.min(100, Math.round(a.pct))); t.updatedAt = now
-      act(a.userId, 'reported progress', `${t.title} — ${t.reported}% (self-reported)`, { taskId: t.id, cycle: t.cycle })
+      act(a.userId, 'TASK_PROGRESS_REPORTED', snap(t,{percent:t.reported}))
       break
     }
 
@@ -264,10 +281,10 @@ export function reducer(prev: State, a: Action): State {
         note: a.note, attachments: a.attachments, reportedPct: t.reported, at: now,
         outcome: 'PENDING', reviewerId: null, reviewNote: null,
       })
-      act(a.userId, 'submitted work for review', t.title, { taskId: t.id, cycle: t.cycle })
+      act(a.userId, 'TASK_SUBMITTED', snap(t,{}))
       /* A submitting manager (management-scoped task) never reviews themselves. */
       managers().filter(m => m.id !== a.userId)
-        .forEach(m => note(m.id, 'ACTION_REQUIRED', 'Reviews', `Submission ready for review — ${t.title} by ${user(a.userId).name}.`, t.id))
+        .forEach(m => note(m.id, 'ACTION_REQUIRED', 'Reviews', 'TASK_SUBMITTED', snap(t,{})))
       break
     }
 
@@ -277,7 +294,7 @@ export function reducer(prev: State, a: Action): State {
       /* Same canonical capacity rule as claiming — one definition only. */
       if (activeCount(s, a.userId) >= MAX_ACTIVE) break
       t.status = 'IN_PROGRESS'; t.updatedAt = now
-      act(a.userId, 'resumed rework', t.title, { taskId: t.id, cycle: t.cycle })
+      act(a.userId, 'TASK_RESUMED', snap(t,{}))
       break
     }
 
@@ -290,21 +307,21 @@ export function reducer(prev: State, a: Action): State {
       const acceptedPct = 100 - t.verified
       const remaining = Math.max(0, t.reward - t.paid)
       if (remaining > 0) {
-        ledger(owner, 'TASK_REWARD', remaining, `Task reward — ${t.title}`, t)
+        ledger(owner, 'TASK_REWARD', remaining, snap(t,{coins:remaining}))
         t.paid += remaining
       }
       t.contributions.push({
         id: nid('c'), cycle: t.cycle, employeeId: owner,
         reportedPct: t.reported, acceptedPct, payout: remaining,
-        decision: 'APPROVED', reason: 'Work approved', at: now,
+        decision: 'APPROVED', reason: '', at: now,
       })
       closePendingSubmission(t, 'APPROVED', a.managerId, null)
       t.verified = 100; t.status = 'APPROVED'; t.updatedAt = now
       t.instructions = null
       const cyc = t.cycles[t.cycles.length - 1]
       cyc.closedAt = now; cyc.outcome = 'APPROVED'; cyc.paid = t.paid; cyc.verified = 100
-      act(a.managerId, 'approved work', t.title, { taskId: t.id, econ: remaining > 0 ? fmtCoins(remaining) : undefined, cycle: t.cycle })
-      note(owner, 'IMPORTANT', 'Economy', `Approved — ${t.title}. ${remaining > 0 ? `${fmtCoins(remaining)} credited to your wallet.` : 'Cycle already fully paid.'}`, t.id)
+      act(a.managerId, 'TASK_APPROVED', snap(t,{coins:remaining}))
+      note(owner, 'IMPORTANT', 'Economy', 'TASK_APPROVED', snap(t,{coins:remaining}))
       break
     }
 
@@ -315,8 +332,8 @@ export function reducer(prev: State, a: Action): State {
       if (t.ownerId === a.managerId) break // no self-review
       closePendingSubmission(t, 'REJECTED', a.managerId, a.reason)
       t.status = 'REJECTED'; t.rejectionReason = a.reason; t.updatedAt = now
-      act(a.managerId, 'rejected submission', t.title, { taskId: t.id, reason: a.reason, cycle: t.cycle })
-      note(t.ownerId!, 'ACTION_REQUIRED', 'Tasks', `Rework required — ${t.title}. Reason: ${a.reason}`, t.id)
+      act(a.managerId, 'TASK_REWORK', snap(t,{}))
+      note(t.ownerId!, 'ACTION_REQUIRED', 'Tasks', 'TASK_REWORK', snap(t,{}))
       break
     }
 
@@ -358,7 +375,7 @@ export function reducer(prev: State, a: Action): State {
       const pct = Math.max(0, Math.min(100 - t.verified, Math.round(a.acceptedPct)))
       const payout = pct > 0 ? Math.min(partialPayout(t.reward, pct), Math.max(0, t.reward - t.paid)) : 0
       if (payout > 0) {
-        ledger(from, 'TASK_PARTIAL_REWARD', payout, `Partial reward (${pct}%) — ${t.title}`, t)
+        ledger(from, 'TASK_PARTIAL_REWARD', payout, snap(t,{percent:pct,coins:payout,employee:user(from).name,employeeId:from,overrideReason:a.overrideReason ?? "",remainingCoins:Math.max(0,t.reward-t.paid)}))
         t.paid += payout
       }
       t.contributions.push({
@@ -382,26 +399,17 @@ export function reducer(prev: State, a: Action): State {
       /* Files attached at handoff join the brief — visible to every future
          owner of the task. */
       if (a.attachments?.length) t.briefFiles = [...t.briefFiles, ...a.attachments]
-      const changeNote = [
-        a.reason,
-        a.priority ? `priority → ${a.priority}` : '',
-        a.deadline !== undefined ? 'deadline updated' : '',
-        overrides ? `remaining reward set to ${Math.round(a.remainingReward!)} Coins — ${a.overrideReason!.trim()}` : '',
-        a.attachments?.length ? `${a.attachments.length} file${a.attachments.length === 1 ? '' : 's'} added to the brief` : '',
-      ].filter(Boolean).join(' · ')
-      act(a.managerId, `handed off (${pct}% accepted)`, t.title, {
-        taskId: t.id, reason: changeNote, econ: payout > 0 ? fmtCoins(payout) : undefined, cycle: t.cycle,
-      })
-      note(from, 'IMPORTANT', 'Economy', `Handoff on “${t.title}” — ${pct}% accepted${payout > 0 ? `, ${fmtCoins(payout)} credited` : ', no payout'}.`, t.id)
+      act(a.managerId, 'TASK_HANDOFF', snap(t,{percent:pct,coins:payout,employee:user(from).name,employeeId:from,overrideReason:a.overrideReason ?? "",remainingCoins:Math.max(0,t.reward-t.paid)}))
+      note(from, 'IMPORTANT', 'Economy', 'TASK_HANDOFF', snap(t,{percent:pct,coins:payout,employee:user(from).name,employeeId:from,overrideReason:a.overrideReason ?? "",remainingCoins:Math.max(0,t.reward-t.paid)}))
       if (a.next.kind === 'EMPLOYEE') {
         /* Audience was already resolved (explicit choice, or derived from the
            target) before any mutation — assignment only sets the route. */
         t.assignMode = 'SPECIFIC_EMPLOYEE'; t.assigneeId = a.next.id; t.status = 'OPEN'
-        note(a.next.id, 'ACTION_REQUIRED', 'Assignments', `Handoff assignment — ${t.title} (${t.verified}% verified, ${Math.max(0, t.reward - t.paid)} Coins remaining) from ${user(a.managerId).name}. Instructions: ${a.reason} Accept or decline.`, t.id)
+        note(a.next.id, 'ACTION_REQUIRED', 'Assignments', 'TASK_HANDOFF_ASSIGNED', snap(t,{percent:pct,coins:payout,employee:user(from).name,employeeId:from,overrideReason:a.overrideReason ?? "",remainingCoins:Math.max(0,t.reward-t.paid)}))
       } else {
         t.assignMode = 'ALL_EMPLOYEES'; t.assigneeId = null; t.status = 'OPEN'
         if (t.priority === 'URGENT' || t.priority === 'IMPORTANT')
-          managers().forEach(m => note(m.id, 'IMPORTANT', 'Tasks', `Handoff returned “${t.title}” to the marketplace (${t.verified}% verified).`, t.id))
+          managers().forEach(m => note(m.id, 'IMPORTANT', 'Tasks', 'TASK_HANDOFF_AVAILABLE', snap(t,{percent:pct,coins:payout,employee:user(from).name,employeeId:from,overrideReason:a.overrideReason ?? "",remainingCoins:Math.max(0,t.reward-t.paid)})))
       }
       break
     }
@@ -424,14 +432,12 @@ export function reducer(prev: State, a: Action): State {
       /* Re-opening can refresh the brief for the new cycle — or keep the
          previous brief and run again as-is. */
       const briefChanges: string[] = []
-      if (a.description?.trim() && a.description.trim() !== t.description) { t.description = a.description.trim(); briefChanges.push('brief updated') }
-      if (a.attachments?.length) { t.briefFiles = [...t.briefFiles, ...a.attachments]; briefChanges.push(`${a.attachments.length} file${a.attachments.length === 1 ? '' : 's'} added to the brief`) }
-      const routingNote = routing.nu ? `assigned to ${routing.nu.name}`
-        : a.audience ? `audience → ${routing.effAudience === 'MANAGEMENT' ? 'management only' : routing.effAudience === 'PRIVATE' ? 'private' : 'employees'}` : ''
+      if (a.description?.trim() && a.description.trim() !== t.description) { t.description = a.description.trim(); briefChanges.push('description') }
+      if (a.attachments?.length) { t.briefFiles = [...t.briefFiles, ...a.attachments]; briefChanges.push('briefFiles') }
       t.cycles.push({ cycle: t.cycle, openedAt: now, closedAt: null, outcome: null, paid: 0, verified: 0 })
-      act(a.by, 'reopened task (new cycle)', t.title, { taskId: t.id, cycle: t.cycle, reason: [...briefChanges, routingNote].filter(Boolean).join(' · ') || 'previous brief reused' })
-      if (routing.nu) note(routing.nu.id, 'ACTION_REQUIRED', 'Assignments', `New assignment — ${t.title} (worth ${t.reward} Coins, cycle ${t.cycle}). Accept or decline.`, t.id)
-      managers().filter(m => m.id !== a.by).forEach(m => note(m.id, 'INFORMATIONAL', 'Tasks', `“${t.title}” reopened — cycle ${t.cycle} started. Reward budget refreshed.`, t.id))
+      act(a.by, 'TASK_REOPENED', snap(t,{changedFields:briefChanges}))
+      if (routing.nu) note(routing.nu.id, 'ACTION_REQUIRED', 'Assignments', 'TASK_ASSIGNED', snap(t,{}))
+      managers().filter(m => m.id !== a.by).forEach(m => note(m.id, 'INFORMATIONAL', 'Tasks', 'TASK_REOPENED', snap(t,{changedFields:briefChanges})))
       break
     }
 
@@ -451,7 +457,7 @@ export function reducer(prev: State, a: Action): State {
       const pct = t.ownerId ? Math.max(0, Math.min(100 - t.verified, Math.round(a.acceptedPct ?? 0))) : 0
       const payout = pct > 0 ? Math.min(partialPayout(t.reward, pct), Math.max(0, t.reward - t.paid)) : 0
       if (payout > 0) {
-        ledger(t.ownerId!, 'TASK_PARTIAL_REWARD', payout, `Partial reward (${pct}%) — ${t.title} (cancelled)`, t)
+        ledger(t.ownerId!, 'TASK_PARTIAL_REWARD', payout, snap(t,{percent:pct,coins:payout}))
         t.paid += payout
       }
       if (pct > 0) {
@@ -467,11 +473,8 @@ export function reducer(prev: State, a: Action): State {
       t.instructions = null
       const cyc = t.cycles[t.cycles.length - 1]
       cyc.closedAt = now; cyc.outcome = 'CANCELLED'; cyc.paid = t.paid; cyc.verified = t.verified
-      act(a.by, pct > 0 ? `cancelled task (${pct}% credited)` : 'cancelled task', t.title, {
-        taskId: t.id, reason: a.reason, econ: payout > 0 ? fmtCoins(payout) : undefined, cycle: t.cycle,
-      })
-      if (t.ownerId) note(t.ownerId, 'IMPORTANT', 'Tasks',
-        `Cancelled — ${t.title}. ${payout > 0 ? `${fmtCoins(payout)} credited for work already done (${pct}% accepted). ` : ''}${a.reason}`, t.id)
+      act(a.by, 'TASK_CANCELLED', snap(t,{percent:pct,coins:payout}))
+      if (t.ownerId) note(t.ownerId, 'IMPORTANT', 'Tasks', 'TASK_CANCELLED', snap(t,{percent:pct,coins:payout}))
       break
     }
 
@@ -492,13 +495,13 @@ export function reducer(prev: State, a: Action): State {
       /* Same brief choice as reopening: reuse the previous brief or update
          the description and attach new files for the fresh start. */
       const briefChanges: string[] = []
-      if (a.description?.trim() && a.description.trim() !== t.description) { t.description = a.description.trim(); briefChanges.push('brief updated') }
-      if (a.attachments?.length) { t.briefFiles = [...t.briefFiles, ...a.attachments]; briefChanges.push(`${a.attachments.length} file${a.attachments.length === 1 ? '' : 's'} added to the brief`) }
+      if (a.description?.trim() && a.description.trim() !== t.description) { t.description = a.description.trim(); briefChanges.push('description') }
+      if (a.attachments?.length) { t.briefFiles = [...t.briefFiles, ...a.attachments]; briefChanges.push('briefFiles') }
       t.cycles.push({ cycle: t.cycle, openedAt: now, closedAt: null, outcome: null, paid: 0, verified: 0 })
-      act(a.by, 'reactivated task (new cycle)', t.title, { taskId: t.id, reason: [a.reason, ...briefChanges, routing.nu ? `assigned to ${routing.nu.name}` : ''].filter(Boolean).join(' · '), cycle: t.cycle })
-      if (routing.nu) note(routing.nu.id, 'ACTION_REQUIRED', 'Assignments', `New assignment — ${t.title} (worth ${t.reward} Coins, cycle ${t.cycle}). Accept or decline.`, t.id)
+      act(a.by, 'TASK_REACTIVATED', snap(t,{changedFields:briefChanges}))
+      if (routing.nu) note(routing.nu.id, 'ACTION_REQUIRED', 'Assignments', 'TASK_ASSIGNED', snap(t,{}))
       managers().filter(m => m.id !== a.by)
-        .forEach(m => note(m.id, 'INFORMATIONAL', 'Tasks', `“${t.title}” reactivated — cycle ${t.cycle} started. Reason: ${a.reason}`, t.id))
+        .forEach(m => note(m.id, 'INFORMATIONAL', 'Tasks', 'TASK_REACTIVATED', snap(t,{changedFields:briefChanges})))
       break
     }
 
@@ -520,15 +523,15 @@ export function reducer(prev: State, a: Action): State {
          if the redemption is cancelled from PENDING or APPROVED; a FULFILLED
          redemption keeps them consumed. No double-debit, no double-restore. */
       if (r.stock !== null) r.stock -= 1
-      ledger(a.userId, 'REDEMPTION', -r.cost, `Reward redemption — ${r.name}`)
+      ledger(a.userId, 'REDEMPTION', -r.cost, rewardSnapshot(r,a.userId))
       s.redemptions.unshift({ id: nid('r'), userId: a.userId, rewardId: r.id, cost: r.cost, status: 'PENDING', at: now })
-      act(a.userId, 'redeemed reward', r.name, { econ: `-${r.cost} Coins` })
+      act(a.userId, 'REDEMPTION_REQUESTED', rewardSnapshot(r,a.userId,s.redemptions[0]))
       /* N2.1-R2: the decision request goes only to users who hold decision
          authority over THIS redemption — an employee's redemption asks all
          management; a manager's redemption asks admins only (managers may
          never decide a manager's redemption, not even another's). */
       managers().filter(m => canDecideRedemption(u, m))
-        .forEach(m => note(m.id, 'ACTION_REQUIRED', 'Rewards', `Reward approval needed — ${r.name} for ${u.name} (${r.cost} Coins).`, undefined, s.redemptions[0].id))
+        .forEach(m => note(m.id, 'ACTION_REQUIRED', 'Rewards', 'REDEMPTION_REQUESTED', rewardSnapshot(r,a.userId,s.redemptions[0])))
       break
     }
 
@@ -541,13 +544,13 @@ export function reducer(prev: State, a: Action): State {
       if (!canDecideRedemption(user(rd.userId), user(a.by))) break
       rd.status = 'APPROVED'; rd.approvedBy = a.by; rd.approvedAt = now
       const r = s.rewards.find(x => x.id === rd.rewardId)!
-      act(a.by, 'approved redemption', `${r.name} — ${user(rd.userId).name}`)
-      note(rd.userId, 'INFORMATIONAL', 'Rewards', `Approved — ${r.name}. It now waits for fulfillment.`, undefined, rd.id)
+      act(a.by, 'REDEMPTION_APPROVED', rewardSnapshot(r,rd.userId,rd))
+      note(rd.userId, 'INFORMATIONAL', 'Rewards', 'REDEMPTION_APPROVED', rewardSnapshot(r,rd.userId,rd))
       /* N2.2 §12: the reward's executors are told the item is ready for
          fulfillment. Admin holds fulfillment authority by office, so admins
          are notified too; non-assigned users are not. */
       s.users.filter(x => canFulfill(x.id, r))
-        .forEach(x => note(x.id, 'ACTION_REQUIRED', 'Rewards', `Ready for fulfillment — ${r.name} for ${user(rd.userId).name} (${r.cost} Coins).`, undefined, rd.id))
+        .forEach(x => note(x.id, 'ACTION_REQUIRED', 'Rewards', 'REDEMPTION_READY_FOR_FULFILLMENT', rewardSnapshot(r,rd.userId,rd)))
       break
     }
 
@@ -564,8 +567,8 @@ export function reducer(prev: State, a: Action): State {
       rd.status = 'FULFILLED'; rd.fulfilledBy = a.by; rd.fulfilledAt = now
       rd.fulfillmentReference = a.reference?.trim() || null
       rd.fulfillmentNote = a.note?.trim() || null
-      act(a.by, 'fulfilled redemption', `${r.name} — ${user(rd.userId).name}`)
-      note(rd.userId, 'INFORMATIONAL', 'Rewards', `Fulfilled — ${r.name}. Enjoy!`, undefined, rd.id)
+      act(a.by, 'REDEMPTION_FULFILLED', rewardSnapshot(r,rd.userId,rd))
+      note(rd.userId, 'INFORMATIONAL', 'Rewards', 'REDEMPTION_FULFILLED', rewardSnapshot(r,rd.userId,rd))
       break
     }
 
@@ -583,14 +586,14 @@ export function reducer(prev: State, a: Action): State {
       rd.status = 'CANCELLED'; rd.reason = a.reason
       const r = s.rewards.find(x => x.id === rd.rewardId)!
       if (r.stock !== null) r.stock += 1
-      ledger(rd.userId, 'REFUND', rd.cost, `Refund — ${r.name}`)
-      act(a.by, 'cancelled redemption', `${r.name} — ${user(rd.userId).name}`, { reason: a.reason, econ: fmtCoins(rd.cost) })
-      note(rd.userId, 'IMPORTANT', 'Rewards', `Redemption cancelled — ${r.name}. ${fmtCoins(rd.cost)} refunded. Reason: ${a.reason}`, undefined, rd.id)
+      ledger(rd.userId, 'REFUND', rd.cost, rewardSnapshot(r,rd.userId,rd))
+      act(a.by, 'REDEMPTION_CANCELLED', rewardSnapshot(r,rd.userId,rd))
+      note(rd.userId, 'IMPORTANT', 'Rewards', 'REDEMPTION_CANCELLED', rewardSnapshot(r,rd.userId,rd))
       /* N2-D: manager's redemption cancelled by management — the other
          managers/admins see the decision and the refund. */
       if (user(rd.userId).role === 'MANAGER' && user(a.by).role !== 'EMPLOYEE')
         managers().filter(m => m.id !== a.by)
-          .forEach(m => note(m.id, 'INFORMATIONAL', 'Rewards', `Redemption cancelled — ${r.name} for ${user(rd.userId).name}, refunded ${fmtCoins(rd.cost)}, by ${user(a.by).name}.`, undefined, rd.id))
+          .forEach(m => note(m.id, 'INFORMATIONAL', 'Rewards', 'REDEMPTION_CANCELLED', rewardSnapshot(r,rd.userId,rd)))
       break
     }
 
@@ -603,9 +606,9 @@ export function reducer(prev: State, a: Action): State {
          current balance; if nothing can be deducted, no entry is written. */
       const amount = a.amount < 0 ? -Math.min(-a.amount, Math.max(0, balanceOf(s, a.userId))) : a.amount
       if (amount === 0) break
-      ledger(a.userId, 'ADMIN_ADJUSTMENT', amount, `Admin adjustment — ${a.reason}`)
-      act(a.by, 'admin adjustment', `${user(a.userId).name} — ${a.reason}`, { econ: fmtCoins(amount) })
-      note(a.userId, 'IMPORTANT', 'Economy', `Admin adjustment: ${fmtCoins(amount)} — ${a.reason}`)
+      ledger(a.userId, 'ADMIN_ADJUSTMENT', amount, snap(undefined,{employee:user(a.userId).name,employeeId:a.userId,coins:amount}))
+      act(a.by, 'ADMIN_ADJUSTMENT', snap(undefined,{employee:user(a.userId).name,employeeId:a.userId,coins:amount}))
+      note(a.userId, 'IMPORTANT', 'Economy', 'ADMIN_ADJUSTMENT', snap(undefined,{employee:user(a.userId).name,employeeId:a.userId,coins:amount}))
       break
     }
 
@@ -629,26 +632,17 @@ export function reducer(prev: State, a: Action): State {
         const prev = s.rewards[i]
         const next: Reward = { ...a.reward, id: prev.id, createdBy: prev.createdBy, executorIds: cleanExecutors(a.reward.executorIds, prev.executorIds) }
         s.rewards[i] = next
-        /* N2.2 §13: human-readable audit detail for the governance-relevant
-           changes (category / availability / lifecycle), no raw enums. */
-        const changes: string[] = []
-        if (prev.category !== next.category) changes.push(`category changed to ${next.category}`)
-        if (prev.active !== next.active) changes.push(next.active ? 'activated' : 'deactivated')
-        if (prev.archived !== next.archived) changes.push(next.archived ? 'archived' : 'unarchived')
-        /* N2.3 §13: executor reassignment is a governance-relevant change —
-           the audit shows it in words, never as a raw id list. */
+        // Snapshot the final governance fields; executor transitions have their own code.
+        act(a.by, next.archived && !prev.archived ? 'REWARD_ARCHIVED' : 'REWARD_UPDATED', rewardSnapshot(next))
         if (prev.executorIds.join(',') !== next.executorIds.join(','))
-          changes.push(next.executorIds.length === 0
-            ? 'fulfillment executors cleared — management fallback applies'
-            : 'fulfillment executors updated')
-        act(a.by, 'updated reward', next.name, { reason: changes.join(' · ') || undefined })
+          act(a.by, next.executorIds.length ? 'REWARD_EXECUTORS_UPDATED' : 'REWARD_EXECUTORS_CLEARED', rewardSnapshot(next))
       } else {
         /* Create follows the matrix too: a manager may create EMPLOYEES or
            BOTH rewards (a BOTH reward is company-wide → admin-managed from
            birth), never a MANAGERS-targeted one. */
         if (!canCreateReward(a.reward.eligibility, user(a.by))) break
         s.rewards.push({ ...a.reward, id: nid('rw'), createdBy: a.by, executorIds: cleanExecutors(a.reward.executorIds, []) })
-        act(a.by, 'created reward', a.reward.name)
+        act(a.by, 'REWARD_CREATED', rewardSnapshot(s.rewards[s.rewards.length-1]))
       }
       break
     }
@@ -663,11 +657,11 @@ export function reducer(prev: State, a: Action): State {
       if (i >= 0) {
         const prev = s.rewardCategories[i]
         s.rewardCategories[i] = { ...prev, name, active: a.category.active }
-        act(a.by, prev.active !== a.category.active && !a.category.active ? 'archived reward category' : 'updated reward category', name)
+        act(a.by, prev.active && !a.category.active ? 'REWARD_CATEGORY_ARCHIVED' : 'REWARD_CATEGORY_UPDATED', snap(undefined,{category:name,objectType:"REWARD_CATEGORY",objectId:a.category.id}))
       } else if (s.rewardCategories.some(c => c.name.toLowerCase() === name.toLowerCase())) break
       else {
         s.rewardCategories.push({ id: nid('rc'), name, active: a.category.active })
-        act(a.by, 'created reward category', name)
+        act(a.by, 'REWARD_CATEGORY_CREATED', snap(undefined,{category:name,objectType:"REWARD_CATEGORY",objectId:a.category.id}))
       }
       break
     }
@@ -681,7 +675,7 @@ export function reducer(prev: State, a: Action): State {
       if (u.role === 'ADMIN') break
       u.canFulfillRewards = !u.canFulfillRewards
       if (!u.canFulfillRewards) s.rewards.forEach(r => { r.executorIds = r.executorIds.filter(id => id !== u.id) })
-      act(a.by, u.canFulfillRewards ? 'granted reward fulfillment permission' : 'revoked reward fulfillment permission', u.name)
+      act(a.by, u.canFulfillRewards ? 'REWARD_FULFILL_PERMISSION_GRANTED' : 'REWARD_FULFILL_PERMISSION_REVOKED', snap(undefined,{employee:u.name,employeeId:u.id,objectType:"USER",objectId:u.id}))
       break
     }
 
@@ -714,7 +708,7 @@ export function reducer(prev: State, a: Action): State {
         maxFileSizeMb: Math.max(1, Math.min(100, Math.round(a.settings.maxFileSizeMb))),
         maxSubmissionTotalMb: Math.max(1, Math.min(500, Math.round(a.settings.maxSubmissionTotalMb))),
       }
-      act(a.by, 'updated upload policy', `${s.settings.maxFileSizeMb} MB/file · ${s.settings.maxSubmissionTotalMb} MB/submission`)
+      act(a.by, 'UPLOAD_POLICY_UPDATED', snap(undefined,{perFile:s.settings.maxFileSizeMb,total:s.settings.maxSubmissionTotalMb}))
       break
     }
   }

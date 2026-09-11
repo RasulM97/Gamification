@@ -69,7 +69,8 @@ def test_full_cycle_claim_submit_approve(client, auth):
     t = _task(r.json(), 't-pricing')
     assert t['status'] == 'APPROVED' and t['paid'] == 12 and t['verified'] == 100
     led = [l for l in r.json()['ledger'] if l.get('taskId') == 't-pricing']
-    assert led == [pytest.approx(led[0], 0)] or led[0]['type'] == 'TASK_REWARD'
+    assert len(led) == 1 and led[0]['type'] == 'TASK_REWARD'
+    assert led[0]['eventType'] == 'TASK_REWARD' and led[0]['params']['coins'] == 12
     assert led[0]['amount'] == 12 and led[0]['userId'] == 'u-aisha'
     assert t['submissions'][0]['outcome'] == 'APPROVED'
     assert t['cycles'][0]['outcome'] == 'APPROVED'

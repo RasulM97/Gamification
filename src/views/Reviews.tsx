@@ -1,3 +1,4 @@
+import { ActivityEvent } from '../components/EventText'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import type { Task } from '../domain/engine'
@@ -66,12 +67,7 @@ function ReviewDrawer({ task: t, onClose }: { task: Task | null; onClose: () => 
   const histRow = (a: (typeof taskActs)[number]) => (
     <div className="aitem" key={a.id} style={{ padding: '6px 0' }}>
       <Avatar name={user(a.actorId)?.name ?? '?'} size={20} />
-      <div className="aa">
-        {/* stored history prose is immutable (N3 §10) — rendered as-is, bidi-safe */}
-        <span dir="auto"><span dir="auto">{user(a.actorId)?.name}</span> {a.action} </span>
-        {a.reason && <div className="rs" dir="auto">“{localizedHist(a.reason)}”</div>}
-        {a.econ && <span className="num warn" style={{ fontSize: 11 }}>{a.econ}</span>}
-      </div>
+      <div className="aa"><ActivityEvent record={a} actor={user(a.actorId)?.name ?? ''} /></div>
       <span className="at">{ago(a.at)}{a.cycle ? ` · c${a.cycle}` : ''}</span>
     </div>
   )

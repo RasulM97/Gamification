@@ -68,8 +68,8 @@ export function TasksView({ scope, onOpen, onCreate }: {
   return (
     <Panel pad={false}
       title={scope === 'mine' ? t('nav.myWork') : scope === 'available' ? t('nav.availableWork') : t('common.tasks')}
-      right={
-        <div className="toolbar">
+      right={isMgr && scope === 'all' && <button className="btn primary" onClick={onCreate}>+ {t('task.action.create')}</button>}>
+        <div className="toolbar tasks-toolbar">
           <input dir={q ? 'auto' : undefined} type="search" value={q} onChange={e => setQ(e.target.value)}
             placeholder={t('search.tasks')} style={{ width: 170 }} aria-label={t('accessibility.searchTasks')} />
           <Seg options={opts} value={statusF} onChange={setStatusF} />
@@ -79,9 +79,7 @@ export function TasksView({ scope, onOpen, onCreate }: {
             <option value="updated">{t('search.sort.updated')}</option>
             <option value="deadline">{t('search.sort.deadline')}</option>
           </select>
-          {isMgr && scope === 'all' && <button className="btn primary" onClick={onCreate}>+ {t('task.action.create')}</button>}
         </div>
-      }>
       {/* N1-C: My Work opens with the two numbers a worker checks first —
           active capacity in use (canonical: in-progress + in-review) and the
           review queue. */}

@@ -1,3 +1,4 @@
+import { ActivityEvent } from '../components/EventText'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { balanceOf, canDecideRedemption, canFulfillReward } from '../domain/engine'
@@ -23,6 +24,12 @@ export function RedemptionsView() {
   const [reason, setReason] = useState('')
   const user = (id: string) => state.users.find(u => u.id === id)
   const reward = (id: string) => state.rewards.find(r => r.id === id)
+  const historyValue = (r:Redemption,key:'reward'|'employee'|'actor',fallback:string) => {
+    const code=r.status==='FULFILLED'?'REDEMPTION_FULFILLED':'REDEMPTION_CANCELLED'
+    const entry=state.activity.find(a=>a.eventType===code && a.params?.redemptionId===r.id)
+      ?? state.notices.find(n=>n.eventType===code && n.params?.redemptionId===r.id)
+    return typeof entry?.params?.[key]==='string' ? entry.params[key] as string : fallback
+  }
   const isMgr = me.role !== 'EMPLOYEE'
 
   /* N2.2 §6/§7 + N2.3 §1 mirrored for UI only — the canonical rule lives in
@@ -64,8 +71,8 @@ export function RedemptionsView() {
           <div className="att-row" key={r.id}>
             <Avatar name={user(r.userId)?.name ?? '?'} size={22} />
             <span style={{ flex: 1 }}>
-              <b dir="auto">{reward(r.rewardId)?.name}</b>
-              <span className="dim"> — <span dir="auto">{user(r.userId)?.name}</span> · {ago(r.at)}</span>
+              <b dir="auto">{historyValue(r,'reward',reward(r.rewardId)?.name ?? '')}</b>
+              <span className="dim"> — <span dir="auto">{historyValue(r,'employee',user(r.userId)?.name ?? '')}</span> · {ago(r.at)}</span>
             </span>
             <Coin n={r.cost} />
             {isMgr ? (
@@ -102,7 +109,7 @@ export function RedemptionsView() {
                 <Avatar name={user(r.userId)?.name ?? '?'} size={22} />
                 <span style={{ flex: 1 }}>
                   <b dir="auto">{rw?.name}</b>
-                  <span className="dim"> — <span dir="auto">{user(r.userId)?.name}</span> · {r.approvedBy ? t('reward.fulfillment.approvedBy', { name: user(r.approvedBy)?.name ?? '' }) : t('task.status.approved')} {r.approvedAt ? ago(r.approvedAt) : ago(r.at)}</span>
+                  <span className="dim"> — <span dir="auto">{historyValue(r,'employee',user(r.userId)?.name ?? '')}</span> · {r.approvedBy ? t('reward.fulfillment.approvedBy', { name: user(r.approvedBy)?.name ?? '' }) : t('task.status.approved')} {r.approvedAt ? ago(r.approvedAt) : ago(r.at)}</span>
                   {/* N2.3 §10: operational context — who delivers this item. */}
                   <span className="faint" data-testid="fulfillment-owner"> · {fulfillmentLabel(rw)}</span>
                 </span>
@@ -131,13 +138,13 @@ export function RedemptionsView() {
           <div className="att-row" key={r.id}>
             <span className="bd st-done">{t('task.status.fulfilled')}</span>
             <span style={{ flex: 1 }}>
-              <b dir="auto">{reward(r.rewardId)?.name}</b>
-              <span className="dim"> — <span dir="auto">{user(r.userId)?.name}</span> · {ago(r.at)}</span>
-              {r.fulfilledBy && <span className="faint"> · {t('redemption.deliveredBy', { name: user(r.fulfilledBy)?.name ?? '' })}{r.fulfilledAt ? `, ${fmtAt(r.fulfilledAt)}` : ''}</span>}
-              {r.fulfillmentReference && <span className="faint"> · {t('redemption.ref')} <span dir="auto">{r.fulfillmentReference}</span></span>}
+              <b dir="auto">{historyValue(r,'reward',reward(r.rewardId)?.name ?? '')}</b>
+              <span className="dim"> — <span dir="auto">{historyValue(r,'employee',user(r.userId)?.name ?? '')}</span> · {ago(r.at)}</span>
+              {r.fulfilledBy && <span className="faint"> · {t('redemption.deliveredBy', { name: historyValue(r,'actor',user(r.fulfilledBy)?.name ?? '') })}{r.fulfilledAt ? `, ${fmtAt(r.fulfilledAt)}` : ''}</span>}
+              {r.fulfillmentReference && <span className="faint"> · {t('redemption.ref', { reference: '' })} <bdi dir="auto">{r.fulfillmentReference}</bdi></span>}
               {/* N2.2 §10: fulfillment notes are executor/management context —
                   not shown to the redeemer. */}
-              {isMgr && r.fulfillmentNote && <span className="faint" dir="auto"> · {r.fulfillmentNote}</span>}
+              {isMgr && r.fulfillmentNote && <span className="faint"> · <bdi dir="auto">{r.fulfillmentNote}</bdi></span>}
             </span>
             <Coin n={r.cost} />
           </div>
@@ -150,8 +157,8 @@ export function RedemptionsView() {
           <div className="att-row" key={r.id}>
             <span className="bd st-cancel">{t('task.status.cancelled')}</span>
             <span style={{ flex: 1 }}>
-              <b dir="auto">{reward(r.rewardId)?.name}</b>
-              <span className="dim"> — <span dir="auto">{user(r.userId)?.name}</span> · {ago(r.at)}</span>
+              <b dir="auto">{historyValue(r,'reward',reward(r.rewardId)?.name ?? '')}</b>
+              <span className="dim"> — <span dir="auto">{historyValue(r,'employee',user(r.userId)?.name ?? '')}</span> · {ago(r.at)}</span>
               {r.reason && <span className="faint" dir="auto"> · {r.reason}</span>}
             </span>
             <Coin n={r.cost} />
@@ -297,10 +304,7 @@ function ReviewContext({ r }: { r: Redemption }) {
           <span className="eyebrow" style={{ display: 'block', margin: '14px 0 6px' }}>{t('redemption.recentActivity')}</span>
           {recentActs.map(a => (
             <div className="aitem" key={a.id} style={{ padding: '5px 0' }}>
-              <div className="aa">
-                <span dir="auto">{u.name} {a.action} </span><span className="obj" dir="auto">{a.object}</span>
-                {a.econ && <span className="num warn" style={{ fontSize: 11 }}>{a.econ}</span>}
-              </div>
+              <div className="aa"><ActivityEvent record={a} actor={u.name} /></div>
               <span className="at">{ago(a.at)}</span>
             </div>
           ))}

@@ -1,3 +1,4 @@
+import { ActivityEvent } from '../components/EventText'
 import { useStore } from '../store'
 import { Avatar, Coin, Empty, Panel, PriBadge, Progress, ago, rowProps } from '../ui'
 import { useI18n } from '../i18n'
@@ -10,9 +11,9 @@ export function AttentionView({ onOpen }: { onOpen: (id: string) => void }) {
   const user = (id: string | null) => state.users.find(u => u.id === id)
 
   const rework = state.tasks.filter(t => t.status === 'REJECTED')
-  const declined = state.activity.filter(a => a.action === 'declined assignment').slice(0, 6)
+  const declined = state.activity.filter(a => (a.eventType === 'TASK_DECLINED' || (!a.eventType && a.action === 'declined assignment'))).slice(0, 6)
   const unassigned = state.tasks.filter(t => t.status === 'OPEN' && t.assignMode === 'SPECIFIC_EMPLOYEE' && !t.assigneeId)
-  const returned = state.activity.filter(a => a.action === 'returned claimed task').slice(0, 6)
+  const returned = state.activity.filter(a => (a.eventType === 'TASK_RETURNED' || (!a.eventType && a.action === 'returned claimed task'))).slice(0, 6)
 
   const nothing = rework.length === 0 && unassigned.length === 0 && declined.length === 0 && returned.length === 0
 
@@ -57,12 +58,8 @@ export function AttentionView({ onOpen }: { onOpen: (id: string) => void }) {
           {[...declined, ...returned].sort((a, b) => b.at - a.at).map(a => (
             <div className="aitem" key={a.id}>
               <Avatar name={user(a.actorId)?.name ?? '?'} size={20} />
-              <div className="aa">
-                {/* stored history prose is immutable — rendered as-is (N3 §10) */}
-                <span dir="auto">{user(a.actorId)?.name} {a.action} </span><span className="obj" dir="auto">{a.object}</span>
-                {a.reason && <div className="rs" dir="auto">“{a.reason}”</div>}
-              </div>
-              {a.econ && <span className="num neg" style={{ fontSize: 11.5 }}>{a.econ}</span>}
+              <div className="aa"><ActivityEvent record={a} actor={user(a.actorId)?.name ?? ''} /></div>
+
               <span className="at">{ago(a.at)}</span>
             </div>
           ))}

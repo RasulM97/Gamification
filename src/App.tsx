@@ -1,3 +1,4 @@
+import { EventText, EventReason } from './components/EventText'
 import { useEffect, useRef, useState } from 'react'
 import { StoreProvider, useStore, useMe, IS_DEMO } from './store'
 import { DEV_TOOLS } from './runtime'
@@ -50,7 +51,7 @@ interface NavItem { v: View; labelKey: string; icon: string; badge?: number; sof
 function Shell() {
   const { state, dispatch, meId, setMeId, persistError, logout } = useStore()
   const me = useMe()
-  const { t } = useI18n()
+  const { t, direction } = useI18n()
   const isMgr = me.role !== 'EMPLOYEE'
   const isAdmin = me.role === 'ADMIN'
 
@@ -195,7 +196,7 @@ function Shell() {
   const [titleKey, subKey] = TITLE_KEYS[view]
 
   return (
-    <div className={'shell' + (collapsed ? ' collapsed' : '')}>
+    <div dir={direction} className={'shell' + (collapsed ? ' collapsed' : '')}>
       {sideOpen && <div className="scrim" onClick={() => setSideOpen(false)} />}
       <aside className={'side' + (sideOpen ? ' open' : '') + (collapsed ? ' collapsed' : '')}>
         <div className="brand">
@@ -315,7 +316,7 @@ function Shell() {
                       {!n.read ? <span className="un" /> : <span style={{ width: 7, flex: 'none' }} />}
                       {/* stored notice text is immutable history — rendered as-is,
                           bidi-safe (N3 §10 debt: structured events not yet stored) */}
-                      <div className="tx" dir="auto">{n.text}
+                      <div className="tx"><EventText record={n} legacy={n.text} /><EventReason record={n} />
                         <div className="meta"><NotifBadge l={n.level} /><span>{ago(n.at)}</span></div>
                       </div>
                     </div>

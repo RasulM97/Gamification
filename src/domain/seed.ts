@@ -1,3 +1,4 @@
+import seedEventFixtures from '../../backend/app/seed_events.json' with { type: 'json' }
 /* Demo seed — the Aster Dynamics pilot scenario (Phase N-C acceptance data). */
 import type { Act, LedgerEntry, Notice, Redemption, Reward, RewardCategory, State, Task, User } from './model'
 import { DEFAULT_SETTINGS } from './model'
@@ -5,6 +6,7 @@ import { DEFAULT_SETTINGS } from './model'
 const H = 3600e3, D = 24 * H
 
 export function seed(): State {
+  const seedEvents = structuredClone(seedEventFixtures)
   const now = Date.now()
   const users: User[] = [
     /* N2.2 §6: Jonas holds the REWARD_FULFILL capability — an employee who
@@ -32,9 +34,9 @@ export function seed(): State {
         { id: 's2', cycle: 2, userId: 'u-jonas', note: 'Remaining aisles counted, root causes documented. Signed variance report attached.', attachments: [{ name: 'variance-report-signed.pdf', size: 1_100_000, type: 'application/pdf' }], reportedPct: 100, at: now - 5 * D, outcome: 'APPROVED', reviewerId: 'u-marcus', reviewNote: null },
       ],
       contributions: [
-        { id: 'c0', cycle: 1, employeeId: 'u-jonas', reportedPct: 100, acceptedPct: 100, payout: 40, decision: 'APPROVED', reason: 'Work approved', at: now - 34 * D },
+        { id: 'c0', cycle: 1, employeeId: 'u-jonas', reportedPct: 100, acceptedPct: 100, payout: 40, decision: 'APPROVED', reason: '', at: now - 34 * D },
         { id: 'c1', cycle: 2, employeeId: 'u-priya', reportedPct: 45, acceptedPct: 20, payout: 8, decision: 'HANDOFF', reason: 'Pulled onto a client escalation mid-audit', at: now - 9 * D },
-        { id: 'c2', cycle: 2, employeeId: 'u-jonas', reportedPct: 100, acceptedPct: 80, payout: 32, decision: 'APPROVED', reason: 'Work approved', at: now - 5 * D },
+        { id: 'c2', cycle: 2, employeeId: 'u-jonas', reportedPct: 100, acceptedPct: 80, payout: 32, decision: 'APPROVED', reason: '', at: now - 5 * D },
       ],
       cycles: [
         { cycle: 1, openedAt: now - 40 * D, closedAt: now - 33 * D, outcome: 'APPROVED', paid: 40, verified: 100 },
@@ -180,17 +182,17 @@ export function seed(): State {
     /* Pre-seed economy for Marcus's seeded manager reward redemption (r3):
        manager-scope earnings (Q4 incentive plan bonus work) then the debit.
        Same pattern as l2–l4 — the source tasks intentionally don't exist. */
-    { id: 'l11', at: now - 2 * H, userId: 'u-marcus', type: 'REDEMPTION', amount: -150, ref: 'Reward redemption — Ergonomic home-office upgrade' },
-    { id: 'l10', at: now - 10 * D, userId: 'u-marcus', type: 'TASK_REWARD', amount: 150, ref: 'Task reward — Q3 partner enablement program' },
-    { id: 'l9', at: now - 5 * H, userId: 'u-priya', type: 'REDEMPTION', amount: -30, ref: 'Reward redemption — Lunch voucher' },
-    { id: 'l8', at: now - 1 * D, userId: 'u-jonas', type: 'REDEMPTION', amount: -60, ref: 'Reward redemption — Company hoodie' },
-    { id: 'l7', at: now - 3 * D, userId: 'u-priya', type: 'TASK_PARTIAL_REWARD', amount: 6, ref: 'Partial reward (20%) — Quarterly commission reconciliation', taskId: 't-commission', cycle: 1 },
-    { id: 'l6', at: now - 5 * D, userId: 'u-jonas', type: 'TASK_REWARD', amount: 32, ref: 'Task reward — Q3 inventory audit', taskId: 't-audit', cycle: 2 },
-    { id: 'l5', at: now - 9 * D, userId: 'u-priya', type: 'TASK_PARTIAL_REWARD', amount: 8, ref: 'Partial reward (20%) — Q3 inventory audit', taskId: 't-audit', cycle: 2 },
-    { id: 'l4', at: now - 14 * D, userId: 'u-aisha', type: 'TASK_REWARD', amount: 20, ref: 'Task reward — Sales ops handbook refresh' },
-    { id: 'l3', at: now - 20 * D, userId: 'u-priya', type: 'TASK_REWARD', amount: 45, ref: 'Task reward — Spring campaign recap' },
-    { id: 'l2', at: now - 26 * D, userId: 'u-jonas', type: 'TASK_REWARD', amount: 38, ref: 'Task reward — Distributor visit program' },
-    { id: 'l1', at: now - 33 * D, userId: 'u-jonas', type: 'TASK_REWARD', amount: 40, ref: 'Task reward — Q3 inventory audit (cycle 1)', taskId: 't-audit', cycle: 1 },
+    { id: 'l11', at: now - 2 * H, userId: 'u-marcus', type: 'REDEMPTION', amount: -150, ref:'', ...seedEvents.ledger['l11'] },
+    { id: 'l10', at: now - 10 * D, userId: 'u-marcus', type: 'TASK_REWARD', amount: 150, ref:'', ...seedEvents.ledger['l10'] },
+    { id: 'l9', at: now - 5 * H, userId: 'u-priya', type: 'REDEMPTION', amount: -30, ref:'', ...seedEvents.ledger['l9'] },
+    { id: 'l8', at: now - 1 * D, userId: 'u-jonas', type: 'REDEMPTION', amount: -60, ref:'', ...seedEvents.ledger['l8'] },
+    { id: 'l7', at: now - 3 * D, userId: 'u-priya', type: 'TASK_PARTIAL_REWARD', amount: 6, taskId: 't-commission', cycle: 1, ref:'', ...seedEvents.ledger['l7'] },
+    { id: 'l6', at: now - 5 * D, userId: 'u-jonas', type: 'TASK_REWARD', amount: 32, taskId: 't-audit', cycle: 2, ref:'', ...seedEvents.ledger['l6'] },
+    { id: 'l5', at: now - 9 * D, userId: 'u-priya', type: 'TASK_PARTIAL_REWARD', amount: 8, taskId: 't-audit', cycle: 2, ref:'', ...seedEvents.ledger['l5'] },
+    { id: 'l4', at: now - 14 * D, userId: 'u-aisha', type: 'TASK_REWARD', amount: 20, ref:'', ...seedEvents.ledger['l4'] },
+    { id: 'l3', at: now - 20 * D, userId: 'u-priya', type: 'TASK_REWARD', amount: 45, ref:'', ...seedEvents.ledger['l3'] },
+    { id: 'l2', at: now - 26 * D, userId: 'u-jonas', type: 'TASK_REWARD', amount: 38, ref:'', ...seedEvents.ledger['l2'] },
+    { id: 'l1', at: now - 33 * D, userId: 'u-jonas', type: 'TASK_REWARD', amount: 40, taskId: 't-audit', cycle: 1, ref:'', ...seedEvents.ledger['l1'] },
   ]
 
   /* N2.2 §1: the canonical flat category list — admin-managed, one level. */
@@ -238,32 +240,32 @@ export function seed(): State {
   const notices: Notice[] = [
     /* N2: a manager's redemption is decided by the OTHER manager-level users
        — here Dana (admin). Mirrors exactly what REDEEM emits for managers. */
-    { id: 'n8', userId: 'u-dana', level: 'ACTION_REQUIRED', category: 'Rewards', text: 'Reward approval needed — Ergonomic home-office upgrade for Marcus Webb (150 Coins).', at: now - 2 * H, read: false, archived: false, redemptionId: 'r3' },
-    { id: 'n7', userId: 'u-marcus', level: 'ACTION_REQUIRED', category: 'Assignments', text: 'New assignment — Q4 sales incentive plan (worth 50 Coins). Accept or decline.', taskId: 't-incentive', pri: 'IMPORTANT', at: now - 3 * 3600e3, read: false, archived: false },
-    { id: 'n6', userId: 'u-marcus', level: 'ACTION_REQUIRED', category: 'Reviews', text: 'Submission ready for review — Client onboarding pack — Northstar Labs by Priya Nair.', taskId: 't-northstar', at: now - 5 * H, read: false, archived: false },
-    { id: 'n5', userId: 'u-marcus', level: 'ACTION_REQUIRED', category: 'Rewards', text: 'Reward approval needed — Lunch voucher for Priya Nair (30 Coins).', at: now - 5 * H, read: false, archived: false, redemptionId: 'r2' },
-    { id: 'n5b', userId: 'u-dana', level: 'ACTION_REQUIRED', category: 'Reviews', text: 'Submission ready for review — Client onboarding pack — Northstar Labs by Priya Nair.', taskId: 't-northstar', at: now - 5 * H, read: false, archived: false },
+    { id: 'n8', userId: 'u-dana', level: 'ACTION_REQUIRED', category: 'Rewards', at: now - 2 * H, read: false, archived: false, redemptionId: 'r3', text:'', ...seedEvents.notices['n8'] },
+    { id: 'n7', userId: 'u-marcus', level: 'ACTION_REQUIRED', category: 'Assignments', taskId: 't-incentive', pri: 'IMPORTANT', at: now - 3 * 3600e3, read: false, archived: false, text:'', ...seedEvents.notices['n7'] },
+    { id: 'n6', userId: 'u-marcus', level: 'ACTION_REQUIRED', category: 'Reviews', taskId: 't-northstar', at: now - 5 * H, read: false, archived: false, text:'', ...seedEvents.notices['n6'] },
+    { id: 'n5', userId: 'u-marcus', level: 'ACTION_REQUIRED', category: 'Rewards', at: now - 5 * H, read: false, archived: false, redemptionId: 'r2', text:'', ...seedEvents.notices['n5'] },
+    { id: 'n5b', userId: 'u-dana', level: 'ACTION_REQUIRED', category: 'Reviews', taskId: 't-northstar', at: now - 5 * H, read: false, archived: false, text:'', ...seedEvents.notices['n5b'] },
     /* Matches exactly what CREATE_TASK emits for an urgent public task —
        urgent/important work pings every eligible employee (L.2-C). */
-    { id: 'n4', userId: 'u-aisha', level: 'IMPORTANT', category: 'Tasks', text: 'Urgent task available — Urgent inventory recount — Warehouse B (worth 25 Coins), posted by Dana Cole. First valid claim wins.', taskId: 't-recount', pri: 'URGENT', at: now - 7 * H, read: false, archived: false },
-    { id: 'n3', userId: 'u-priya', level: 'ACTION_REQUIRED', category: 'Assignments', text: 'New assignment — Expense policy one-pager (worth 10 Coins). Accept or decline.', taskId: 't-policy', at: now - 8 * H, read: false, archived: false },
-    { id: 'n2', userId: 'u-aisha', level: 'ACTION_REQUIRED', category: 'Tasks', text: 'Rework required — Trade-show lead list cleanup. Reason: duplicates remain in rows 200–260…', taskId: 't-leads', at: now - 26 * H, read: true, archived: false },
-    { id: 'n1', userId: 'u-jonas', level: 'IMPORTANT', category: 'Economy', text: 'Approved — Q3 inventory audit. +32 Coins credited to your wallet.', taskId: 't-audit', at: now - 5 * D, read: true, archived: false },
+    { id: 'n4', userId: 'u-aisha', level: 'IMPORTANT', category: 'Tasks', taskId: 't-recount', pri: 'URGENT', at: now - 7 * H, read: false, archived: false, text:'', ...seedEvents.notices['n4'] },
+    { id: 'n3', userId: 'u-priya', level: 'ACTION_REQUIRED', category: 'Assignments', taskId: 't-policy', at: now - 8 * H, read: false, archived: false, text:'', ...seedEvents.notices['n3'] },
+    { id: 'n2', userId: 'u-aisha', level: 'ACTION_REQUIRED', category: 'Tasks', taskId: 't-leads', at: now - 26 * H, read: true, archived: false, text:'', ...seedEvents.notices['n2'] },
+    { id: 'n1', userId: 'u-jonas', level: 'IMPORTANT', category: 'Economy', taskId: 't-audit', at: now - 5 * D, read: true, archived: false, text:'', ...seedEvents.notices['n1'] },
   ]
 
   const activity: Act[] = [
-    { id: 'a11', at: now - 2 * H, actorId: 'u-marcus', action: 'redeemed reward', object: 'Ergonomic home-office upgrade', econ: '-150 Coins' },
-    { id: 'a10', at: now - 3 * H, actorId: 'u-dana', action: 'created task', object: 'Q4 sales incentive plan', taskId: 't-incentive', cycle: 1 },
-    { id: 'a9', at: now - 5 * H, actorId: 'u-priya', action: 'submitted work for review', object: 'Client onboarding pack — Northstar Labs', taskId: 't-northstar', cycle: 1 },
-    { id: 'a8', at: now - 5 * H, actorId: 'u-priya', action: 'redeemed reward', object: 'Lunch voucher', econ: '-30 Coins' },
-    { id: 'a7', at: now - 7 * H, actorId: 'u-dana', action: 'created task', object: 'Urgent inventory recount — Warehouse B', taskId: 't-recount', cycle: 1 },
-    { id: 'a6', at: now - 8 * H, actorId: 'u-dana', action: 'created task', object: 'Expense policy one-pager', taskId: 't-policy', cycle: 1 },
-    { id: 'a5', at: now - 20 * H, actorId: 'u-jonas', action: 'reported progress', object: 'Quarterly commission reconciliation — 35% (self-reported)', taskId: 't-commission', cycle: 1 },
-    { id: 'a4', at: now - 26 * H, actorId: 'u-marcus', action: 'rejected submission', object: 'Trade-show lead list cleanup', taskId: 't-leads', reason: 'Duplicates remain in rows 200–260 and 40 leads have no region tag.', cycle: 1 },
-    { id: 'a3', at: now - 3 * D, actorId: 'u-marcus', action: 'handed off (20% accepted)', object: 'Quarterly commission reconciliation', taskId: 't-commission', reason: 'Deal-level extract done; field verification needed', econ: '+6 Coins', cycle: 1 },
-    { id: 'a2', at: now - 5 * D, actorId: 'u-marcus', action: 'approved work', object: 'Q3 inventory audit', taskId: 't-audit', econ: '+32 Coins', cycle: 2 },
-    { id: 'a1', at: now - 9 * D, actorId: 'u-marcus', action: 'handed off (20% accepted)', object: 'Q3 inventory audit', taskId: 't-audit', reason: 'Pulled onto a client escalation mid-audit', econ: '+8 Coins', cycle: 2 },
-    { id: 'a0', at: now - 34 * D, actorId: 'u-marcus', action: 'approved work', object: 'Q3 inventory audit', taskId: 't-audit', econ: '+40 Coins', cycle: 1 },
+    { id: 'a11', at: now - 2 * H, actorId: 'u-marcus', action:'',object:'', ...seedEvents.activity['a11'] },
+    { id: 'a10', at: now - 3 * H, actorId: 'u-dana', taskId: 't-incentive', cycle: 1, action:'',object:'', ...seedEvents.activity['a10'] },
+    { id: 'a9', at: now - 5 * H, actorId: 'u-priya', taskId: 't-northstar', cycle: 1, action:'',object:'', ...seedEvents.activity['a9'] },
+    { id: 'a8', at: now - 5 * H, actorId: 'u-priya', action:'',object:'', ...seedEvents.activity['a8'] },
+    { id: 'a7', at: now - 7 * H, actorId: 'u-dana', taskId: 't-recount', cycle: 1, action:'',object:'', ...seedEvents.activity['a7'] },
+    { id: 'a6', at: now - 8 * H, actorId: 'u-dana', taskId: 't-policy', cycle: 1, action:'',object:'', ...seedEvents.activity['a6'] },
+    { id: 'a5', at: now - 20 * H, actorId: 'u-jonas', taskId: 't-commission', cycle: 1, action:'',object:'', ...seedEvents.activity['a5'] },
+    { id: 'a4', at: now - 26 * H, actorId: 'u-marcus', taskId: 't-leads', cycle: 1, action:'',object:'', ...seedEvents.activity['a4'] },
+    { id: 'a3', at: now - 3 * D, actorId: 'u-marcus', taskId: 't-commission', cycle: 1, action:'',object:'', ...seedEvents.activity['a3'] },
+    { id: 'a2', at: now - 5 * D, actorId: 'u-marcus', taskId: 't-audit', cycle: 2, action:'',object:'', ...seedEvents.activity['a2'] },
+    { id: 'a1', at: now - 9 * D, actorId: 'u-marcus', taskId: 't-audit', cycle: 2, action:'',object:'', ...seedEvents.activity['a1'] },
+    { id: 'a0', at: now - 34 * D, actorId: 'u-marcus', taskId: 't-audit', cycle: 1, action:'',object:'', ...seedEvents.activity['a0'] },
   ]
 
   return { company: 'Aster Dynamics', seq: 100, settings: { ...DEFAULT_SETTINGS }, users, tasks, ledger, rewardCategories, rewards, redemptions, notices, activity, notifMuted: {} }

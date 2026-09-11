@@ -136,7 +136,7 @@ describe('N1-B — notification tabs', () => {
     await render(h(NotificationsView, { onOpenTask: () => {}, onOpenRedemption: () => {} }))
     await act(async () => { segButton('Rewards').click() })
     expect(text()).toContain('Lunch voucher')
-    expect(text()).toContain('Reward approval needed')
+    expect(text()).toContain('requested reward')
   })
 
   it('6 · each tab shows its own unread count', async () => {
@@ -208,7 +208,7 @@ describe('N1-D — task history status markers', () => {
     await render(h(TaskDrawer, { taskId: 't-leads', onClose: () => {}, onGo: () => {} }))
     const marker = host.querySelector('[data-testid=hist-marker-REJECTED]')
     expect(marker?.textContent).toBe('REJECTED')
-    expect(text()).toContain('rejected submission')
+    expect(text()).toContain('returned work for rework')
   })
 
   it('12 · history renders the HANDOFF marker with the compact econ suffix', async () => {
@@ -216,7 +216,7 @@ describe('N1-D — task history status markers', () => {
     await render(h(TaskDrawer, { taskId: 't-commission', onClose: () => {}, onGo: () => {} }))
     const marker = host.querySelector('[data-testid=hist-marker-HANDOFF]')
     expect(marker?.textContent).toBe('HANDOFF')
-    expect(text()).toContain('handed off (20% accepted)')
+    expect(text()).toContain('handed off task'); expect(text()).toContain('20%')
     expect(text()).toContain('+6 Coins')
   })
 

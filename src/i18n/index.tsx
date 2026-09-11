@@ -11,7 +11,7 @@
 // - No user-authored content passes through here — this layer translates
 //   system-owned UI strings only.
 // ─────────────────────────────────────────────────────────────────────────────
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import { I18N_DEV } from './dev';
 import meta from './locale-meta.json';
 import en from './locales/en.json';
@@ -235,7 +235,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
      effect would leave them one render stale after a locale switch. */
   setActiveLocale(locale);
 
-  useEffect(() => {
+  // Layout direction must match the translated UI before the next paint.
+  useLayoutEffect(() => {
     applyDocumentAttrs(locale, direction);
   }, [locale, direction]);
 

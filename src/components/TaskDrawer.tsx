@@ -1,3 +1,4 @@
+import { ActivityEvent } from './EventText'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { MAX_ACTIVE, activeCount, roleFits } from '../domain/engine'
@@ -330,14 +331,7 @@ function HistoryItem({ a }: { a: Act }) {
   return (
     <div className="aitem" style={{ padding: '7px 0' }}>
       <Avatar name={user(a.actorId)?.name ?? '?'} size={20} />
-      <div className="aa">
-        <span>
-          {m && <span className={'bd hist-marker ' + m.cls} data-testid={`hist-marker-${m.label}`}>{m.label}</span>}
-          <span dir="auto">{user(a.actorId)?.name} {a.action}</span>{' '}
-        </span>
-        {a.reason && <div className="rs" dir="auto"><LinkText text={`“${localizedHist(a.reason)}”`} /></div>}
-        {a.econ && <span className="num warn" style={{ fontSize: 11 }}>{a.econ}</span>}
-      </div>
+      <div className="aa"><ActivityEvent record={a} actor={user(a.actorId)?.name ?? ''} /></div>
       <span className="at">{ago(a.at)}</span>
     </div>
   )

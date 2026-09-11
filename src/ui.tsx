@@ -4,7 +4,7 @@ import type { Attachment, Notice, Priority, TaskStatus, NotifLevel, LedgerType }
 import { validateAttachments } from './domain/engine'
 import { openStoredFile } from './api'
 import { IS_DEMO } from './runtime'
-import { currentLocale, fmtNum, fmtPct, intlLocaleOf, tActive } from './i18n'
+import { currentLocale, fmtNum, fmtPct, intlLocaleOf, tActive, useI18n } from './i18n'
 
 /* ── formatting ──────────────────────────────────────────────────────────
    N3 §13–§15: every date/number/percent/relative-time string below is
@@ -287,6 +287,8 @@ export function localizedHist(text: string): string {
 }
 
 export function actMarker(action: string): ActMarker | null {
+  const codes: Record<string,string> = { TASK_APPROVED:'approved work',TASK_REWORK:'rejected submission',TASK_DECLINED:'declined assignment',TASK_HANDED_BACK:'handed back assignment',TASK_HANDOFF:'handed off',TASK_RESUMED:'resumed rework',TASK_REASSIGNED:'reassigned to',TASK_ASSIGNED:'reassigned to',TASK_CLAIMED:'claimed task',TASK_ACCEPTED:'accepted assignment',TASK_SUBMITTED:'submitted work for review',TASK_REOPENED:'reopened task',TASK_REACTIVATED:'reactivated task',TASK_CANCELLED:'cancelled task' }
+  action = codes[action] ?? action
   /* N3: marker labels come from activity.event.* — the canonical en values
      match the pre-N3 uppercase labels byte-for-byte. */
   if (action === 'approved work') return { label: tActive('activity.event.approved'), cls: 'st-done' }
@@ -399,7 +401,7 @@ export const Seg = ({ options, value, onChange }: {
       <span className="pill" aria-hidden="true" style={{ left:0, top:0, bottom:'auto', padding:0, transform: `translate(${pill.x}px, ${pill.y}px)`, width: pill.w, height:pill.h }} />
       {options.map((o, i) => (
         <button key={o.v} ref={el => { refs.current[i] = el }}
-          className={o.v === value ? 'on' : ''} onClick={() => onChange(o.v)}>{o.label}</button>
+          aria-pressed={o.v === value} className={o.v === value ? 'on' : ''} onClick={() => onChange(o.v)}>{o.label}</button>
       ))}
     </div>
   )
@@ -410,6 +412,7 @@ export const Seg = ({ options, value, onChange }: {
 export function Drawer({ open, onClose, title, children, wide = false }: {
   open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; wide?: boolean
 }) {
+  const { direction } = useI18n()
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -418,7 +421,7 @@ export function Drawer({ open, onClose, title, children, wide = false }: {
   }, [open, onClose])
   if (!open) return null
   return (
-    <div className="overlay" onClick={() => { /* backdrop never closes */ }}>
+    <div dir={direction} className="overlay" onClick={() => { /* backdrop never closes */ }}>
       <aside className={'drawer' + (wide ? ' wide' : '')} onClick={e => e.stopPropagation()}>
         <div className="drawer-head">
           <div className="drawer-title">{title}</div>
@@ -438,6 +441,7 @@ export function Modal({ open, onClose, title, children, wide = false, dirty = fa
   open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; wide?: boolean
   dirty?: boolean
 }) {
+  const { direction } = useI18n()
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
@@ -448,7 +452,7 @@ export function Modal({ open, onClose, title, children, wide = false, dirty = fa
   }, [open, onClose, dirty])
   if (!open) return null
   return (
-    <div className="overlay center" onClick={() => { /* backdrop never closes */ }}>
+    <div dir={direction} className="overlay center" onClick={() => { /* backdrop never closes */ }}>
       <div className={'modal' + (wide ? ' wide' : '')} onClick={e => e.stopPropagation()}>
         <div className="drawer-head">
           <div className="drawer-title">{title}</div>

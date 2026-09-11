@@ -400,17 +400,17 @@ describe('N2.3 §12 — one notification per transition', () => {
   it('33 · approve/fulfill/cancel notifications fire exactly once each', () => {
     let s = seed()
     const countFor = (st: State, uid: string, prefix: string) =>
-      st.notices.filter(n => n.userId === uid && n.text.startsWith(prefix)).length
+      st.notices.filter(n => n.userId === uid && n.eventType === prefix).length
     s = reducer(s, { type: 'APPROVE_REDEMPTION', id: 'r2', by: 'u-marcus' })
-    expect(countFor(s, 'u-priya', 'Approved')).toBe(1)
-    expect(countFor(s, 'u-jonas', 'Ready for fulfillment')).toBe(1)
+    expect(countFor(s, 'u-priya', 'REDEMPTION_APPROVED')).toBe(1)
+    expect(countFor(s, 'u-jonas', 'REDEMPTION_READY_FOR_FULFILLMENT')).toBe(1)
     s = reducer(s, { type: 'APPROVE_REDEMPTION', id: 'r2', by: 'u-dana' }) // retry
-    expect(countFor(s, 'u-priya', 'Approved')).toBe(1)
-    expect(countFor(s, 'u-jonas', 'Ready for fulfillment')).toBe(1)
+    expect(countFor(s, 'u-priya', 'REDEMPTION_APPROVED')).toBe(1)
+    expect(countFor(s, 'u-jonas', 'REDEMPTION_READY_FOR_FULFILLMENT')).toBe(1)
     s = reducer(s, { type: 'FULFILL_REDEMPTION', id: 'r2', by: 'u-jonas' })
-    expect(countFor(s, 'u-priya', 'Fulfilled')).toBe(1)
+    expect(countFor(s, 'u-priya', 'REDEMPTION_FULFILLED')).toBe(1)
     s = reducer(s, { type: 'FULFILL_REDEMPTION', id: 'r2', by: 'u-jonas' }) // retry
-    expect(countFor(s, 'u-priya', 'Fulfilled')).toBe(1)
+    expect(countFor(s, 'u-priya', 'REDEMPTION_FULFILLED')).toBe(1)
   })
 })
 
@@ -420,10 +420,10 @@ describe('N2.3 §13 — human-readable audit for executor changes', () => {
     let s = seed()
     s = reducer(s, { type: 'TOGGLE_FULFILL_PERMISSION', by: 'u-dana', userId: 'u-aisha' })
     s = reducer(s, { type: 'SAVE_REWARD', by: 'u-dana', reward: { ...reward(s, 'rw-lunch'), executorIds: ['u-aisha'] } })
-    expect(s.activity[0].action).toBe('updated reward')
-    expect(s.activity[0].reason).toContain('fulfillment executors updated')
+    expect(s.activity[0].eventType).toBe('REWARD_EXECUTORS_UPDATED')
+    expect(s.activity[0].params?.executors).toEqual(['Aisha Khan'])
     s = reducer(s, { type: 'SAVE_REWARD', by: 'u-dana', reward: { ...reward(s, 'rw-lunch'), executorIds: [] } })
-    expect(s.activity[0].reason).toContain('fulfillment executors cleared — management fallback applies')
+    expect(s.activity[0].eventType).toBe('REWARD_EXECUTORS_CLEARED'); expect(s.activity[0].params?.executorIds).toEqual([])
   })
 })
 

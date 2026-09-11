@@ -1,3 +1,4 @@
+import { EventText, EventReason, eventText } from '../components/EventText'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { balanceOf } from '../domain/engine'
@@ -41,7 +42,7 @@ export function WalletView() {
     ['id', 'when', 'employee', 'type', 'amount_coins', 'reference', 'task_id', 'cycle'],
     rows.map(l => [
       l.id, new Date(l.at).toISOString(), user(l.userId)?.name ?? l.userId,
-      l.type, l.amount, l.ref, l.taskId ?? '', l.cycle ?? '',
+      l.type, l.amount, eventText(l,l.ref), l.taskId ?? '', l.cycle ?? '',
     ]))
 
   return (
@@ -112,7 +113,7 @@ export function WalletView() {
                     </td>
                   )}
                   {/* ledger ref text is stored history — verbatim, bidi-safe */}
-                  <td dir="auto">{l.ref}{l.cycle ? <span className="faint"> · {t('task.row.cycle', { n: l.cycle })}</span> : null}</td>
+                  <td><EventText record={l} legacy={l.ref} /><EventReason record={l} />{l.cycle ? <span className="faint"> · {t('task.row.cycle', { n: l.cycle })}</span> : null}</td>
                   <td><LedgerBadge t={l.type} /></td>
                   <td className="n"><Coin n={l.amount} sign /></td>
                   <td className="n dim" style={{ fontSize: 11.5 }}>{ago(l.at)}</td>

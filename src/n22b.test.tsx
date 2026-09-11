@@ -148,7 +148,7 @@ describe('N2.2 — reward categories', () => {
     s = reducer(s, { type: 'SAVE_REWARD_CATEGORY', by: DANA, category: { ...food, active: false } })
     // rw-lunch keeps its category name — nothing is rewritten
     expect(rwOf(s, 'rw-lunch').category).toBe('Food')
-    expect(s.activity.some(a => a.action === 'archived reward category')).toBe(true)
+    expect(s.activity.some(a => a.eventType === 'REWARD_CATEGORY_ARCHIVED')).toBe(true)
     // UI: the reward still renders with its historical category
     persona(MARCUS)
     localStorage.setItem('cve-demo-state-v1', JSON.stringify({ v: 2, state: s }))
@@ -279,7 +279,7 @@ describe('N2.2 — reward lifecycle', () => {
     s = reducer(s, { type: 'SAVE_REWARD', by: DANA, reward: { ...r, archived: true } })
     expect(rwOf(s, 'rw-conf').archived).toBe(true)
     expect(s.rewards.length).toBe(seed().rewards.length) // nothing removed
-    expect(s.activity[0].reason).toContain('archived')
+    expect(s.activity[0].eventType).toBe('REWARD_ARCHIVED')
     // redemptions referencing it remain untouched
     s = reducer(s, { type: 'SAVE_REWARD', by: DANA, reward: { ...rwOf(s, 'rw-conf'), archived: false, active: true } })
     expect(rwOf(s, 'rw-conf').archived).toBe(false)
@@ -293,7 +293,7 @@ describe('N2.2 — fulfillment permission', () => {
     expect(s.users.find(u => u.id === AISHA)!.canFulfillRewards).toBe(false)
     s = reducer(s, { type: 'TOGGLE_FULFILL_PERMISSION', by: DANA, userId: AISHA })
     expect(s.users.find(u => u.id === AISHA)!.canFulfillRewards).toBe(true)
-    expect(s.activity[0].action).toBe('granted reward fulfillment permission')
+    expect(s.activity[0].eventType).toBe('REWARD_FULFILL_PERMISSION_GRANTED')
   })
 
   it('17 · capability without an executor seat cannot fulfill', () => {
@@ -348,7 +348,7 @@ describe('N2.2 — approval (separate from fulfillment)', () => {
     expect(rd.status).toBe('APPROVED')
     expect(rd.approvedBy).toBe(MARCUS)
     expect(typeof rd.approvedAt).toBe('number')
-    expect(s.activity[0].action).toBe('approved redemption')
+    expect(s.activity[0].eventType).toBe('REDEMPTION_APPROVED')
   })
 
   it('22 · a manager approves employee redemptions, never manager redemptions', () => {
@@ -372,9 +372,9 @@ describe('N2.2 — approval (separate from fulfillment)', () => {
     let s = seed()
     s = reducer(s, { type: 'APPROVE_REDEMPTION', id: 'r2', by: MARCUS }) // lunch → executor Jonas
     const ns = s.notices.filter(n => n.redemptionId === 'r2')
-    expect(ns.some(n => n.userId === PRIYA && n.text.startsWith('Approved —'))).toBe(true)
-    expect(ns.some(n => n.userId === JONAS && n.text.startsWith('Ready for fulfillment'))).toBe(true)
-    expect(ns.some(n => n.userId === DANA && n.text.startsWith('Ready for fulfillment'))).toBe(true) // admin by office
+    expect(ns.some(n => n.userId === PRIYA && n.eventType === 'REDEMPTION_APPROVED')).toBe(true)
+    expect(ns.some(n => n.userId === JONAS && n.eventType === 'REDEMPTION_READY_FOR_FULFILLMENT')).toBe(true)
+    expect(ns.some(n => n.userId === DANA && n.eventType === 'REDEMPTION_READY_FOR_FULFILLMENT')).toBe(true) // admin by office
     expect(ns.some(n => n.userId === AISHA)).toBe(false) // nobody else is notified
   })
 })
@@ -389,7 +389,7 @@ describe('N2.2 — fulfillment execution', () => {
     expect(rd.status).toBe('FULFILLED')
     expect(rd.fulfilledBy).toBe(JONAS)
     expect(typeof rd.fulfilledAt).toBe('number')
-    expect(s.notices.some(n => n.userId === PRIYA && n.text.startsWith('Fulfilled —'))).toBe(true)
+    expect(s.notices.some(n => n.userId === PRIYA && n.eventType === 'REDEMPTION_FULFILLED')).toBe(true)
   })
 
   it('26 · fulfillment records the optional reference and note', () => {

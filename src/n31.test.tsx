@@ -57,6 +57,9 @@ it('localizes typed notice categories while leaving saved prose unchanged', asyn
   setActiveLocale('fa')
   const state = seed()
   const original = state.notices.find(n => n.category === 'Assignments' && n.userId === 'u-marcus')!
+  delete original.eventType
+  delete original.params
+  original.text = 'Legacy assignment from Dana — example.com file.py'
   localStorage.setItem('cve-demo-state-v1', JSON.stringify({ v:2, state }))
   const host = document.createElement('div')
   const root = createRoot(host)

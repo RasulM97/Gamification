@@ -1,0 +1,396 @@
+{
+  "activity": {
+    "a11": {
+      "eventType": "REDEMPTION_REQUESTED",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "reward": "Ergonomic home-office upgrade",
+        "rewardId": "rw-devsetup",
+        "objectType": "REWARD",
+        "objectId": "rw-devsetup",
+        "coins": 150
+      }
+    },
+    "a10": {
+      "eventType": "TASK_CREATED",
+      "params": {
+        "actorId": "u-dana",
+        "actor": "Dana Cole",
+        "task": "Q4 sales incentive plan",
+        "taskId": "t-incentive",
+        "objectType": "TASK",
+        "objectId": "t-incentive",
+        "cycle": 1
+      }
+    },
+    "a9": {
+      "eventType": "TASK_SUBMITTED",
+      "params": {
+        "actorId": "u-priya",
+        "actor": "Priya Nair",
+        "task": "Client onboarding pack — Northstar Labs",
+        "taskId": "t-northstar",
+        "objectType": "TASK",
+        "objectId": "t-northstar",
+        "cycle": 1
+      }
+    },
+    "a8": {
+      "eventType": "REDEMPTION_REQUESTED",
+      "params": {
+        "actorId": "u-priya",
+        "actor": "Priya Nair",
+        "reward": "Lunch voucher",
+        "rewardId": "rw-lunch",
+        "objectType": "REWARD",
+        "objectId": "rw-lunch",
+        "coins": 30
+      }
+    },
+    "a7": {
+      "eventType": "TASK_CREATED",
+      "params": {
+        "actorId": "u-dana",
+        "actor": "Dana Cole",
+        "task": "Urgent inventory recount — Warehouse B",
+        "taskId": "t-recount",
+        "objectType": "TASK",
+        "objectId": "t-recount",
+        "cycle": 1
+      }
+    },
+    "a6": {
+      "eventType": "TASK_CREATED",
+      "params": {
+        "actorId": "u-dana",
+        "actor": "Dana Cole",
+        "task": "Expense policy one-pager",
+        "taskId": "t-policy",
+        "objectType": "TASK",
+        "objectId": "t-policy",
+        "cycle": 1
+      }
+    },
+    "a5": {
+      "eventType": "TASK_PROGRESS_REPORTED",
+      "params": {
+        "actorId": "u-jonas",
+        "actor": "Jonas Berg",
+        "task": "Quarterly commission reconciliation",
+        "taskId": "t-commission",
+        "objectType": "TASK",
+        "objectId": "t-commission",
+        "cycle": 1,
+        "percent": 35
+      }
+    },
+    "a4": {
+      "eventType": "TASK_REWORK",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Trade-show lead list cleanup",
+        "taskId": "t-leads",
+        "objectType": "TASK",
+        "objectId": "t-leads",
+        "cycle": 1,
+        "reason": "Duplicates remain in rows 200–260 and 40 leads have no region tag."
+      }
+    },
+    "a3": {
+      "eventType": "TASK_HANDOFF",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Quarterly commission reconciliation",
+        "taskId": "t-commission",
+        "objectType": "TASK",
+        "objectId": "t-commission",
+        "cycle": 1,
+        "reason": "Deal-level extract done; field verification needed",
+        "coins": 6,
+        "percent": 20
+      }
+    },
+    "a2": {
+      "eventType": "TASK_APPROVED",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Q3 inventory audit",
+        "taskId": "t-audit",
+        "objectType": "TASK",
+        "objectId": "t-audit",
+        "cycle": 2,
+        "coins": 32
+      }
+    },
+    "a1": {
+      "eventType": "TASK_HANDOFF",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Q3 inventory audit",
+        "taskId": "t-audit",
+        "objectType": "TASK",
+        "objectId": "t-audit",
+        "cycle": 2,
+        "reason": "Pulled onto a client escalation mid-audit",
+        "coins": 8,
+        "percent": 20
+      }
+    },
+    "a0": {
+      "eventType": "TASK_APPROVED",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Q3 inventory audit",
+        "taskId": "t-audit",
+        "objectType": "TASK",
+        "objectId": "t-audit",
+        "cycle": 1,
+        "coins": 40
+      }
+    }
+  },
+  "notices": {
+    "n8": {
+      "eventType": "REDEMPTION_REQUESTED",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "reward": "Ergonomic home-office upgrade",
+        "rewardId": "rw-devsetup",
+        "objectType": "REDEMPTION",
+        "objectId": "r3",
+        "redemptionId": "r3",
+        "coins": 150
+      }
+    },
+    "n7": {
+      "eventType": "TASK_ASSIGNED",
+      "params": {
+        "actorId": "u-dana",
+        "actor": "Dana Cole",
+        "task": "Q4 sales incentive plan",
+        "taskId": "t-incentive",
+        "objectType": "TASK",
+        "objectId": "t-incentive",
+        "coins": 50
+      }
+    },
+    "n6": {
+      "eventType": "TASK_SUBMITTED",
+      "params": {
+        "actorId": "u-priya",
+        "actor": "Priya Nair",
+        "task": "Client onboarding pack — Northstar Labs",
+        "taskId": "t-northstar",
+        "objectType": "TASK",
+        "objectId": "t-northstar"
+      }
+    },
+    "n5": {
+      "eventType": "REDEMPTION_REQUESTED",
+      "params": {
+        "actorId": "u-priya",
+        "actor": "Priya Nair",
+        "reward": "Lunch voucher",
+        "rewardId": "rw-lunch",
+        "objectType": "REDEMPTION",
+        "objectId": "r2",
+        "redemptionId": "r2",
+        "coins": 30
+      }
+    },
+    "n5b": {
+      "eventType": "TASK_SUBMITTED",
+      "params": {
+        "actorId": "u-priya",
+        "actor": "Priya Nair",
+        "task": "Client onboarding pack — Northstar Labs",
+        "taskId": "t-northstar",
+        "objectType": "TASK",
+        "objectId": "t-northstar"
+      }
+    },
+    "n4": {
+      "eventType": "TASK_AVAILABLE",
+      "params": {
+        "actorId": "u-dana",
+        "actor": "Dana Cole",
+        "task": "Urgent inventory recount — Warehouse B",
+        "taskId": "t-recount",
+        "objectType": "TASK",
+        "objectId": "t-recount",
+        "coins": 25
+      }
+    },
+    "n3": {
+      "eventType": "TASK_ASSIGNED",
+      "params": {
+        "actorId": "u-dana",
+        "actor": "Dana Cole",
+        "task": "Expense policy one-pager",
+        "taskId": "t-policy",
+        "objectType": "TASK",
+        "objectId": "t-policy",
+        "coins": 10
+      }
+    },
+    "n2": {
+      "eventType": "TASK_REWORK",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Trade-show lead list cleanup",
+        "taskId": "t-leads",
+        "objectType": "TASK",
+        "objectId": "t-leads",
+        "reason": "duplicates remain in rows 200–260…"
+      }
+    },
+    "n1": {
+      "eventType": "TASK_APPROVED",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Q3 inventory audit",
+        "taskId": "t-audit",
+        "objectType": "TASK",
+        "objectId": "t-audit",
+        "coins": 32
+      }
+    }
+  },
+  "ledger": {
+    "l11": {
+      "eventType": "REDEMPTION",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "reward": "Ergonomic home-office upgrade",
+        "rewardId": "rw-devsetup",
+        "objectType": "REWARD",
+        "objectId": "rw-devsetup",
+        "coins": -150
+      }
+    },
+    "l10": {
+      "eventType": "TASK_REWARD",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Q3 partner enablement program",
+        "coins": 150
+      }
+    },
+    "l9": {
+      "eventType": "REDEMPTION",
+      "params": {
+        "actorId": "u-priya",
+        "actor": "Priya Nair",
+        "reward": "Lunch voucher",
+        "rewardId": "rw-lunch",
+        "objectType": "REWARD",
+        "objectId": "rw-lunch",
+        "coins": -30
+      }
+    },
+    "l8": {
+      "eventType": "REDEMPTION",
+      "params": {
+        "actorId": "u-jonas",
+        "actor": "Jonas Berg",
+        "reward": "Company hoodie",
+        "rewardId": "rw-hoodie",
+        "objectType": "REWARD",
+        "objectId": "rw-hoodie",
+        "coins": -60
+      }
+    },
+    "l7": {
+      "eventType": "TASK_PARTIAL_REWARD",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Quarterly commission reconciliation",
+        "taskId": "t-commission",
+        "objectType": "TASK",
+        "objectId": "t-commission",
+        "cycle": 1,
+        "coins": 6,
+        "percent": 20
+      }
+    },
+    "l6": {
+      "eventType": "TASK_REWARD",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Q3 inventory audit",
+        "taskId": "t-audit",
+        "objectType": "TASK",
+        "objectId": "t-audit",
+        "cycle": 2,
+        "coins": 32
+      }
+    },
+    "l5": {
+      "eventType": "TASK_PARTIAL_REWARD",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Q3 inventory audit",
+        "taskId": "t-audit",
+        "objectType": "TASK",
+        "objectId": "t-audit",
+        "cycle": 2,
+        "coins": 8,
+        "percent": 20
+      }
+    },
+    "l4": {
+      "eventType": "TASK_REWARD",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Sales ops handbook refresh",
+        "coins": 20
+      }
+    },
+    "l3": {
+      "eventType": "TASK_REWARD",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Spring campaign recap",
+        "coins": 45
+      }
+    },
+    "l2": {
+      "eventType": "TASK_REWARD",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Distributor visit program",
+        "coins": 38
+      }
+    },
+    "l1": {
+      "eventType": "TASK_REWARD",
+      "params": {
+        "actorId": "u-marcus",
+        "actor": "Marcus Webb",
+        "task": "Q3 inventory audit",
+        "taskId": "t-audit",
+        "objectType": "TASK",
+        "objectId": "t-audit",
+        "cycle": 1,
+        "coins": 40
+      }
+    }
+  }
+}

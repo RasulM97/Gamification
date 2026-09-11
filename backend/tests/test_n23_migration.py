@@ -73,6 +73,10 @@ def test_migration_clean_database_to_head(mig_url):
     insp = sa.inspect(eng)
     tables = set(insp.get_table_names())
     assert {'reward_categories', 'reward_executors'} <= tables
+    for table in ['activity', 'notifications', 'ledger']:
+        assert {'event_type', 'params'} <= _columns(mig_url, table)
+        with eng.connect() as c:
+            assert c.scalar(sa.text(f'SELECT count(*) FROM {table}')) == 0
     eng.dispose()
     # N2.2 columns
     assert 'can_fulfill_rewards' in _columns(mig_url, 'users')
@@ -84,7 +88,7 @@ def test_migration_clean_database_to_head(mig_url):
     # revision marker
     with sa.create_engine(mig_url).connect() as c:
         rev = c.scalar(sa.text('SELECT version_num FROM alembic_version'))
-    assert rev == 'e7f2a4c61d83'
+    assert rev == 'f32a0c9d174e'
 
 
 def test_migration_from_pre_n22_preserves_data(mig_url):
@@ -125,17 +129,12 @@ def test_migration_from_pre_n22_preserves_data(mig_url):
 def test_migrated_schema_seeds_and_bootstraps(mig_url, monkeypatch):
     cfg = _alembic(mig_url)
     command.upgrade(cfg, 'head')
-    # point the app at the migrated scratch DB, seed it, and bootstrap
-    monkeypatch.setenv('CVE_DATABASE_URL', mig_url)
-    monkeypatch.setenv('CVE_UPLOAD_DIR', '/tmp/cve-mig-uploads')
-    import importlib
-
-    from app import config, db as appdb, seed as appseed
-    importlib.reload(config)
-    importlib.reload(appdb)
-    importlib.reload(appseed)
+    # A dedicated session avoids retargeting the API's global SessionLocal.
+    from sqlalchemy.orm import Session
+    from app import seed as appseed
+    migrated_engine = sa.create_engine(mig_url)
     try:
-        s = appdb.SessionLocal()
+        s = Session(migrated_engine)
         appseed.run(s)
         s.commit()
         # bootstrap path: a viewer's full state loads from the migrated schema
@@ -148,5 +147,7 @@ def test_migrated_schema_seeds_and_bootstraps(mig_url, monkeypatch):
         assert state['rewardCategories'] and state['rewards'] and state['users']
         assert all('canFulfillRewards' in u for u in state['users'])
         assert all('executorIds' in r for r in state['rewards'])
+        for rows in [state['activity'], state['notices'], state['ledger']]:
+            assert rows and all(r.get('eventType') and r.get('params') for r in rows)
     finally:
-        monkeypatch.undo()
+        migrated_engine.dispose()

@@ -250,7 +250,7 @@ describe('N2-C — redemption review context', () => {
     expect(host.querySelector('[data-testid=rr-balance]')?.textContent).toBe('0')
     // Marcus's recent activity shows his own redemption event
     expect(host.querySelector('[data-testid=redemption-review-context]')!.textContent)
-      .toContain('redeemed reward')
+      .toContain('requested reward')
   })
 })
 
@@ -296,7 +296,7 @@ describe('N2 — economy invariants unchanged', () => {
     await act(async () => { dispatchRef!({ type: 'APPROVE_REDEMPTION', id: 'r3', by: 'u-dana' }) })
     await act(async () => { dispatchRef!({ type: 'FULFILL_REDEMPTION', id: 'r3', by: 'u-dana' }) })
     const n = stateRef().notices.filter(x => x.redemptionId === 'r3' && x.userId === 'u-marcus')
-    expect(n.some(x => x.text.startsWith('Fulfilled'))).toBe(true)
+    expect(n.some(x => x.eventType === 'REDEMPTION_FULFILLED')).toBe(true)
     // Dana fulfilled; Marcus got his "Fulfilled — …" notice; no third manager exists in the seed,
     // so no extra informational decision notices beyond the redeemer's own.
   })

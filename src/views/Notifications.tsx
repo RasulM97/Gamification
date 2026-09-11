@@ -1,3 +1,4 @@
+import { EventText, EventReason, eventText } from '../components/EventText'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { MUTABLE_LEVELS, isMuted, sortNotices, visibleNotices } from '../domain/engine'
@@ -40,7 +41,7 @@ export function NotificationsView({ onOpenTask, onOpenRedemption }: {
     if (tab === 'muted') return isMuted(state, me.id, n.level) && !n.archived
     if (tab === 'archived') return n.archived
     return noticeTab(n).toLowerCase() === tab && !n.archived
-  }).filter(n => !q.trim() || n.text.toLowerCase().includes(q.trim().toLowerCase()))
+  }).filter(n => !q.trim() || [eventText(n,n.text), n.params?.reason, n.params?.overrideReason].join(' ').toLowerCase().includes(q.trim().toLowerCase()))
 
   const tabs = [
     { v: 'tasks', label: t('notification.tab.tasks', { count: unreadTasks }) },
@@ -97,7 +98,7 @@ export function NotificationsView({ onOpenTask, onOpenRedemption }: {
             {!n.read ? <span className="un" /> : <span style={{ width: 7, flex: 'none' }} />}
             {/* Stored notice prose remains verbatim; typed category metadata localizes at display time. */}
             <div className="tx">
-              <span dir="auto">{n.text}</span>
+              <span><EventText record={n} legacy={n.text} /><EventReason record={n} /></span>
               <div className="meta">
                 <NotifBadge l={n.level} />
                 <span>{CATEGORY_KEY[n.category] ? t(CATEGORY_KEY[n.category]) : n.category}</span><span>·</span><span>{ago(n.at)}</span>

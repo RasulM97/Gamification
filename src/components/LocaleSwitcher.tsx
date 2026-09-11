@@ -7,7 +7,7 @@ import { LOCALES, useI18n, type DirectionPref } from '../i18n'
    from locale metadata). Applies immediately, persists to localStorage,
    no reload. */
 export function LocaleSwitcher() {
-  const { locale, setLocale, dirPref, setDirPref, t } = useI18n()
+  const { locale, setLocale, dirPref, setDirPref, direction, t } = useI18n()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -27,8 +27,9 @@ export function LocaleSwitcher() {
       <button
         className="bell-btn"
         onClick={() => setOpen((o) => !o)}
-        title={t('settings.language')}
+        title={`${t('settings.language')} · ${t('settings.direction')}: ${t(`settings.direction.${direction}`)}`}
         aria-label={t('settings.language')}
+        aria-expanded={open}
         data-testid="locale-switcher"
         style={{ fontSize: 11, fontWeight: 600 }}
       >
@@ -43,6 +44,7 @@ export function LocaleSwitcher() {
                 <button
                   key={l.code}
                   className={l.code === locale ? 'on' : ''}
+                  aria-pressed={l.code === locale}
                   onClick={() => setLocale(l.code)}
                   data-testid={`locale-${l.code}`}
                   lang={l.code}
@@ -53,12 +55,16 @@ export function LocaleSwitcher() {
               ))}
             </div>
           </div>
-          <div className="bp-head" style={{ borderTop: '1px solid var(--rim-soft)' }}>{t('settings.direction')}</div>
+          <div className="bp-head" style={{ borderTop: '1px solid var(--rim-soft)' }}>
+            <span>{t('settings.direction')}</span>
+            <span className="faint" data-testid="resolved-direction">{t(`settings.direction.${direction}`)}</span>
+          </div>
           <div className="seg bp-tabs" data-testid="direction-seg" style={{ borderBottom: 0, marginBottom: 8 }}>
             {DIR_OPTS.map((p) => (
               <button
                 key={p}
                 className={dirPref === p ? 'on' : ''}
+                aria-pressed={dirPref === p}
                 onClick={() => setDirPref(p)}
                 data-testid={`dir-${p}`}
               >

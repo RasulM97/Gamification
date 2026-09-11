@@ -56,7 +56,7 @@ for (const locale of ['fa', 'ar', 'he'] as const) {
         if (key === 'common.notifications') {
           await expect(page.locator('.nitem .meta').filter({ hasText:'Assignments' })).toHaveCount(0)
           await expect(page.locator('.nitem .meta').filter({ hasText:d['notification.category.assignments'] })).not.toHaveCount(0)
-          await expect(page.locator('.nitem').filter({ hasText:'New assignment — Q4 sales incentive plan' })).toBeVisible()
+          await expect(page.locator('.nitem').filter({ hasText:'Q4 sales incentive plan' })).toBeVisible()
         }
       }
       await page.getByRole('button', { name: d['accessibility.openNotifications'], exact: true }).click()

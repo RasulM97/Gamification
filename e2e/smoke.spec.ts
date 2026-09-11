@@ -64,7 +64,7 @@ test.describe('manager flows', () => {
     // employee sees approval notice
     await switchTo(page, 'Priya Nair')
     await nav(page, 'Notifications')
-    await expect(page.locator('.nitem', { hasText: 'Approved — E2E quarterly recap' })).toBeVisible()
+    await expect(page.locator('.nitem', { hasText: 'approved work — E2E quarterly recap' })).toBeVisible()
   })
 
   test('assign specific → decline → reassignment surfaces; reject → resume → resubmit', async ({ page }) => {
@@ -185,7 +185,8 @@ test.describe('admin', () => {
     await page.getByRole('button', { name: 'Post adjustment' }).click()
     await nav(page, 'Wallet')
     await page.locator('select').first().selectOption('u-aisha')
-    await expect(page.locator('table', { hasText: 'Admin adjustment' })).toBeVisible()
+    await expect(page.locator('table', { hasText: 'posted wallet adjustment' })).toBeVisible()
+    await expect(page.locator('table')).toContainText('Pilot week correction')
     // policy
     await nav(page, 'Admin')
     await page.locator('input[type=number]').first().fill('8')
@@ -238,7 +239,7 @@ test.describe('UI health', () => {
   test('notification deep-link opens the right task drawer', async ({ page }) => {
     await startAs(page, 'marcus')
     await nav(page, 'Notifications')
-    await page.locator('.nitem', { hasText: 'Submission ready for review' }).first().click()
+    await page.locator('.nitem', { hasText: 'submitted work for review' }).first().click()
     await expect(page.locator('.drawer', { hasText: 'Northstar Labs' })).toBeVisible()
   })
 

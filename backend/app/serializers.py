@@ -94,6 +94,9 @@ def bootstrap(db: Session, company: Company, viewer: User | None = None) -> dict
             d['taskId'] = l.task_id
         if l.cycle is not None:
             d['cycle'] = l.cycle
+        if l.event_type:
+            d['eventType'] = l.event_type
+            d['params'] = l.params or {}
         return d
 
     def _notice(n: Notification) -> dict:
@@ -106,6 +109,9 @@ def bootstrap(db: Session, company: Company, viewer: User | None = None) -> dict
             d['pri'] = n.pri
         if n.redemption_id is not None:
             d['redemptionId'] = n.redemption_id
+        if n.event_type:
+            d['eventType'] = n.event_type
+            d['params'] = n.params or {}
         return d
 
     def _act(a: Activity) -> dict:
@@ -119,6 +125,9 @@ def bootstrap(db: Session, company: Company, viewer: User | None = None) -> dict
             d['econ'] = a.econ
         if a.cycle is not None:
             d['cycle'] = a.cycle
+        if a.event_type:
+            d['eventType'] = a.event_type
+            d['params'] = a.params or {}
         return d
 
     def _redemption(r: Redemption) -> dict:

@@ -29,6 +29,24 @@ input,textarea,select { text-align:start }
 .drawer-title { min-inline-size:0;overflow-wrap:anywhere }
 .drawer-head>.btn { flex:none }
 .range-row>input { min-inline-size:0 }
+/* N3.4: title/action form one header row. The query controls occupy their
+   own full-width row, starting at inline-start in both reading directions.
+   Wrapping follows DOM order; no visual-only order or row-reverse. */
+.tasks-toolbar { padding:12px var(--pad);border-bottom:1px solid var(--rim-soft);justify-content:flex-start }
+.tasks-toolbar>.seg { max-inline-size:100%;min-inline-size:0 }
+.tasks-toolbar>select { max-inline-size:100% }
+/* System layout belongs to the shell/dialog; authored descendants alone
+   can resolve a different direction. Headers consistently close at end. */
+.drawer-head,.panel-head { text-align:start }
+.field>.eyebrow,.field>.faint { text-align:start }
+/* Keep the native date segments LTR, but reserve the same logical trailing
+   space as a select's arrow. Only the picker affordance changes sides. */
+input[type="date"] { position:relative;padding-inline-end:34px }
+input[type="date"]::-webkit-calendar-picker-indicator { position:absolute;inset-inline-end:10px;margin:0 }
+input[type="date"]::-webkit-datetime-edit { text-align:inherit;flex:1 }
+input[type="date"]::-webkit-datetime-edit-fields-wrapper { direction:ltr }
+input[type="date"]:dir(rtl)::-webkit-calendar-picker-indicator,
+input[type="date"]:dir(rtl)::-webkit-datetime-edit { direction:rtl }
 .num,.mono,.coin,.at,time { unicode-bidi:isolate }
 [dir="auto"] { overflow-wrap:anywhere }
 .toolbar>*,.filterbar>*,.panel-head>*,.topbar>*,.rw-card,.field,.kv dd { min-width:0 }

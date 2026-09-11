@@ -184,7 +184,7 @@ def test_n22_archive_is_in_place_with_audit(client, auth):
         'archived': True})
     assert r.status_code == 200
     assert _rw(r.json(), 'rw-coffee')['archived'] is True
-    assert any(a['action'] == 'updated reward' and 'archived' in (a.get('reason') or '')
+    assert any(a.get('eventType') == 'REWARD_ARCHIVED'
                for a in r.json()['activity'])
     # the reward row still exists — archive-only retirement, no delete path
     assert _rw(r.json(), 'rw-coffee')['name'] == 'Coffee subscription — 1 month'
@@ -261,8 +261,8 @@ def test_n22_canonical_flow_approve_then_fulfill(client, auth):
     assert rd['status'] == 'APPROVED' and rd['approvedBy'] == 'u-marcus' and rd['approvedAt']
     # executor notified, redeemer notified
     notes = [n for n in r.json()['notices'] if n.get('redemptionId') == 'r2']
-    assert any(n['userId'] == 'u-priya' and n['text'].startswith('Approved —') for n in notes)
-    assert any(n['userId'] == 'u-jonas' and n['text'].startswith('Ready for fulfillment') for n in notes)
+    assert any(n['userId'] == 'u-priya' and n.get('eventType') == 'REDEMPTION_APPROVED' for n in notes)
+    assert any(n['userId'] == 'u-jonas' and n.get('eventType') == 'REDEMPTION_READY_FOR_FULFILLMENT' for n in notes)
     # the assigned executor fulfills with tracking details
     r = client.post('/api/redemptions/r2/fulfill', headers=auth['jonas'],
                     json={'reference': 'VOU-2026-091', 'note': 'handed over at desk'})

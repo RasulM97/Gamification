@@ -1,3 +1,4 @@
+import type { EventRecord } from './events'
 /* Corporate Virtual Economy — domain engine.
  *
  * This module is the authoritative business core of the demo build: every
@@ -121,7 +122,7 @@ export interface Task {
   contributions: Contribution[]; cycles: CycleRec[]
   createdAt: number; updatedAt: number; createdBy: string
 }
-export interface LedgerEntry {
+export interface LedgerEntry extends EventRecord {
   id: string; at: number; userId: string; type: LedgerType
   amount: number; ref: string; taskId?: string; cycle?: number
 }
@@ -248,13 +249,13 @@ export interface Redemption {
   fulfilledBy?: string | null; fulfilledAt?: number | null
   fulfillmentReference?: string | null; fulfillmentNote?: string | null
 }
-export interface Notice {
+export interface Notice extends EventRecord {
   id: string; userId: string; level: NotifLevel; category: NotifCategory
   text: string; taskId?: string; pri?: Priority; at: number; read: boolean; archived: boolean
   /* Set on reward notices so clicking them can deep-link to the redemption. */
   redemptionId?: string
 }
-export interface Act {
+export interface Act extends EventRecord {
   id: string; at: number; actorId: string; action: string; object: string
   taskId?: string; reason?: string; econ?: string; cycle?: number
 }

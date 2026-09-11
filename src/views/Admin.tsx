@@ -1,3 +1,4 @@
+import { EventText, EventReason } from '../components/EventText'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { MAX_ACTIVE, activeCount, balanceOf } from '../domain/engine'
@@ -53,7 +54,7 @@ function PersonDrawer({ userId, onClose }: { userId: string | null; onClose: () 
                     <LedgerBadge t={l.type} />
                     <Coin n={l.amount} sign />
                   </div>
-                  <div className="why" dir="auto">{l.ref}</div>
+                  <div className="why"><EventText record={l} legacy={l.ref} /><EventReason record={l} /></div>
                   <div className="when">{ago(l.at)}</div>
                 </div>
               ))}

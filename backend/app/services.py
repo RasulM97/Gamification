@@ -32,6 +32,7 @@ from .models import (
     Submission, Task, TaskCycle, User, now_ms,
 )
 from .storage import StoredFile
+from .events import EVENT_TYPES
 
 # ── small helpers ───────────────────────────────────────────────────────────
 
@@ -106,28 +107,55 @@ def active_count(db: Session, company_id: str, user_id: str) -> int:
                       Task.status.in_(('IN_PROGRESS', 'SUBMITTED')))))
 
 
-def act(db: Session, company_id: str, actor_id: str, action: str, object_: str,
-        task_id=None, reason=None, econ=None, cycle=None) -> None:
-    db.add(Activity(company_id=company_id, actor_id=actor_id, action=action,
-                    object=object_, task_id=task_id, reason=reason, econ=econ,
-                    cycle=cycle, at=now_ms()))
+def snap(db, actor, task=None, **extra):
+    data = {'actorId': actor.id, 'actor': actor.name}
+    if task:
+        data.update(task=task.title,taskId=task.id,objectType='TASK',objectId=task.id,
+                    employeeId=task.owner_id,employee=get_user(db,actor.company_id,task.owner_id).name if task.owner_id else '',
+                    cycle=task.cycle,coins=task.reward,percent=task.reported,priority=task.priority,
+                    audience=task.audience,assigneeId=task.assignee_id,
+                    assignee=get_user(db,actor.company_id,task.assignee_id).name if task.assignee_id else '',
+                    deadline=_dl_str(task.deadline))
+    data.update(extra)
+    return data
 
 
-def note(db: Session, company_id: str, user_id: str, level: str, category: str,
-         text: str, task: Optional[Task] = None, redemption_id=None) -> None:
-    db.add(Notification(company_id=company_id, user_id=user_id, level=level,
-                        category=category, text=text,
-                        task_id=task.id if task else None,
-                        pri=task.priority if task else None,
-                        redemption_id=redemption_id, at=now_ms()))
+def reward_snapshot(db, actor, reward, user_id=None, redemption=None, **extra):
+    ids = _executor_ids(db,reward.id)
+    data = snap(db,actor,reward=reward.name,rewardId=reward.id,category=reward.category,
+                active=reward.active,archived=reward.archived,eligibility=reward.eligibility,
+                stock=reward.stock,description=reward.description or '',
+                objectType='REDEMPTION' if redemption else 'REWARD',
+                objectId=redemption.id if redemption else reward.id,
+                coins=redemption.cost if redemption else reward.cost,
+                executorIds=ids,executors=[get_user(db,actor.company_id,i).name for i in ids])
+    if user_id:
+        data.update(employeeId=user_id,employee=get_user(db,actor.company_id,user_id).name)
+    if redemption:
+        data['redemptionId']=redemption.id
+    data.update(extra)
+    return data
 
 
-def ledger(db: Session, company_id: str, user_id: str, type_: str, amount: float,
-           ref: str, task: Optional[Task] = None) -> None:
-    db.add(LedgerTransaction(company_id=company_id, user_id=user_id, type=type_,
-                             amount=amount, ref=ref,
-                             task_id=task.id if task else None,
-                             cycle=task.cycle if task else None, at=now_ms()))
+def act(db, company_id, actor_id, event_type, params):
+    assert event_type in EVENT_TYPES
+    db.add(Activity(company_id=company_id,actor_id=actor_id,action='',object='',
+                    event_type=event_type,params=params,task_id=params.get('taskId'),
+                    cycle=params.get('cycle'),at=now_ms()))
+
+
+def note(db, company_id, user_id, level, category, event_type, params):
+    assert event_type in EVENT_TYPES
+    db.add(Notification(company_id=company_id,user_id=user_id,level=level,category=category,
+                        text='',event_type=event_type,params=params,task_id=params.get('taskId'),
+                        pri=params.get('priority'),redemption_id=params.get('redemptionId'),at=now_ms()))
+
+
+def ledger(db, company_id, user_id, type_, amount, params):
+    assert type_ in EVENT_TYPES
+    db.add(LedgerTransaction(company_id=company_id,user_id=user_id,type=type_,amount=amount,
+                            ref='',event_type=type_,params={**params,'coins':amount},
+                            task_id=params.get('taskId'),cycle=params.get('cycle'),at=now_ms()))
 
 
 def _attach(db: Session, company_id: str, files: Sequence[StoredFile],
@@ -199,16 +227,13 @@ def create_task(db: Session, actor: User, *, title: str, description: str,
     db.flush()  # assign id before child rows
     db.add(TaskCycle(company_id=cid, task_id=t.id, cycle=1, opened_at=now))
     _attach(db, cid, files, 'brief', t.id)
-    act(db, cid, actor.id, 'created task', t.title, task_id=t.id, cycle=1)
+    act(db, cid, actor.id, 'TASK_CREATED', snap(db,actor,t,))
     if eff_assignee:
-        note(db, cid, eff_assignee, 'ACTION_REQUIRED', 'Assignments',
-             f'New assignment — {t.title} (worth {_num(t.reward)} Coins) from {actor.name}. Accept or decline.', t)
+        note(db, cid, eff_assignee, 'ACTION_REQUIRED', 'Assignments', 'TASK_ASSIGNED', snap(db,actor,t,))
     elif priority in ('URGENT', 'IMPORTANT'):
         for u in db.scalars(select(User).where(User.company_id == cid, User.id != actor.id)):
             if role_fits(audience, u.role):
-                note(db, cid, u.id, 'IMPORTANT', 'Tasks',
-                     f'{"Urgent" if priority == "URGENT" else "Important"} task available — '
-                     f'{t.title} (worth {_num(t.reward)} Coins), posted by {actor.name}. First valid claim wins.', t)
+                note(db, cid, u.id, 'IMPORTANT', 'Tasks', 'TASK_AVAILABLE', snap(db,actor,t,))
     return t
 
 
@@ -228,9 +253,7 @@ def claim_task(db: Session, actor: User, task_id: str) -> Task:
     t.status = 'IN_PROGRESS'
     t.assignee_id = None
     t.updated_at = now_ms()
-    act(db, actor.company_id, actor.id,
-        'accepted assignment' if specific else 'claimed task', t.title,
-        task_id=t.id, cycle=t.cycle)
+    act(db, actor.company_id, actor.id, 'TASK_ACCEPTED' if specific else 'TASK_CLAIMED', snap(db,actor,t,))
     return t
 
 
@@ -248,14 +271,11 @@ def decline_assignment(db: Session, actor: User, task_id: str, reason: str) -> T
         _reset_live_submission_slots(t, now_ms())
     t.assignee_id = None
     t.updated_at = now_ms()
-    act(db, actor.company_id, actor.id,
-        'handed back assignment' if owned else 'declined assignment', t.title,
-        task_id=t.id, reason=reason, cycle=t.cycle)
+    act(db, actor.company_id, actor.id, 'TASK_HANDED_BACK' if owned else 'TASK_DECLINED', snap(db,actor,t,reason=reason,))
     lvl = 'ACTION_REQUIRED' if t.priority in ('URGENT', 'IMPORTANT') else 'IMPORTANT'
     for m in managers(db, actor.company_id):
         if m.id != actor.id:
-            note(db, actor.company_id, m.id, lvl, 'Assignments',
-                 f'{actor.name} {"handed back" if owned else "declined"} “{t.title}” — {reason}. Reassignment needed.', t)
+            note(db, actor.company_id, m.id, lvl, 'Assignments', 'TASK_HANDED_BACK' if owned else 'TASK_DECLINED', snap(db,actor,t,reason=reason,))
     return t
 
 
@@ -266,25 +286,18 @@ def return_claim(db: Session, actor: User, task_id: str, reason: str) -> Task:
         raise DomainError('BAD_STATE', 'Only a self-claimed task in progress (or rework) can be returned')
     pen = min(claim_penalty(t.priority), max(0.0, balance_of(db, actor.company_id, actor.id)))
     if pen > 0:
-        ledger(db, actor.company_id, actor.id, 'TASK_CLAIM_PENALTY', -pen,
-               f'Claim return penalty — {t.title}', t)
+        ledger(db, actor.company_id, actor.id, 'TASK_CLAIM_PENALTY', -pen, snap(db,actor,t,reason=reason,coins=-pen,))
     t.owner_id = None
     t.status = 'OPEN'
     t.reported = 0
     _reset_live_submission_slots(t, now_ms())
     t.updated_at = now_ms()
-    act(db, actor.company_id, actor.id, 'returned claimed task', t.title,
-        task_id=t.id, reason=reason,
-        econ=f'-{_num(pen)} Coins' if pen > 0 else 'no penalty (empty wallet)',
-        cycle=t.cycle)
+    act(db, actor.company_id, actor.id, 'TASK_RETURNED', snap(db,actor,t,reason=reason,coins=-pen,))
     if t.priority in ('URGENT', 'IMPORTANT'):
         for m in managers(db, actor.company_id):
-            note(db, actor.company_id, m.id, 'IMPORTANT', 'Tasks',
-                 f'{actor.name} returned “{t.title}” to the marketplace'
-                 f'{f" (−{_num(pen)} Coins penalty)" if pen > 0 else ""} — {reason}', t)
+            note(db, actor.company_id, m.id, 'IMPORTANT', 'Tasks', 'TASK_RETURNED', snap(db,actor,t,reason=reason,coins=-pen,))
     if pen > 0:
-        note(db, actor.company_id, actor.id, 'INFORMATIONAL', 'Economy',
-             f'Claim return penalty applied: −{_num(pen)} Coins for “{t.title}”.', t)
+        note(db, actor.company_id, actor.id, 'INFORMATIONAL', 'Economy', 'TASK_CLAIM_PENALTY', snap(db,actor,t,reason=reason,coins=-pen,))
     return t
 
 
@@ -310,7 +323,7 @@ def edit_task(db: Session, actor: User, task_id: str, *, title=None, description
         changed.append('description')
         t.description = description.strip()
     if priority is not None and priority != t.priority:
-        changed.append(f'priority → {priority}')
+        changed.append('priority')
         t.priority = priority
     if deadline is not ...:
         nd = _dl(deadline)
@@ -318,18 +331,16 @@ def edit_task(db: Session, actor: User, task_id: str, *, title=None, description
             changed.append('deadline')
             t.deadline = nd
     if reward is not None and reward != t.reward:
-        changed.append(f'reward → {_num(reward)} Coins')
+        changed.append('reward')
         t.reward = reward
     if not changed:
         raise DomainError('NO_CHANGE', 'Nothing changed')
     t.updated_at = now_ms()
-    act(db, actor.company_id, actor.id, 'edited task', t.title,
-        task_id=t.id, reason=', '.join(changed), cycle=t.cycle)
-    msg = f'“{t.title}” was updated by management ({", ".join(changed)}).'
+    act(db, actor.company_id, actor.id, 'TASK_UPDATED', snap(db,actor,t,changedFields=changed))
     if t.owner_id and t.owner_id != actor.id:
-        note(db, actor.company_id, t.owner_id, 'IMPORTANT', 'Tasks', msg, t)
+        note(db, actor.company_id, t.owner_id, 'IMPORTANT', 'Tasks', 'TASK_UPDATED', snap(db,actor,t,changedFields=changed))
     elif t.assignee_id and t.assignee_id != actor.id:
-        note(db, actor.company_id, t.assignee_id, 'IMPORTANT', 'Tasks', msg, t)
+        note(db, actor.company_id, t.assignee_id, 'IMPORTANT', 'Tasks', 'TASK_UPDATED', snap(db,actor,t,changedFields=changed))
     return t
 
 
@@ -347,12 +358,9 @@ def reassign(db: Session, actor: User, task_id: str, assignee_id: Optional[str])
     t.assign_mode = 'SPECIFIC_EMPLOYEE' if assignee_id else 'ALL_EMPLOYEES'
     t.assignee_id = assignee_id
     t.updated_at = now_ms()
-    act(db, actor.company_id, actor.id,
-        f'reassigned to {target.name}' if target else 'made available to all employees',
-        t.title, task_id=t.id, cycle=t.cycle)
+    act(db, actor.company_id, actor.id, 'TASK_REASSIGNED' if assignee_id else 'TASK_AVAILABLE', snap(db,actor,t,))
     if assignee_id:
-        note(db, actor.company_id, assignee_id, 'ACTION_REQUIRED', 'Assignments',
-             f'New assignment — {t.title} (worth {_num(t.reward)} Coins). Accept or decline.', t)
+        note(db, actor.company_id, assignee_id, 'ACTION_REQUIRED', 'Assignments', 'TASK_ASSIGNED', snap(db,actor,t,))
     return t
 
 
@@ -364,8 +372,7 @@ def report_progress(db: Session, actor: User, task_id: str, pct: float) -> Task:
         raise DomainError('BAD_STATE', 'Progress can only be reported on active work')
     t.reported = _clamp_pct(pct)
     t.updated_at = now_ms()
-    act(db, actor.company_id, actor.id, 'reported progress',
-        f'{t.title} — {_num(t.reported)}% (self-reported)', task_id=t.id, cycle=t.cycle)
+    act(db, actor.company_id, actor.id, 'TASK_PROGRESS_REPORTED', snap(db,actor,t,percent=t.reported,))
     return t
 
 
@@ -387,12 +394,10 @@ def submit_work(db: Session, actor: User, task_id: str, *, note_text: str,
     db.add(sub)
     db.flush()
     _attach(db, actor.company_id, files, 'submission', t.id, submission_id=sub.id)
-    act(db, actor.company_id, actor.id, 'submitted work for review', t.title,
-        task_id=t.id, cycle=t.cycle)
+    act(db, actor.company_id, actor.id, 'TASK_SUBMITTED', snap(db,actor,t,))
     for m in managers(db, actor.company_id):
         if m.id != actor.id:
-            note(db, actor.company_id, m.id, 'ACTION_REQUIRED', 'Reviews',
-                 f'Submission ready for review — {t.title} by {actor.name}.', t)
+            note(db, actor.company_id, m.id, 'ACTION_REQUIRED', 'Reviews', 'TASK_SUBMITTED', snap(db,actor,t,))
     return t
 
 
@@ -404,8 +409,7 @@ def resume_work(db: Session, actor: User, task_id: str) -> Task:
         raise DomainError('CAPACITY', f'You already have {MAX_ACTIVE} active tasks')
     t.status = 'IN_PROGRESS'
     t.updated_at = now_ms()
-    act(db, actor.company_id, actor.id, 'resumed rework', t.title,
-        task_id=t.id, cycle=t.cycle)
+    act(db, actor.company_id, actor.id, 'TASK_RESUMED', snap(db,actor,t,))
     return t
 
 
@@ -425,13 +429,12 @@ def approve_work(db: Session, actor: User, task_id: str) -> Task:
     remaining = max(0.0, t.reward - t.paid)
     now = now_ms()
     if remaining > 0:
-        ledger(db, actor.company_id, owner, 'TASK_REWARD', remaining,
-               f'Task reward — {t.title}', t)
+        ledger(db, actor.company_id, owner, 'TASK_REWARD', remaining, snap(db,actor,t,coins=remaining,))
         t.paid += remaining
     db.add(Contribution(company_id=actor.company_id, task_id=t.id, cycle=t.cycle,
                         employee_id=owner, reported_pct=t.reported,
                         accepted_pct=accepted_pct, payout=remaining,
-                        decision='APPROVED', reason='Work approved', at=now))
+                        decision='APPROVED', reason='', at=now))
     _close_pending_submission(db, t, 'APPROVED', actor.id, None)
     t.verified = 100
     t.status = 'APPROVED'
@@ -442,11 +445,8 @@ def approve_work(db: Session, actor: User, task_id: str) -> Task:
     cyc.outcome = 'APPROVED'
     cyc.paid = t.paid
     cyc.verified = 100
-    act(db, actor.company_id, actor.id, 'approved work', t.title, task_id=t.id,
-        econ=fmt_coins(remaining) if remaining > 0 else None, cycle=t.cycle)
-    note(db, actor.company_id, owner, 'IMPORTANT', 'Economy',
-         f'Approved — {t.title}. '
-         f'{f"{fmt_coins(remaining)} credited to your wallet." if remaining > 0 else "Cycle already fully paid."}', t)
+    act(db, actor.company_id, actor.id, 'TASK_APPROVED', snap(db,actor,t,coins=remaining,))
+    note(db, actor.company_id, owner, 'IMPORTANT', 'Economy', 'TASK_APPROVED', snap(db,actor,t,coins=remaining,))
     return t
 
 
@@ -462,10 +462,8 @@ def reject_work(db: Session, actor: User, task_id: str, reason: str) -> Task:
     t.status = 'REJECTED'
     t.rejection_reason = reason
     t.updated_at = now_ms()
-    act(db, actor.company_id, actor.id, 'rejected submission', t.title,
-        task_id=t.id, reason=reason, cycle=t.cycle)
-    note(db, actor.company_id, t.owner_id, 'ACTION_REQUIRED', 'Tasks',
-         f'Rework required — {t.title}. Reason: {reason}', t)
+    act(db, actor.company_id, actor.id, 'TASK_REWORK', snap(db,actor,t,reason=reason,))
+    note(db, actor.company_id, t.owner_id, 'ACTION_REQUIRED', 'Tasks', 'TASK_REWORK', snap(db,actor,t,reason=reason,))
     return t
 
 
@@ -514,8 +512,7 @@ def handoff(db: Session, actor: User, task_id: str, *, accepted_pct: float,
     payout = min(partial_payout(t.reward, pct), max(0.0, t.reward - t.paid)) if pct > 0 else 0.0
     now = now_ms()
     if payout > 0:
-        ledger(db, cid, from_id, 'TASK_PARTIAL_REWARD', payout,
-               f'Partial reward ({pct}%) — {t.title}', t)
+        ledger(db, cid, from_id, 'TASK_PARTIAL_REWARD', payout, snap(db,actor,t,reason=reason,percent=pct,coins=payout,employee=get_user(db,actor.company_id,from_id).name,employeeId=from_id,overrideReason=override_reason or '',remainingCoins=max(0,t.reward-t.paid),))
         t.paid += payout
     db.add(Contribution(company_id=cid, task_id=t.id, cycle=t.cycle,
                         employee_id=from_id, reported_pct=t.reported,
@@ -537,36 +534,21 @@ def handoff(db: Session, actor: User, task_id: str, *, accepted_pct: float,
         t.reward = t.paid + max(0, _round(remaining_reward))
     if files:
         _attach(db, cid, files, 'brief', t.id)
-    change_note = ' · '.join(x for x in [
-        reason,
-        f'priority → {priority}' if priority else '',
-        'deadline updated' if deadline is not ... else '',
-        (f'remaining reward set to {_num(_round(remaining_reward))} Coins — {override_reason.strip()}'
-         if overrides else ''),
-        (f'{len(files)} file{"s" if len(files) != 1 else ""} added to the brief' if files else ''),
-    ] if x)
-    act(db, cid, actor.id, f'handed off ({pct}% accepted)', t.title, task_id=t.id,
-        reason=change_note, econ=fmt_coins(payout) if payout > 0 else None, cycle=t.cycle)
-    note(db, cid, from_id, 'IMPORTANT', 'Economy',
-         f'Handoff on “{t.title}” — {pct}% accepted'
-         f'{f", {fmt_coins(payout)} credited" if payout > 0 else ", no payout"}.', t)
+    act(db, cid, actor.id, 'TASK_HANDOFF', snap(db,actor,t,reason=reason,percent=pct,coins=payout,employee=get_user(db,actor.company_id,from_id).name,employeeId=from_id,overrideReason=override_reason or '',remainingCoins=max(0,t.reward-t.paid),))
+    note(db, cid, from_id, 'IMPORTANT', 'Economy', 'TASK_HANDOFF', snap(db,actor,t,reason=reason,percent=pct,coins=payout,employee=get_user(db,actor.company_id,from_id).name,employeeId=from_id,overrideReason=override_reason or '',remainingCoins=max(0,t.reward-t.paid),))
     if next_kind == 'EMPLOYEE' and nu is not None:
         # audience already resolved above (explicit choice or target-derived)
         t.assign_mode = 'SPECIFIC_EMPLOYEE'
         t.assignee_id = nu.id
         t.status = 'OPEN'
-        note(db, cid, nu.id, 'ACTION_REQUIRED', 'Assignments',
-             f'Handoff assignment — {t.title} ({_num(t.verified)}% verified, '
-             f'{_num(max(0.0, t.reward - t.paid))} Coins remaining) from {actor.name}. '
-             f'Instructions: {reason} Accept or decline.', t)
+        note(db, cid, nu.id, 'ACTION_REQUIRED', 'Assignments', 'TASK_HANDOFF_ASSIGNED', snap(db,actor,t,reason=reason,percent=pct,coins=payout,employee=get_user(db,actor.company_id,from_id).name,employeeId=from_id,overrideReason=override_reason or '',remainingCoins=max(0,t.reward-t.paid),))
     else:
         t.assign_mode = 'ALL_EMPLOYEES'
         t.assignee_id = None
         t.status = 'OPEN'
         if t.priority in ('URGENT', 'IMPORTANT'):
             for m in managers(db, cid):
-                note(db, cid, m.id, 'IMPORTANT', 'Tasks',
-                     f'Handoff returned “{t.title}” to the marketplace ({_num(t.verified)}% verified).', t)
+                note(db, cid, m.id, 'IMPORTANT', 'Tasks', 'TASK_HANDOFF_AVAILABLE', snap(db,actor,t,reason=reason,percent=pct,coins=payout,employee=get_user(db,actor.company_id,from_id).name,employeeId=from_id,overrideReason=override_reason or '',remainingCoins=max(0,t.reward-t.paid),))
     return t
 
 
@@ -605,10 +587,10 @@ def _new_cycle_reset(db: Session, actor: User, t: Task, *, description=None,
     brief_changes: list[str] = []
     if description and description.strip() and description.strip() != t.description:
         t.description = description.strip()
-        brief_changes.append('brief updated')
+        brief_changes.append('description')
     if files:
         _attach(db, actor.company_id, files, 'brief', t.id)
-        brief_changes.append(f'{len(files)} file{"s" if len(files) != 1 else ""} added to the brief')
+        brief_changes.append('briefFiles')
     db.add(TaskCycle(company_id=actor.company_id, task_id=t.id, cycle=t.cycle,
                      opened_at=now))
     return brief_changes, nu
@@ -625,17 +607,12 @@ def reopen_task(db: Session, actor: User, task_id: str, *, description=None,
     brief_changes, nu = _new_cycle_reset(db, actor, t, description=description,
                                          audience=audience, assignee_id=assignee_id,
                                          files=files)
-    parts = brief_changes + ([f'assigned to {nu.name}'] if nu is not None else [])
-    act(db, actor.company_id, actor.id, 'reopened task (new cycle)', t.title,
-        task_id=t.id, cycle=t.cycle,
-        reason=' · '.join(parts) or 'previous brief reused')
+    act(db, actor.company_id, actor.id, 'TASK_REOPENED', snap(db,actor,t,changedFields=brief_changes))
     if nu is not None:
-        note(db, actor.company_id, nu.id, 'ACTION_REQUIRED', 'Assignments',
-             f'New assignment — {t.title} (worth {_num(t.reward)} Coins, cycle {t.cycle}). Accept or decline.', t)
+        note(db, actor.company_id, nu.id, 'ACTION_REQUIRED', 'Assignments', 'TASK_ASSIGNED', snap(db,actor,t,))
     for m in managers(db, actor.company_id):
         if m.id != actor.id:
-            note(db, actor.company_id, m.id, 'INFORMATIONAL', 'Tasks',
-                 f'“{t.title}” reopened — cycle {t.cycle} started. Reward budget refreshed.', t)
+            note(db, actor.company_id, m.id, 'INFORMATIONAL', 'Tasks', 'TASK_REOPENED', snap(db,actor,t,changedFields=brief_changes))
     return t
 
 
@@ -657,8 +634,7 @@ def cancel_task(db: Session, actor: User, task_id: str, *, reason: str,
     payout = min(partial_payout(t.reward, pct), max(0.0, t.reward - t.paid)) if pct > 0 else 0.0
     now = now_ms()
     if payout > 0:
-        ledger(db, cid, t.owner_id, 'TASK_PARTIAL_REWARD', payout,
-               f'Partial reward ({pct}%) — {t.title} (cancelled)', t)
+        ledger(db, cid, t.owner_id, 'TASK_PARTIAL_REWARD', payout, snap(db,actor,t,reason=reason,percent=pct,coins=payout,))
         t.paid += payout
     if pct > 0:
         db.add(Contribution(company_id=cid, task_id=t.id, cycle=t.cycle,
@@ -675,15 +651,9 @@ def cancel_task(db: Session, actor: User, task_id: str, *, reason: str,
     cyc.outcome = 'CANCELLED'
     cyc.paid = t.paid
     cyc.verified = t.verified
-    act(db, cid, actor.id,
-        f'cancelled task ({pct}% credited)' if pct > 0 else 'cancelled task',
-        t.title, task_id=t.id, reason=reason,
-        econ=fmt_coins(payout) if payout > 0 else None, cycle=t.cycle)
+    act(db, cid, actor.id, 'TASK_CANCELLED', snap(db,actor,t,reason=reason,percent=pct,coins=payout,))
     if t.owner_id:
-        note(db, cid, t.owner_id, 'IMPORTANT', 'Tasks',
-             f'Cancelled — {t.title}. '
-             f'{f"{fmt_coins(payout)} credited for work already done ({pct}% accepted). " if payout > 0 else ""}'
-             f'{reason}', t)
+        note(db, cid, t.owner_id, 'IMPORTANT', 'Tasks', 'TASK_CANCELLED', snap(db,actor,t,reason=reason,percent=pct,coins=payout,))
     return t
 
 
@@ -699,16 +669,12 @@ def reactivate_task(db: Session, actor: User, task_id: str, *, reason: str,
     brief_changes, nu = _new_cycle_reset(db, actor, t, description=description,
                                          audience=audience, assignee_id=assignee_id,
                                          files=files)
-    parts = [reason, *brief_changes] + ([f'assigned to {nu.name}'] if nu is not None else [])
-    act(db, actor.company_id, actor.id, 'reactivated task (new cycle)', t.title,
-        task_id=t.id, reason=' · '.join(parts), cycle=t.cycle)
+    act(db, actor.company_id, actor.id, 'TASK_REACTIVATED', snap(db,actor,t,reason=reason,changedFields=brief_changes))
     if nu is not None:
-        note(db, actor.company_id, nu.id, 'ACTION_REQUIRED', 'Assignments',
-             f'New assignment — {t.title} (worth {_num(t.reward)} Coins, cycle {t.cycle}). Accept or decline.', t)
+        note(db, actor.company_id, nu.id, 'ACTION_REQUIRED', 'Assignments', 'TASK_ASSIGNED', snap(db,actor,t,reason=reason,))
     for m in managers(db, actor.company_id):
         if m.id != actor.id:
-            note(db, actor.company_id, m.id, 'INFORMATIONAL', 'Tasks',
-                 f'“{t.title}” reactivated — cycle {t.cycle} started. Reason: {reason}', t)
+            note(db, actor.company_id, m.id, 'INFORMATIONAL', 'Tasks', 'TASK_REACTIVATED', snap(db,actor,t,reason=reason,changedFields=brief_changes))
     return t
 
 
@@ -788,21 +754,19 @@ def redeem(db: Session, actor: User, reward_id: str) -> Redemption:
     # redemption keeps them consumed. No double-debit, no double-restore.
     if r.stock is not None:
         r.stock -= 1
-    ledger(db, cid, actor.id, 'REDEMPTION', -r.cost, f'Reward redemption — {r.name}')
+    ledger(db, cid, actor.id, 'REDEMPTION', -r.cost, reward_snapshot(db,actor,r,actor.id,None,))
     rd = Redemption(company_id=cid, user_id=actor.id, reward_id=r.id, cost=r.cost,
                     status='PENDING', at=now)
     db.add(rd)
     db.flush()
-    act(db, cid, actor.id, 'redeemed reward', r.name, econ=f'-{_num(r.cost)} Coins')
+    act(db, cid, actor.id, 'REDEMPTION_REQUESTED', reward_snapshot(db,actor,r,actor.id,rd,))
     # N2.1-R2 + N2.2 §12: the approval request goes only to users who hold
     # decision authority over THIS redemption — an employee's redemption asks
     # all management; a manager's redemption asks admins only.
     for m in managers(db, cid):
         if not _can_decide(actor, m):
             continue
-        note(db, cid, m.id, 'ACTION_REQUIRED', 'Rewards',
-             f'Reward approval needed — {r.name} for {actor.name} ({_num(r.cost)} Coins).',
-             redemption_id=rd.id)
+        note(db, cid, m.id, 'ACTION_REQUIRED', 'Rewards', 'REDEMPTION_REQUESTED', reward_snapshot(db,actor,r,actor.id,rd,))
     return rd
 
 
@@ -827,16 +791,13 @@ def approve_redemption(db: Session, actor: User, redemption_id: str) -> Redempti
     rd.approved_by = actor.id
     rd.approved_at = now
     r = db.get(Reward, rd.reward_id)
-    act(db, actor.company_id, actor.id, 'approved redemption', f'{r.name} — {redeemer.name}')
-    note(db, actor.company_id, rd.user_id, 'INFORMATIONAL', 'Rewards',
-         f'Approved — {r.name}. It now waits for fulfillment.', redemption_id=rd.id)
+    act(db, actor.company_id, actor.id, 'REDEMPTION_APPROVED', reward_snapshot(db,actor,r,rd.user_id,rd,))
+    note(db, actor.company_id, rd.user_id, 'INFORMATIONAL', 'Rewards', 'REDEMPTION_APPROVED', reward_snapshot(db,actor,r,rd.user_id,rd,))
     # N2.2 §12: executors (and admins, who fulfill by office) are told the
     # item is ready. Non-assigned users are not notified.
     for u in db.query(User).filter(User.company_id == actor.company_id).all():
         if _can_fulfill(db, u, r):
-            note(db, actor.company_id, u.id, 'ACTION_REQUIRED', 'Rewards',
-                 f'Ready for fulfillment — {r.name} for {redeemer.name} ({_num(rd.cost)} Coins).',
-                 redemption_id=rd.id)
+            note(db, actor.company_id, u.id, 'ACTION_REQUIRED', 'Rewards', 'REDEMPTION_READY_FOR_FULFILLMENT', reward_snapshot(db,actor,r,rd.user_id,rd,))
     return rd
 
 
@@ -868,9 +829,8 @@ def fulfill_redemption(db: Session, actor: User, redemption_id: str, *,
     rd.fulfillment_reference = (reference or '').strip() or None
     rd.fulfillment_note = (note_text or '').strip() or None
     user = get_user(db, actor.company_id, rd.user_id)
-    act(db, actor.company_id, actor.id, 'fulfilled redemption', f'{r.name} — {user.name}')
-    note(db, actor.company_id, rd.user_id, 'INFORMATIONAL', 'Rewards',
-         f'Fulfilled — {r.name}. Enjoy!', redemption_id=rd.id)
+    act(db, actor.company_id, actor.id, 'REDEMPTION_FULFILLED', reward_snapshot(db,actor,r,rd.user_id,rd,))
+    note(db, actor.company_id, rd.user_id, 'INFORMATIONAL', 'Rewards', 'REDEMPTION_FULFILLED', reward_snapshot(db,actor,r,rd.user_id,rd,))
     return rd
 
 
@@ -897,22 +857,17 @@ def cancel_redemption(db: Session, actor: User, redemption_id: str, reason: str)
     r = db.scalar(select(Reward).where(Reward.id == rd.reward_id).with_for_update())
     if r.stock is not None:
         r.stock += 1
-    ledger(db, actor.company_id, rd.user_id, 'REFUND', rd.cost, f'Refund — {r.name}')
+    ledger(db, actor.company_id, rd.user_id, 'REFUND', rd.cost, reward_snapshot(db,actor,r,rd.user_id,rd,reason=reason,))
     user = get_user(db, actor.company_id, rd.user_id)
-    act(db, actor.company_id, actor.id, 'cancelled redemption', f'{r.name} — {user.name}',
-        reason=reason, econ=fmt_coins(rd.cost))
-    note(db, actor.company_id, rd.user_id, 'IMPORTANT', 'Rewards',
-         f'Redemption cancelled — {r.name}. {fmt_coins(rd.cost)} refunded. Reason: {reason}',
-         redemption_id=rd.id)
+    act(db, actor.company_id, actor.id, 'REDEMPTION_CANCELLED', reward_snapshot(db,actor,r,rd.user_id,rd,reason=reason,))
+    note(db, actor.company_id, rd.user_id, 'IMPORTANT', 'Rewards', 'REDEMPTION_CANCELLED', reward_snapshot(db,actor,r,rd.user_id,rd,reason=reason,))
     # N2-D: manager's redemption cancelled by management — the other
     # managers/admins see the decision and the refund.
     if user.role == 'MANAGER' and actor.role != 'EMPLOYEE':
         for m in managers(db, actor.company_id):
             if m.id == actor.id:
                 continue
-            note(db, actor.company_id, m.id, 'INFORMATIONAL', 'Rewards',
-                 f'Redemption cancelled — {r.name} for {user.name}, refunded {fmt_coins(rd.cost)}, by {actor.name}.',
-                 redemption_id=rd.id)
+            note(db, actor.company_id, m.id, 'INFORMATIONAL', 'Rewards', 'REDEMPTION_CANCELLED', reward_snapshot(db,actor,r,rd.user_id,rd,reason=reason,))
     return rd
 
 
@@ -929,12 +884,9 @@ def admin_adjust(db: Session, actor: User, *, user_id: str, amount: float,
            if amount < 0 else amount)
     if eff == 0:
         raise DomainError('VALIDATION', 'Nothing to deduct — balance is already zero')
-    ledger(db, actor.company_id, user_id, 'ADMIN_ADJUSTMENT', eff,
-           f'Admin adjustment — {reason}')
-    act(db, actor.company_id, actor.id, 'admin adjustment',
-        f'{target.name} — {reason}', econ=fmt_coins(eff))
-    note(db, actor.company_id, user_id, 'IMPORTANT', 'Economy',
-         f'Admin adjustment: {fmt_coins(eff)} — {reason}')
+    ledger(db, actor.company_id, user_id, 'ADMIN_ADJUSTMENT', eff, snap(db,actor,employee=target.name,employeeId=target.id,coins=eff,reason=reason))
+    act(db, actor.company_id, actor.id, 'ADMIN_ADJUSTMENT', snap(db,actor,employee=target.name,employeeId=target.id,coins=eff,reason=reason))
+    note(db, actor.company_id, user_id, 'IMPORTANT', 'Economy', 'ADMIN_ADJUSTMENT', snap(db,actor,employee=target.name,employeeId=target.id,coins=eff,reason=reason))
 
 
 # ── reward catalog ──────────────────────────────────────────────────────────
@@ -1004,23 +956,11 @@ def save_reward(db: Session, actor: User, *, reward_id: Optional[str], name: str
         r.available_from, r.available_until = available_from, available_until
         r.archived = archived
         apply_executors(r)
-        # N2.2 §13: human-readable audit detail for governance-relevant
-        # changes (category / availability / lifecycle), no raw enums.
-        changes = []
-        if prev_category != category:
-            changes.append(f'category changed to {category}')
-        if prev_active != active:
-            changes.append('activated' if active else 'deactivated')
-        if prev_archived != archived:
-            changes.append('archived' if archived else 'unarchived')
-        # N2.3 §13: executor reassignment is governance-relevant — recorded
-        # in words, never as a raw id list.
+        # Snapshot final governance fields; executor transitions have their own code.
         now_executors = _executor_ids(db, r.id)
+        act(db, actor.company_id, actor.id, 'REWARD_ARCHIVED' if archived and not prev_archived else 'REWARD_UPDATED', reward_snapshot(db,actor,r,None,None,))
         if prev_executors != now_executors:
-            changes.append('fulfillment executors cleared — management fallback applies'
-                           if not now_executors else 'fulfillment executors updated')
-        act(db, actor.company_id, actor.id, 'updated reward', name,
-            reason=' · '.join(changes) or None)
+            act(db,actor.company_id,actor.id,'REWARD_EXECUTORS_UPDATED' if now_executors else 'REWARD_EXECUTORS_CLEARED',reward_snapshot(db,actor,r))
         return r
     # Create follows the matrix: a manager may create EMPLOYEES or BOTH
     # rewards (a BOTH reward is company-wide → admin-managed from birth),
@@ -1035,7 +975,7 @@ def save_reward(db: Session, actor: User, *, reward_id: Optional[str], name: str
     db.add(r)
     db.flush()
     apply_executors(r)
-    act(db, actor.company_id, actor.id, 'created reward', name)
+    act(db, actor.company_id, actor.id, 'REWARD_CREATED', reward_snapshot(db,actor,r,None,None,))
     return r
 
 
@@ -1056,8 +996,7 @@ def save_reward_category(db: Session, actor: User, *, category_id: Optional[str]
             raise DomainError('NOT_FOUND', 'Category not found')
         was_active = c.active
         c.name, c.active = name, active
-        act(db, actor.company_id, actor.id,
-            'archived reward category' if was_active and not active else 'updated reward category', name)
+        act(db, actor.company_id, actor.id, 'REWARD_CATEGORY_ARCHIVED' if was_active and not active else 'REWARD_CATEGORY_UPDATED', snap(db,actor,category=name,objectType='REWARD_CATEGORY',objectId=c.id))
         return c
     dup = db.scalar(select(RewardCategory).where(
         RewardCategory.company_id == actor.company_id,
@@ -1067,7 +1006,7 @@ def save_reward_category(db: Session, actor: User, *, category_id: Optional[str]
     c = RewardCategory(company_id=actor.company_id, name=name, active=active)
     db.add(c)
     db.flush()
-    act(db, actor.company_id, actor.id, 'created reward category', name)
+    act(db, actor.company_id, actor.id, 'REWARD_CATEGORY_CREATED', snap(db,actor,category=name,objectType='REWARD_CATEGORY',objectId=c.id))
     return c
 
 
@@ -1085,9 +1024,7 @@ def toggle_fulfill_permission(db: Session, actor: User, user_id: str) -> User:
         db.query(RewardExecutor).filter(
             RewardExecutor.company_id == actor.company_id,
             RewardExecutor.user_id == u.id).delete()
-    act(db, actor.company_id, actor.id,
-        'granted reward fulfillment permission' if u.can_fulfill_rewards
-        else 'revoked reward fulfillment permission', u.name)
+    act(db, actor.company_id, actor.id, 'REWARD_FULFILL_PERMISSION_GRANTED' if u.can_fulfill_rewards else 'REWARD_FULFILL_PERMISSION_REVOKED', snap(db,actor,employee=u.name,employeeId=u.id,objectType='USER',objectId=u.id))
     return u
 
 
@@ -1145,6 +1082,5 @@ def update_settings(db: Session, actor: User, *, max_file_size_mb: int,
     s = settings_of(db, actor.company_id)
     s.max_file_size_mb = max(1, min(100, _round(max_file_size_mb)))
     s.max_submission_total_mb = max(1, min(500, _round(max_submission_total_mb)))
-    act(db, actor.company_id, actor.id, 'updated upload policy',
-        f'{s.max_file_size_mb} MB/file · {s.max_submission_total_mb} MB/submission')
+    act(db, actor.company_id, actor.id, 'UPLOAD_POLICY_UPDATED', snap(db,actor,perFile=s.max_file_size_mb,total=s.max_submission_total_mb))
     return s

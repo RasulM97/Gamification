@@ -1,3 +1,4 @@
+import { ActivityEvent } from '../components/EventText'
 import { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
 import { useStore, useMe } from '../store'
@@ -254,10 +255,7 @@ function ManagerOverview({ onGo }: { onGo: (view: string, taskId?: string) => vo
           {recentActs.map(a => (
             <div className="aitem" key={a.id}>
               <Avatar name={user(a.actorId)?.name ?? '?'} size={20} />
-              <div className="aa">
-                <span dir="auto">{user(a.actorId)?.name} {a.action} </span><span className="obj" dir="auto">{a.object}</span>
-                {a.econ && <span className="num warn" style={{ fontSize: 11, marginInlineStart: 6 }}>{a.econ}</span>}
-              </div>
+              <div className="aa"><ActivityEvent record={a} actor={user(a.actorId)?.name ?? ''} /></div>
               <span className="at">{ago(a.at)}</span>
             </div>
           ))}

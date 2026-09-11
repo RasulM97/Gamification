@@ -167,6 +167,8 @@ class Contribution(Base):
 class LedgerTransaction(Base):
     """Append-only. No update/delete anywhere in the codebase."""
     __tablename__ = 'ledger'
+    event_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id('l'))
     company_id: Mapped[str] = mapped_column(String(40), index=True)
     user_id: Mapped[str] = mapped_column(String(40), index=True)
@@ -253,6 +255,8 @@ class Redemption(Base):
 
 class Notification(Base):
     __tablename__ = 'notifications'
+    event_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id('n'))
     company_id: Mapped[str] = mapped_column(String(40), index=True)
     user_id: Mapped[str] = mapped_column(String(40), index=True)
@@ -270,6 +274,8 @@ class Notification(Base):
 class Activity(Base):
     """Canonical business history (product audit). Separate from technical logs."""
     __tablename__ = 'activity'
+    event_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id('a'))
     company_id: Mapped[str] = mapped_column(String(40), index=True)
     actor_id: Mapped[str] = mapped_column(String(40))

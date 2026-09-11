@@ -523,7 +523,7 @@ describe('decline after assignment / handoff (post-acceptance decline)', () => {
     expect(t.reported).toBe(0)
     expect(balanceOf(s, JONAS)).toBe(before) // no penalty — canonical Decline
     expect(s.ledger.length).toBe(ledgerLen)
-    expect(s.notices.some(n => n.userId === MGR && n.text.includes('handed back'))).toBe(true)
+    expect(s.notices.some(n => n.userId === MGR && n.eventType === 'TASK_HANDED_BACK')).toBe(true)
   })
 
   it('clears rejected submission state when handed back from rework', () => {
@@ -593,7 +593,7 @@ describe('mid-work cancel with partial credit', () => {
     expect(t.contributions.at(-1)).toMatchObject({ employeeId: JONAS, acceptedPct: 30, payout: 9, decision: 'CANCELLED' })
     expect(t.cycles.at(-1)!.outcome).toBe('CANCELLED')
     expect(s.ledger.some(l => l.type === 'TASK_PARTIAL_REWARD' && l.taskId === 't-commission' && l.amount === 9)).toBe(true)
-    expect(s.notices.some(n => n.userId === JONAS && n.text.includes('credited for work already done'))).toBe(true)
+    expect(s.notices.some(n => n.userId === JONAS && n.eventType === 'TASK_CANCELLED' && n.params?.coins === 9)).toBe(true)
   })
 
   it('clamps acceptedPct to what remains unverified and unpaid', () => {
@@ -708,7 +708,7 @@ describe('task editing (EDIT_TASK)', () => {
     expect(t.title).toContain('Q3 final')
     expect(t.reward).toBe(35)
     expect(t.updatedAt).toBeGreaterThanOrEqual(before.updatedAt)
-    expect(s.notices.some(n => n.userId === JONAS && n.taskId === 't-commission' && n.text.includes('updated by management'))).toBe(true)
+    expect(s.notices.some(n => n.userId === JONAS && n.taskId === 't-commission' && n.eventType === 'TASK_UPDATED' && (n.params?.changedFields as string[]).includes('title'))).toBe(true)
   })
 
   it('never lets the reward drop below what is already paid', () => {
@@ -800,7 +800,7 @@ describe('handoff instructions & remaining-reward override', () => {
     const t = task(s, 't-commission')
     expect(t.reward).toBe(9 + 11)
     expect(t.priority).toBe('URGENT')
-    expect(s.activity.some(a => a.taskId === 't-commission' && a.reason?.includes('budget approved by finance'))).toBe(true)
+    expect(s.activity.some(a => a.taskId === 't-commission' && a.params?.overrideReason === 'budget approved by finance')).toBe(true)
   })
 
   it('a matching value is not treated as an override (no explanation needed)', () => {
@@ -837,8 +837,8 @@ describe('reactivation reason', () => {
     let s = reducer(seed(), { type: 'CANCEL_TASK', taskId: 't-pricing', by: MGR, reason: 'Deprioritized' })
     s = reducer(s, { type: 'REACTIVATE', taskId: 't-pricing', by: ADMIN, reason: 'Pricing refresh still needed' })
     expect(task(s, 't-pricing').status).toBe('OPEN')
-    expect(s.activity.some(a => a.taskId === 't-pricing' && a.reason === 'Pricing refresh still needed')).toBe(true)
-    expect(s.notices.some(n => n.userId === MGR && n.text.includes('Pricing refresh still needed'))).toBe(true)
+    expect(s.activity.some(a => a.taskId === 't-pricing' && a.params?.reason === 'Pricing refresh still needed')).toBe(true)
+    expect(s.notices.some(n => n.userId === MGR && n.params?.reason === 'Pricing refresh still needed')).toBe(true)
   })
 })
 

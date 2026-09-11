@@ -90,5 +90,7 @@ test('N1-D: task history shows compact transition markers', async ({ page }) => 
   await navBtn(page, 'Tasks').click()
   await page.locator('.trow', { hasText: 'Quarterly commission reconciliation' }).first().click()
   await expect(page.getByTestId('hist-marker-HANDOFF').first()).toBeVisible()
-  await expect(page.locator('.drawer')).toContainText('handed off (20% accepted)')
+  await expect(page.locator('.drawer')).toContainText('handed off task')
+  await expect(page.locator('.drawer .event-text').filter({hasText:'handed off task'})).toContainText('20%')
+  await expect(page.locator('.drawer .event-text').filter({hasText:'handed off task'})).toContainText('+6 Coins')
 })
