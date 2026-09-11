@@ -80,3 +80,32 @@ html[dir="rtl"] .drawer { animation-name:slidein-rtl;box-shadow:24px 0 70px rgba
   .trow { grid-template-columns:minmax(0,1fr) auto;grid-auto-rows:auto }
   .trow .hide-m { display:none }
 }
+
+/* N5: intrinsic module widths and logical alignment share the N3 direction. */
+.dashboard-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); gap:16px; align-items:start }
+.dashboard-module { min-width:0 }
+.dashboard-module .panel { margin:0; overflow:hidden }
+.dashboard-module .panel-body { display:flex; flex-direction:column; gap:12px }
+.dashboard-module p { margin:0 }
+.dashboard-module .kv { grid-template-columns:minmax(0,1fr) auto; margin:0 }
+.dashboard-module .kv dd { text-align:end; margin:0 }
+.dashboard-number { font:600 28px var(--mono) }
+.dashboard-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px }
+.dashboard-module .kpi2 { min-width:0; padding:0; border:0; border-radius:0; background:none; box-shadow:none; overflow:visible }
+.dashboard-module .kpi2:hover { transform:none }
+.dashboard-module .kpi2 .v { font-size:24px }
+.dashboard-module .kpi2 .v u { text-decoration:none; font-size:16px }
+.dashboard-module .dashboard-row { padding:8px 0; flex-wrap:wrap }
+.dashboard-row > [dir=auto] { flex:1; min-width:100px }
+.dashboard-actions { display:flex; flex-wrap:wrap; gap:8px }
+.dashboard-person { display:flex; justify-content:space-between; align-items:center; gap:12px; padding-block:6px; border-bottom:1px solid var(--rim-soft) }
+.dashboard-person > div { min-width:0 }
+.dashboard-person b { overflow-wrap:anywhere }
+.dashboard-person small { display:block; color:var(--muted) }
+.dashboard-status { display:grid; gap:12px }
+.dashboard-status > div { display:grid; grid-template-columns:minmax(90px,1fr) minmax(40px,1fr) auto; align-items:center; gap:10px }
+.dashboard-bar { height:6px; background:var(--rim-soft); border-radius:3px; overflow:hidden }
+.dashboard-bar i { display:block; height:100%; background:var(--accent) }
+.dashboard-module .aitem { flex-wrap:wrap; padding:8px 0 }
+.dashboard-module .aitem .aa { min-width:120px }
+.dashboard-module .empty { padding:12px 0 }

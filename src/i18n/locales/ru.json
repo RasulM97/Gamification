@@ -833,5 +833,17 @@
   "capacity.preserveWork": "При снижении лимита текущие задачи остаются назначенными.",
   "capacity.full": "Лимит достигнут",
   "capacity.reached": "Достигнут лимит активных задач ({{active}} из {{limit}})",
-  "event.userCapacityUpdated": "{{actor}} изменил(а) лимит активных задач для {{target}} с {{previousLimit}} на {{newLimit}}."
+  "event.userCapacityUpdated": "{{actor}} изменил(а) лимит активных задач для {{target}} с {{previousLimit}} на {{newLimit}}.",
+  "dashboard.claimableHint": "Открытые предложения, которые можно взять сейчас.",
+  "dashboard.visibleOffers": "Видимых предложений: {{count}}",
+  "dashboard.toFulfill": "Вы можете исполнить",
+  "dashboard.ownReady": "Ваших наград ожидает выдачи: {{count}}",
+  "dashboard.noAttention": "Ничего не требует внимания",
+  "dashboard.noRedemptions": "Нет заявок на награды, требующих внимания",
+  "dashboard.nearCapacity": "Почти достигнут лимит",
+  "dashboard.nearHint": "Почти достигнут лимит означает ровно одно свободное место.",
+  "dashboard.noCapacity": "Никто не достиг лимита",
+  "dashboard.manageCapacity": "Управление лимитами",
+  "dashboard.issuedHint": "Все положительные записи реестра, включая возвраты.",
+  "dashboard.noActivity": "Нет недавней активности"
 }

@@ -73,6 +73,7 @@ export function n4Cases(server:boolean){
   })
   test('N4 manager edits employees but never self or peers',async({page})=>{
     await start(page,server,'en','u-marcus')
+    await page.getByRole('button',{name:en['dashboard.manageCapacity']}).click()
     await expect(page.getByTestId('capacity-u-priya').getByRole('button')).toBeVisible()
     await expect(page.getByTestId('capacity-u-marcus').getByRole('button')).toHaveCount(0)
     await expect(page.getByTestId('capacity-u-dana').getByRole('button')).toHaveCount(0)

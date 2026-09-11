@@ -833,5 +833,17 @@
   "capacity.preserveWork": "降低上限不会取消现有任务分配。",
   "capacity.full": "已达上限",
   "capacity.reached": "已达到进行中任务上限（{{active}} / {{limit}}）",
-  "event.userCapacityUpdated": "{{actor}}将{{target}}的进行中任务上限从{{previousLimit}}改为{{newLimit}}。"
+  "event.userCapacityUpdated": "{{actor}}将{{target}}的进行中任务上限从{{previousLimit}}改为{{newLimit}}。",
+  "dashboard.claimableHint": "你现在可以领取的开放任务。",
+  "dashboard.visibleOffers": "{{count}} 个可见任务",
+  "dashboard.toFulfill": "你可以履约",
+  "dashboard.ownReady": "你的 {{count}} 项奖励等待履约",
+  "dashboard.noAttention": "没有需要处理的事项",
+  "dashboard.noRedemptions": "没有需要处理的兑换申请",
+  "dashboard.nearCapacity": "接近容量上限",
+  "dashboard.nearHint": "接近上限表示恰好剩余一个空位。",
+  "dashboard.noCapacity": "无人达到容量上限",
+  "dashboard.manageCapacity": "管理容量",
+  "dashboard.issuedHint": "所有正向账本记录，包括退款。",
+  "dashboard.noActivity": "暂无近期活动"
 }

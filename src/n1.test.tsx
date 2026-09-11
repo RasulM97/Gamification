@@ -101,7 +101,8 @@ describe('N1-C — dashboard work status', () => {
     expect(personal!.textContent).toContain('In review as worker')
     expect(personal!.textContent).not.toContain('Reviews waiting')
     expect(management!.textContent).toContain('Reviews waiting')
-    expect(management!.textContent).toContain('Needs attention')
+    // N5 gives attention its own registered management module.
+    expect(host.querySelector('[data-dashboard-module=attention]')?.textContent).toContain('Needs Attention')
     expect(management!.textContent).not.toContain('Active owned tasks')
   })
 

@@ -833,5 +833,17 @@
   "capacity.preserveWork": "تبقى المهام الحالية مسندة عند خفض الحد.",
   "capacity.full": "السعة مكتملة",
   "capacity.reached": "تم بلوغ حد المهام النشطة ({{active}} من {{limit}})",
-  "event.userCapacityUpdated": "غيّر {{actor}} حد المهام النشطة لـ {{target}} من {{previousLimit}} إلى {{newLimit}}."
+  "event.userCapacityUpdated": "غيّر {{actor}} حد المهام النشطة لـ {{target}} من {{previousLimit}} إلى {{newLimit}}.",
+  "dashboard.claimableHint": "العروض المفتوحة التي يمكنك تولّيها الآن.",
+  "dashboard.visibleOffers": "{{count}} عروض مرئية",
+  "dashboard.toFulfill": "يمكنك تسليمها",
+  "dashboard.ownReady": "{{count}} من مكافآتك بانتظار التسليم",
+  "dashboard.noAttention": "لا شيء يحتاج إلى متابعة",
+  "dashboard.noRedemptions": "لا توجد طلبات استبدال تحتاج إلى متابعة",
+  "dashboard.nearCapacity": "قريب من حد السعة",
+  "dashboard.nearHint": "قريب من الحد يعني وجود خانة واحدة شاغرة بالضبط.",
+  "dashboard.noCapacity": "لم يبلغ أحد حد السعة",
+  "dashboard.manageCapacity": "إدارة السعة",
+  "dashboard.issuedHint": "جميع القيود الموجبة في دفتر الأستاذ، بما فيها المبالغ المستردة.",
+  "dashboard.noActivity": "لا يوجد نشاط حديث"
 }

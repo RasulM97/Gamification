@@ -833,5 +833,17 @@
   "capacity.preserveWork": "सीमा कम करने पर मौजूदा कार्य सौंपे हुए रहेंगे।",
   "capacity.full": "क्षमता पूरी",
   "capacity.reached": "सक्रिय कार्य सीमा पूरी ({{limit}} में से {{active}})",
-  "event.userCapacityUpdated": "{{actor}} ने {{target}} की सक्रिय कार्य सीमा {{previousLimit}} से {{newLimit}} कर दी।"
+  "event.userCapacityUpdated": "{{actor}} ने {{target}} की सक्रिय कार्य सीमा {{previousLimit}} से {{newLimit}} कर दी।",
+  "dashboard.claimableHint": "खुले प्रस्ताव जिन्हें आप अभी ले सकते हैं।",
+  "dashboard.visibleOffers": "{{count}} दिखाई देने वाले प्रस्ताव",
+  "dashboard.toFulfill": "आप पूरा कर सकते हैं",
+  "dashboard.ownReady": "आपके {{count}} पुरस्कार वितरण की प्रतीक्षा में हैं",
+  "dashboard.noAttention": "किसी कार्रवाई की आवश्यकता नहीं",
+  "dashboard.noRedemptions": "किसी पुरस्कार अनुरोध पर कार्रवाई की आवश्यकता नहीं",
+  "dashboard.nearCapacity": "क्षमता सीमा के निकट",
+  "dashboard.nearHint": "सीमा के निकट का अर्थ है ठीक एक खाली स्थान।",
+  "dashboard.noCapacity": "कोई भी क्षमता सीमा पर नहीं है",
+  "dashboard.manageCapacity": "क्षमता प्रबंधित करें",
+  "dashboard.issuedHint": "लेजर की सभी सकारात्मक प्रविष्टियाँ, धनवापसी सहित।",
+  "dashboard.noActivity": "कोई हाल की गतिविधि नहीं"
 }

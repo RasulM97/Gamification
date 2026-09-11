@@ -833,5 +833,17 @@
   "capacity.preserveWork": "با کاهش سقف، کارهای فعلی همچنان به فرد واگذار می‌مانند.",
   "capacity.full": "ظرفیت تکمیل است",
   "capacity.reached": "سقف کارهای فعال پر شده است ({{active}} از {{limit}})",
-  "event.userCapacityUpdated": "{{actor}} سقف کارهای فعال {{target}} را از {{previousLimit}} به {{newLimit}} تغییر داد."
+  "event.userCapacityUpdated": "{{actor}} سقف کارهای فعال {{target}} را از {{previousLimit}} به {{newLimit}} تغییر داد.",
+  "dashboard.claimableHint": "پیشنهادهای بازی که اکنون می‌توانید بپذیرید.",
+  "dashboard.visibleOffers": "{{count}} پیشنهاد قابل مشاهده",
+  "dashboard.toFulfill": "قابل تحویل توسط شما",
+  "dashboard.ownReady": "{{count}} پاداش شما در انتظار تحویل است",
+  "dashboard.noAttention": "موردی نیاز به رسیدگی ندارد",
+  "dashboard.noRedemptions": "هیچ درخواست پاداشی نیاز به رسیدگی ندارد",
+  "dashboard.nearCapacity": "نزدیک به سقف ظرفیت",
+  "dashboard.nearHint": "نزدیک به سقف یعنی دقیقاً یک جای خالی باقی مانده است.",
+  "dashboard.noCapacity": "ظرفیت هیچ‌کس پر نیست",
+  "dashboard.manageCapacity": "مدیریت ظرفیت",
+  "dashboard.issuedHint": "همه ورودی‌های مثبت دفتر کل، شامل بازپرداخت‌ها.",
+  "dashboard.noActivity": "فعالیت اخیری وجود ندارد"
 }

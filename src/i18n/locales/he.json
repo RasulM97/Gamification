@@ -833,5 +833,17 @@
   "capacity.preserveWork": "המשימות הקיימות נשארות משויכות גם כשהמכסה מופחתת.",
   "capacity.full": "המכסה מלאה",
   "capacity.reached": "הגעת למכסת המשימות הפעילות ({{active}} מתוך {{limit}})",
-  "event.userCapacityUpdated": "{{actor}} שינה את מכסת המשימות הפעילות של {{target}} מ־{{previousLimit}} ל־{{newLimit}}."
+  "event.userCapacityUpdated": "{{actor}} שינה את מכסת המשימות הפעילות של {{target}} מ־{{previousLimit}} ל־{{newLimit}}.",
+  "dashboard.claimableHint": "הצעות פתוחות שאפשר לקבל עכשיו.",
+  "dashboard.visibleOffers": "{{count}} הצעות גלויות",
+  "dashboard.toFulfill": "באפשרותך לספק",
+  "dashboard.ownReady": "{{count}} מהתגמולים שלך ממתינים לאספקה",
+  "dashboard.noAttention": "אין מה שדורש טיפול",
+  "dashboard.noRedemptions": "אין בקשות מימוש שדורשות טיפול",
+  "dashboard.nearCapacity": "קרוב למכסה",
+  "dashboard.nearHint": "קרוב למכסה פירושו שנותר מקום פנוי אחד בדיוק.",
+  "dashboard.noCapacity": "איש לא הגיע למכסה",
+  "dashboard.manageCapacity": "ניהול מכסה",
+  "dashboard.issuedHint": "כל הזיכויים החיוביים ביומן, כולל החזרים.",
+  "dashboard.noActivity": "אין פעילות אחרונה"
 }

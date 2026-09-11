@@ -833,5 +833,17 @@
   "capacity.preserveWork": "한도를 낮춰도 기존 업무 배정은 유지됩니다.",
   "capacity.full": "한도 도달",
   "capacity.reached": "진행 중 업무 한도에 도달했습니다 ({{active}} / {{limit}})",
-  "event.userCapacityUpdated": "{{actor}}님이 {{target}}님의 진행 중 업무 한도를 {{previousLimit}}에서 {{newLimit}}(으)로 변경했습니다."
+  "event.userCapacityUpdated": "{{actor}}님이 {{target}}님의 진행 중 업무 한도를 {{previousLimit}}에서 {{newLimit}}(으)로 변경했습니다.",
+  "dashboard.claimableHint": "지금 맡을 수 있는 공개 제안입니다.",
+  "dashboard.visibleOffers": "표시 가능한 제안 {{count}}개",
+  "dashboard.toFulfill": "직접 지급 가능",
+  "dashboard.ownReady": "내 보상 {{count}}개가 지급 대기 중입니다",
+  "dashboard.noAttention": "조치가 필요한 항목이 없습니다",
+  "dashboard.noRedemptions": "조치가 필요한 보상 신청이 없습니다",
+  "dashboard.nearCapacity": "한도에 근접",
+  "dashboard.nearHint": "한도에 근접한다는 것은 빈자리가 정확히 하나 남았다는 뜻입니다.",
+  "dashboard.noCapacity": "한도에 도달한 사람이 없습니다",
+  "dashboard.manageCapacity": "작업 한도 관리",
+  "dashboard.issuedHint": "환불을 포함한 모든 양수 원장 기록입니다.",
+  "dashboard.noActivity": "최근 활동이 없습니다"
 }

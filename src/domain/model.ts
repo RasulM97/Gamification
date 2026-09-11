@@ -291,8 +291,10 @@ export const balanceOf = (s: State, userId: string) =>
   s.ledger.filter(l => l.userId === userId).reduce((a, l) => a + l.amount, 0)
 
 /** Pending offers and REJECTED rework reserve no slot; resume rechecks. */
+export const isActiveOwnedTask = (t: Task, userId: string) =>
+  t.ownerId === userId && capacityPolicy.activeStatuses.includes(t.status)
 export const activeOwnedTaskCount = (s: State, userId: string) =>
-  s.tasks.filter(t => t.ownerId === userId && capacityPolicy.activeStatuses.includes(t.status)).length
+  s.tasks.filter(t => isActiveOwnedTask(t, userId)).length
 export const activeCount = activeOwnedTaskCount
 export const capacityLimit = (u: User) => u.role === 'ADMIN' ? 0 : u.maxActiveTasks ?? DEFAULT_MAX_ACTIVE_TASKS
 export const canEditCapacity = (actor: User, target: User) => target.role !== 'ADMIN' &&

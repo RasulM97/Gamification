@@ -833,5 +833,17 @@
   "capacity.preserveWork": "Existing work stays assigned when the limit is reduced.",
   "capacity.full": "At capacity",
   "capacity.reached": "Active task limit reached ({{active}} of {{limit}})",
-  "event.userCapacityUpdated": "{{actor}} changed {{target}}’s active-task limit from {{previousLimit}} to {{newLimit}}."
+  "event.userCapacityUpdated": "{{actor}} changed {{target}}’s active-task limit from {{previousLimit}} to {{newLimit}}.",
+  "dashboard.claimableHint": "Open offers you can claim now.",
+  "dashboard.visibleOffers": "{{count}} visible offers",
+  "dashboard.toFulfill": "You can fulfill",
+  "dashboard.ownReady": "{{count}} of your rewards await fulfillment",
+  "dashboard.noAttention": "Nothing needs attention",
+  "dashboard.noRedemptions": "No redemptions need attention",
+  "dashboard.nearCapacity": "Near capacity",
+  "dashboard.nearHint": "Near capacity means exactly one free slot.",
+  "dashboard.noCapacity": "Nobody is at capacity",
+  "dashboard.manageCapacity": "Manage capacity",
+  "dashboard.issuedHint": "All positive ledger credits, including refunds.",
+  "dashboard.noActivity": "No recent activity"
 }

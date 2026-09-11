@@ -833,5 +833,17 @@
   "capacity.preserveWork": "Limit düşürüldüğünde mevcut görevlerin ataması korunur.",
   "capacity.full": "Kapasite dolu",
   "capacity.reached": "Aktif görev limitine ulaşıldı ({{active}} / {{limit}})",
-  "event.userCapacityUpdated": "{{actor}}, {{target}} için aktif görev limitini {{previousLimit}} değerinden {{newLimit}} değerine değiştirdi."
+  "event.userCapacityUpdated": "{{actor}}, {{target}} için aktif görev limitini {{previousLimit}} değerinden {{newLimit}} değerine değiştirdi.",
+  "dashboard.claimableHint": "Şimdi üstlenebileceğiniz açık teklifler.",
+  "dashboard.visibleOffers": "{{count}} görünür teklif",
+  "dashboard.toFulfill": "Teslim edebilecekleriniz",
+  "dashboard.ownReady": "{{count}} ödülünüz teslim edilmeyi bekliyor",
+  "dashboard.noAttention": "İlgilenilmesi gereken bir şey yok",
+  "dashboard.noRedemptions": "İlgilenilmesi gereken ödül talebi yok",
+  "dashboard.nearCapacity": "Kapasite sınırına yakın",
+  "dashboard.nearHint": "Sınıra yakın, tam olarak bir boş yer kalması demektir.",
+  "dashboard.noCapacity": "Kimse kapasite sınırında değil",
+  "dashboard.manageCapacity": "Kapasiteyi yönet",
+  "dashboard.issuedHint": "İadeler dahil tüm pozitif defter kayıtları.",
+  "dashboard.noActivity": "Yakın zamanda etkinlik yok"
 }
