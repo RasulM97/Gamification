@@ -8,6 +8,9 @@
 import type { State } from './domain/engine'
 
 const TOKEN_KEY = 'cve-token'
+const responseStatuses = new WeakMap<object, number>()
+/** Response metadata only; never persisted with domain state. */
+export const responseStatus = (body: object | null) => body ? responseStatuses.get(body) : undefined
 
 /* Canonical API base (M1-D D1) — the ONE place request URLs are built.
  *   VITE_API_BASE_URL set   → `${VITE_API_BASE_URL}/api/...`  (local dev:
@@ -65,7 +68,9 @@ async function req<T>(path: string, opts: { method?: string; json?: unknown; for
     } catch { /* non-JSON error body */ }
     throw new ApiError(res.status, code, message, details)
   }
-  return res.json() as Promise<T>
+  const data: T = await res.json()
+  if (data && typeof data === 'object') responseStatuses.set(data, res.status)
+  return data
 }
 
 export interface MeUser { id: string; name: string; role: string; position: string; email: string; companyId: string }

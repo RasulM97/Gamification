@@ -35,9 +35,10 @@ describe('session lifecycle', () => {
     expect(getIssues()).toEqual([])
   })
 
-  test('first event lazily opens a session', () => {
+  test('N6 requires explicit Start before recording operations', () => {
     recordEvent(actor, ev())
-    expect(getSession()).not.toBeNull()
+    expect(getSession()).toBeNull()
+    expect(getEvents()).toEqual([])
   })
 })
 

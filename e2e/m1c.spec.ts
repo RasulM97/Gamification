@@ -131,7 +131,7 @@ test.describe('Part B — Test Lab v2', () => {
   test('7+8: records a successful action and an expected rejection', async ({ page }) => {
     await startAs(page, 'dana')
     await nav(page, 'Test Lab')
-    await page.getByRole('button', { name: 'Start Test Session' }).click()
+    await page.getByRole('button', { name: 'Start session' }).click()
     /* successful action: mark all notifications read */
     await nav(page, 'Notifications')
     const markAll = page.getByRole('button', { name: /Mark all read|Mark all as read/i })
@@ -148,19 +148,18 @@ test.describe('Part B — Test Lab v2', () => {
   test('9+10+11+12+13: manual issue capture, context, export, redaction, copy report', async ({ page }) => {
     await startAs(page, 'dana')
     await nav(page, 'Test Lab')
-    await page.getByRole('button', { name: 'Start Test Session' }).click()
+    await page.getByRole('button', { name: 'Start session' }).click()
     /* generate one event */
     await nav(page, 'Notifications')
     const markAll = page.getByRole('button', { name: /Mark all read|Mark all as read/i })
     if (await markAll.count()) await markAll.first().click()
     await nav(page, 'Test Lab')
     /* manual issue */
-    await page.getByRole('button', { name: '+ Report issue' }).click()
-    await page.locator('select').first().selectOption('P1')
-    await page.getByPlaceholder('e.g. Modal closed when clicking backdrop and lost my form').fill('E2E test issue')
-    await page.getByPlaceholder('What should have happened').fill('Modal stays open')
-    await page.getByPlaceholder('What actually happened').fill('Modal closed and lost data')
-    await page.getByRole('button', { name: 'Report issue', exact: true }).click()
+    await page.getByRole('button', { name: 'Add issue', exact: true }).click()
+    await page.locator('form select').first().selectOption('P1')
+    await page.locator('form input').fill('E2E test issue')
+    await page.locator('form textarea').fill('Expected: Modal stays open. Actual: Modal closed and lost data.')
+    await page.locator('form').getByRole('button', { name: 'Add issue', exact: true }).click()
     /* issue visible with context */
     await expect(page.locator('text=E2E test issue')).toBeVisible()
     await expect(page.locator('text=Expected: Modal stays open')).toBeVisible()

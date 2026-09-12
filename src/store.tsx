@@ -24,107 +24,10 @@ import type { Action, Attachment, State } from './domain/engine'
 import { DATA_MODE, IS_DEMO } from './runtime'
 import { ApiError, api, getToken, setToken } from './api'
 import type { MeUser } from './api'
-import { recordEvent as uatRecord } from './uat'
-import type { UatResult } from './uat'
+import { beginAttempt, prepareAttempt, finishDemoAttempt, finishServerAttempt, failAttempt } from './features/test-lab/testlab.instrumentation'
 import { startRefreshLoop } from './refresh'
 
-/* ── Test Lab helpers (M1-B) — action metadata only; payloads (notes,
-   reasons, settings, file names) are never recorded. ── */
-
-/* Read-state actions carry no success/failure signal — logged as plain
-   activity rather than pretending to be a test result. */
-const UAT_ALWAYS_INFO = new Set<Action['type']>([
-  'MARK_READ', 'MARK_ALL_READ', 'ARCHIVE_NOTICE', 'ARCHIVE_ALL_READ', 'TOGGLE_NOTIF_MUTE',
-])
-
-function entityTypeOf(a: Action): string | null {
-  switch (a.type) {
-    case 'REDEEM': return 'reward'
-    case 'APPROVE_REDEMPTION': case 'FULFILL_REDEMPTION': case 'CANCEL_REDEMPTION': return 'redemption'
-    case 'ADMIN_ADJUST': case 'TOGGLE_FULFILL_PERMISSION': return 'user'
-    case 'SAVE_REWARD': return 'reward'
-    case 'SAVE_REWARD_CATEGORY': return 'reward-category'
-    case 'MARK_READ': case 'ARCHIVE_NOTICE': return 'notice'
-    case 'UPDATE_SETTINGS': return 'settings'
-    case 'MARK_ALL_READ': case 'ARCHIVE_ALL_READ': case 'TOGGLE_NOTIF_MUTE': return null
-    default: return 'task'
-  }
-}
-
-function entityIdOf(a: Action): string | null {
-  const r = a as unknown as Record<string, unknown>
-  for (const k of ['taskId', 'rewardId', 'userId', 'id']) {
-    const v = r[k]
-    if (typeof v === 'string') return v
-  }
-  return null
-}
-
-/* Server-mode endpoint/method map — powers Test Lab technical context and
-   the audit that the adapter maps 1:1 to backend routes. */
-export function endpointOf(a: Action): { method: string; path: string } | null {
-  const id = entityIdOf(a)
-  switch (a.type) {
-    case 'CREATE_TASK': return { method: 'POST', path: '/tasks' }
-    case 'CLAIM_TASK': return { method: 'POST', path: `/tasks/${id}/claim` }
-    case 'DECLINE_ASSIGNMENT': return { method: 'POST', path: `/tasks/${id}/decline` }
-    case 'RETURN_CLAIM': return { method: 'POST', path: `/tasks/${id}/return` }
-    case 'EDIT_TASK': return { method: 'PATCH', path: `/tasks/${id}` }
-    case 'REASSIGN': return { method: 'POST', path: `/tasks/${id}/reassign` }
-    case 'REPORT_PROGRESS': return { method: 'POST', path: `/tasks/${id}/progress` }
-    case 'SUBMIT_WORK': return { method: 'POST', path: `/tasks/${id}/submit` }
-    case 'RESUME_WORK': return { method: 'POST', path: `/tasks/${id}/resume` }
-    case 'APPROVE': return { method: 'POST', path: `/tasks/${id}/approve` }
-    case 'REJECT': return { method: 'POST', path: `/tasks/${id}/reject` }
-    case 'HANDOFF': return { method: 'POST', path: `/tasks/${id}/handoff` }
-    case 'REOPEN': return { method: 'POST', path: `/tasks/${id}/reopen` }
-    case 'CANCEL_TASK': return { method: 'POST', path: `/tasks/${id}/cancel` }
-    case 'REACTIVATE': return { method: 'POST', path: `/tasks/${id}/reactivate` }
-    case 'REDEEM': return { method: 'POST', path: '/redemptions' }
-    case 'APPROVE_REDEMPTION': return { method: 'POST', path: `/redemptions/${id}/approve` }
-    case 'FULFILL_REDEMPTION': return { method: 'POST', path: `/redemptions/${id}/fulfill` }
-    case 'CANCEL_REDEMPTION': return { method: 'POST', path: `/redemptions/${id}/cancel` }
-    case 'ADMIN_ADJUST': return { method: 'POST', path: '/admin/adjust' }
-    case 'SAVE_REWARD': return { method: 'POST', path: '/rewards' }
-    case 'SAVE_REWARD_CATEGORY': return { method: 'POST', path: '/reward-categories' }
-    case 'UPDATE_CAPACITY': return { method: 'PATCH', path: `/users/${id}/capacity` }
-    case 'TOGGLE_FULFILL_PERMISSION': return { method: 'POST', path: `/users/${id}/fulfill-permission` }
-    case 'MARK_READ': return { method: 'POST', path: `/notices/${id}/read` }
-    case 'MARK_ALL_READ': return { method: 'POST', path: '/notices/read-all' }
-    case 'ARCHIVE_NOTICE': return { method: 'POST', path: `/notices/${id}/archive` }
-    case 'ARCHIVE_ALL_READ': return { method: 'POST', path: '/notices/archive-read' }
-    case 'TOGGLE_NOTIF_MUTE': return { method: 'POST', path: '/notif-mute' }
-    case 'UPDATE_SETTINGS': return { method: 'PUT', path: '/settings' }
-    default: return null
-  }
-}
-
-/* Compact before/after summary for the affected entity — never a full state
-   dump. Reports the touched task's status/owner/verified, and the actor's
-   wallet delta for economy-moving actions. */
-function stateDelta(a: Action, prev: State, next: State): { before?: import('./uat').StateDelta[]; after?: import('./uat').StateDelta[] } {
-  const deltas: { before: import('./uat').StateDelta[]; after: import('./uat').StateDelta[] } = { before: [], after: [] }
-  const tid = (a as unknown as Record<string, unknown>).taskId
-  if (typeof tid === 'string') {
-    const b = prev.tasks.find(t => t.id === tid)
-    const n = next.tasks.find(t => t.id === tid)
-    if (b && n) {
-      const f: string[] = []
-      if (b.status !== n.status) f.push(`status ${b.status} → ${n.status}`)
-      if (b.ownerId !== n.ownerId) f.push(`owner ${b.ownerId ?? 'null'} → ${n.ownerId ?? 'null'}`)
-      if (b.verified !== n.verified) f.push(`verified ${b.verified} → ${n.verified}`)
-      if (f.length) { deltas.before.push({ entity: 'task', fields: f.map(x => x.split(' → ')[0]) }); deltas.after.push({ entity: 'task', fields: f }) }
-    }
-  }
-  /* Wallet delta for the acting/owning user (economy-moving actions). */
-  const uid = (a as unknown as Record<string, unknown>).userId
-  if (typeof uid === 'string') {
-    const bal = (s: State) => s.ledger.filter(l => l.userId === uid).reduce((sum, l) => sum + l.amount, 0)
-    const wb = bal(prev); const wa = bal(next)
-    if (wb !== wa) { deltas.before.push({ entity: 'wallet', fields: [String(wb)] }); deltas.after.push({ entity: 'wallet', fields: [`${wb} → ${wa}`] }) }
-  }
-  return deltas.before.length || deltas.after.length ? deltas : {}
-}
+export { endpointOf } from './features/test-lab/testlab.instrumentation'
 
 const STORE_KEY = 'cve-demo-state-v1'
 const ME_KEY = 'cve-demo-me-v1'
@@ -223,7 +126,8 @@ function load(): State {
 /* ══════════════════════════════ DEMO MODE (M0-B, protected) ════════════ */
 
 function useDemoStore(): Ctx {
-  const [state, dispatch] = useReducer(reducer, undefined, load)
+  const [state, applyDemoState] = useReducer((_previous: State, next: State) => next, undefined, load)
+  const latestDemoState = useRef(state)
   const [persistError, setPersistError] = useState<string | null>(null)
   const [meId, setMeId] = useState(() => {
     try { return localStorage.getItem(ME_KEY) || 'u-marcus' } catch { return 'u-marcus' }
@@ -241,43 +145,20 @@ function useDemoStore(): Ctx {
     try { localStorage.setItem(ME_KEY, meId) } catch { /* persona loss is harmless */ }
   }, [meId])
 
-  /* Test Lab (M1-C v2): the single demo interception point. Every domain
-     dispatch is recorded with a compact state delta — applied → PASS,
-     refused (reducer returned state unchanged) → PASS "refused as expected"
-     (an expected rejection is a successful UAT result, not a failure). */
   const demoDispatch = (a: Action) => {
-    const refusal = capacityRefusal(state, a)
-    const actor = state.users.find(u => u.id === meId) ?? state.users[0]
-    const t0 = performance.now()
+    const before = latestDemoState.current
+    const refusal = capacityRefusal(before, a)
+    const actor = before.users.find(u => u.id === meId) ?? before.users[0]
+    const attempt = beginAttempt(a, actor, before)
     try {
-      const prev = state
-      const next = reducer(prev, a)
-      const refused = !UAT_ALWAYS_INFO.has(a.type) && next === prev
+      const next = reducer(before, a)
       if (refusal) setPersistError(translate(currentLocale(), 'capacity.reached', refusal))
-      dispatch(a)
-      uatRecord(actor, {
-        action: a.type,
-        entityType: entityTypeOf(a),
-        entityId: entityIdOf(a),
-        expected: null,
-        actual: refused ? 'refused as expected' : 'applied',
-        result: 'PASS',
-        error: null,
-        durationMs: Math.round(performance.now() - t0),
-        ...stateDelta(a, prev, next),
-      })
-    } catch (e) {
-      uatRecord(actor, {
-        action: a.type,
-        entityType: entityTypeOf(a),
-        entityId: entityIdOf(a),
-        expected: null,
-        actual: 'unexpected error',
-        result: 'FAIL',
-        error: e instanceof Error ? e.message : String(e),
-      })
-      throw e
-    }
+      // Apply exactly the observed result: running the reducer a second time
+      // generates a different ID for creates and redemptions.
+      latestDemoState.current = next
+      applyDemoState(next)
+      finishDemoAttempt(attempt, before, next)
+    } catch (error) { failAttempt(attempt, error); throw error }
   }
 
   return useMemo<Ctx>(() => ({
@@ -389,6 +270,7 @@ async function send(a: Action): Promise<State | null> {
 
 function useServerStore(): Ctx {
   const [state, setState] = useState<State | null>(null)
+  const latestState = useRef<State | null>(null)
   const [me, setMe] = useState<MeUser | null>(null)
   const [auth, setAuth] = useState<AuthPhase>('loading')
   const [persistError, setPersistError] = useState<string | null>(null)
@@ -400,7 +282,7 @@ function useServerStore(): Ctx {
      normalization as demo persisted states (missing eligibility → EMPLOYEES,
      missing reward ownership → admin) so a stale/partial backend response
      can never fail open into manager access. Idempotent and display-safe. */
-  const applyState = (s: State | null) => { if (s) setState(migrate(s)) }
+  const applyState = (s: State | null) => { if (s) { latestState.current = migrate(s); setState(latestState.current) } }
 
   const enqueue = (fn: () => Promise<State | null>) => {
     queue.current = queue.current.then(async () => {
@@ -417,48 +299,16 @@ function useServerStore(): Ctx {
 
   const refetch = () => enqueue(() => api.bootstrap())
 
-  /* Test Lab (M1-B): the single server interception point. Records the
-     domain action with its HTTP outcome — a domain rejection (4xx) is a
-     PASS "rejected as expected", a transport/5xx failure is a FAIL. Only
-     status + error code/message are captured, never payloads. */
   const serverDispatch = (a: Action) => {
-    const actor = me
-      ? { id: me.id, name: me.name, role: me.role }
-      : { id: '', name: '(unknown)', role: '' }
-    const ep = endpointOf(a)
-    const base = {
-      action: a.type, entityType: entityTypeOf(a), entityId: entityIdOf(a), expected: null,
-      ...(ep ? { endpoint: ep.path, method: ep.method } : {}),
-    }
-    const t0 = performance.now()
+    const actor = me ? { id: me.id, name: me.name, role: me.role } : { id: '', name: '', role: '' }
+    const attempt = beginAttempt(a, actor, state!)
     void enqueue(async () => {
       try {
-        const s = await send(a)
-        uatRecord(actor, {
-          ...base,
-          actual: 'applied',
-          result: 'PASS',
-          error: null,
-          httpStatus: 200,
-          durationMs: Math.round(performance.now() - t0),
-        })
-        return s
-      } catch (e) {
-        /* Expected RBAC/domain rejection → PASS (denied as designed);
-           unexpected transport/5xx → FAIL. Classified by error origin, not
-           raw status alone. */
-        const isDomain = e instanceof ApiError && e.status >= 400 && e.status < 500
-        uatRecord(actor, {
-          ...base,
-          actual: isDomain ? 'rejected as expected' : 'request failed',
-          result: (isDomain ? 'PASS' : 'FAIL') as UatResult,
-          error: e instanceof ApiError ? e.message : 'Network error',
-          errorCode: e instanceof ApiError ? e.code : undefined,
-          httpStatus: e instanceof ApiError ? e.status : undefined,
-          durationMs: Math.round(performance.now() - t0),
-        })
-        throw e // preserve the store's existing error surfacing (persistError / 401 logout)
-      }
+        if (latestState.current) prepareAttempt(attempt, latestState.current)
+        const result = await send(a)
+        finishServerAttempt(attempt, result)
+        return result
+      } catch (error) { failAttempt(attempt, error); throw error }
     })
   }
 

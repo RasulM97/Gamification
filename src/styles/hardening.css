@@ -109,3 +109,14 @@ html[dir="rtl"] .drawer { animation-name:slidein-rtl;box-shadow:24px 0 70px rgba
 .dashboard-module .aitem { flex-wrap:wrap; padding:8px 0 }
 .dashboard-module .aitem .aa { min-width:120px }
 .dashboard-module .empty { padding:12px 0 }
+
+/* N6 Test Lab uses the existing direction and form system. */
+.testlab-panel { padding:16px; min-width:0 }
+.testlab-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-block:10px }
+.testlab-fields { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px }
+.testlab-operation { display:flex; flex-direction:column; align-items:stretch; gap:6px; overflow-wrap:anywhere }
+.testlab-operation > * { min-width:0 }
+.uat-lab .testlab-operation .uat-res { min-width:44px; width:auto }
+.uat-lab p { overflow-wrap:anywhere }
+.uat-lab input,.uat-lab textarea,.uat-lab select { max-width:100% }
+@media(max-width:850px) { .testlab-fields { grid-template-columns:1fr } }
