@@ -92,7 +92,7 @@
   "attention.declinedHint": "المُسنَد إليه رفض · افتح المهمة لإعادة الإسناد",
   "attention.declinedReassign": "مرفوض — يحتاج إعادة إسناد",
   "attention.empty": "لا شيء يحتاج انتباهًا",
-  "attention.emptyHint": "تظهر هنا الأعمال المرفوضة والرفضات والمطالبات المُعادة.",
+  "attention.emptyHint": "تظهر هنا فقط المهام غير المحسومة التي تتطلب إجراءً منك.",
   "attention.recentDeclines": "الرفضات والمطالبات المُعادة الأخيرة",
   "attention.reworkInFlight": "إعادة عمل جارية",
   "auth.email": "البريد الإلكتروني",
@@ -337,7 +337,7 @@
   "overview.teamOps": "عمليات الفريق",
   "page.activity.subtitle": "السجل الكامل لنشاط العمل",
   "page.admin.subtitle": "الأشخاص والسياسات وإعدادات الإدارة",
-  "page.attention.subtitle": "مهام تحتاج إلى تعديل أو تم رفضها أو إعادتها",
+  "page.attention.subtitle": "المهام الحالية التي تتطلب إجراءً منك",
   "page.availableWork.subtitle": "المهام المتاحة — أول شخص مؤهل يستلم المهمة",
   "page.myWork.subtitle": "المهام التي تعمل عليها أو عليك متابعتها أو ساهمت فيها",
   "page.notifications.subtitle": "ما يحتاج إلى انتباهك فقط",
@@ -883,5 +883,12 @@
   "testLab.severity.P1": "تعطل مسار عمل أساسي",
   "testLab.severity.P2": "عيب له حل بديل",
   "testLab.severity.P3": "تحسين بسيط للتجربة أو المظهر",
-  "testLab.storageWarning": "تعذّر حفظ السجلات في المتصفح. صدّرها قبل إغلاق علامة التبويب."
+  "testLab.storageWarning": "تعذّر حفظ السجلات في المتصفح. صدّرها قبل إغلاق علامة التبويب.",
+  "admin.clearTestWorkspace": "مسح مساحة الاختبار",
+  "admin.clearTestWorkspaceDescription": "الاحتفاظ بالشركة والأشخاص وحذف بيانات الاختبار التشغيلية.",
+  "admin.clearTestWorkspaceWarning": "سيتم حذف جميع المهام والمكافآت وطلبات الاستبدال والعملات والإشعارات والنشاط ومرفقات الاختبار. سيبقى المستخدمون وإعدادات الشركة والفئات وأدلة مختبر الاختبار.",
+  "admin.clearTestWorkspaceConfirmLabel": "اكتب CLEAR للتأكيد",
+  "admin.clearWorkspace": "مسح المساحة",
+  "admin.resetSeedDescription": "استعادة سيناريو العرض الأصلي ببياناته النموذجية.",
+  "attention.requiresAction": "يتطلب إجراءً"
 }

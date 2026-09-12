@@ -8,7 +8,7 @@ export function AttentionModule({ data, onGo }: { data: AttentionSummary; onGo: 
   return <>
     <div className="dashboard-number">{fmtInt(data.total)}</div>
     <dl className="kv"><dt>{t('task.status.rejected')}</dt><dd>{fmtInt(data.rework.length)}</dd>
-      <dt>{t(data.personal ? 'overview.assignmentsWaiting' : 'attention.declinedReassign')}</dt><dd>{fmtInt(data.assignments.length)}</dd></dl>
+      <dt>{t('attention.requiresAction')}</dt><dd>{fmtInt(data.assignments.length)}</dd></dl>
     {data.total === 0 && <Empty title={t('dashboard.noAttention')} />}
     {[...data.rework, ...data.assignments].slice(0, 3).map(task => <div className="att-row dashboard-row" key={task.id} {...rowProps(() => onGo(data.personal ? 'mywork' : 'tasks', task.id))}><StatusBadge s={task.status}/><span dir="auto">{task.title}</span></div>)}
     <button className="btn" onClick={() => onGo(data.personal ? 'mywork' : 'attention')}>{t(data.personal ? 'nav.myWork' : 'nav.needsAttention')}</button>

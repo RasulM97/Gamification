@@ -75,7 +75,7 @@ export function n5Cases(server: boolean) {
     const { calls, errors } = await start(page, server, 'u-dana')
     await expect(module(page, 'active-work').locator('.v').first()).toHaveText('3')
     await expect(module(page, 'reviews').locator('.v')).toHaveText('1')
-    await expect(module(page, 'attention').locator('.dashboard-number')).toHaveText('1')
+    await expect(module(page, 'attention').locator('.dashboard-number')).toHaveText('0')
     await expect(module(page, 'redemptions').locator('.v').first()).toHaveText('2')
     await expect(module(page, 'redemptions').locator('.v').last()).toHaveText('0')
     await expect(module(page, 'economy').locator('dd').first()).toContainText('339')

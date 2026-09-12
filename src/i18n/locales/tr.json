@@ -92,7 +92,7 @@
   "attention.declinedHint": "atanan reddetti · yeniden atamak için görevi açın",
   "attention.declinedReassign": "Reddedildi — yeniden atama gerekli",
   "attention.empty": "Dikkat gerektiren bir şey yok",
-  "attention.emptyHint": "Reddedilen işler, retler ve geri verilen üstlenmeler burada görünür.",
+  "attention.emptyHint": "Yalnızca sizin işlem yapmanızı gerektiren çözülmemiş görevler görünür.",
   "attention.recentDeclines": "Son retler ve geri verilen üstlenmeler",
   "attention.reworkInFlight": "Devam eden yeniden çalışmalar",
   "auth.email": "E-posta",
@@ -337,7 +337,7 @@
   "overview.teamOps": "Ekip operasyonları",
   "page.activity.subtitle": "Tüm iş etkinliklerinin geçmişi",
   "page.admin.subtitle": "Kişiler, kurallar ve yönetim ayarları",
-  "page.attention.subtitle": "Düzenleme, reddetme veya iade gerektiren görevler",
+  "page.attention.subtitle": "İşlem yapmanızı gerektiren güncel görevler",
   "page.availableWork.subtitle": "Uygun görevler — ilk uygun kişi görevi alır",
   "page.myWork.subtitle": "Sorumlu olduğunuz, takip etmeniz gereken veya katkı verdiğiniz görevler",
   "page.notifications.subtitle": "Sadece gerçekten ilgilenmeniz gerekenler",
@@ -883,5 +883,12 @@
   "testLab.severity.P1": "Temel iş akışı bozuk",
   "testLab.severity.P2": "Geçici çözümü olan kusur",
   "testLab.severity.P3": "Küçük deneyim veya görünüm sorunu",
-  "testLab.storageWarning": "Kayıtlar tarayıcıya kaydedilemedi. Sekmeyi kapatmadan önce dışa aktarın."
+  "testLab.storageWarning": "Kayıtlar tarayıcıya kaydedilemedi. Sekmeyi kapatmadan önce dışa aktarın.",
+  "admin.clearTestWorkspace": "Test çalışma alanını temizle",
+  "admin.clearTestWorkspaceDescription": "Şirketi ve kişileri koruyup operasyonel test verilerini kaldırın.",
+  "admin.clearTestWorkspaceWarning": "Tüm görevler, ödüller, talepler, coinler, bildirimler, etkinlikler ve test ekleri silinir. Kullanıcılar, şirket ayarları, kategoriler ve Test Laboratuvarı kayıtları korunur.",
+  "admin.clearTestWorkspaceConfirmLabel": "Onaylamak için CLEAR yazın",
+  "admin.clearWorkspace": "Çalışma alanını temizle",
+  "admin.resetSeedDescription": "Örnek verilerle özgün demo senaryosunu geri yükleyin.",
+  "attention.requiresAction": "İşlem gerekiyor"
 }

@@ -1,3 +1,4 @@
+import { selectNeedsAttention } from "./domain/attention"
 import { EventText, EventReason } from './components/EventText'
 import { useEffect, useRef, useState } from 'react'
 import { StoreProvider, useStore, useMe, IS_DEMO } from './store'
@@ -86,7 +87,7 @@ function Shell() {
   const unreadRewards = myNotices.filter(n => !n.read && noticeTab(n) === 'REWARDS').length
   const bellNotices = myNotices.filter(n => noticeTab(n).toLowerCase() === bellTab)
   const reviewCount = state.tasks.filter(t => t.status === 'SUBMITTED').length
-  const attentionCount = state.tasks.filter(t => t.status === 'REJECTED').length
+  const attentionCount = selectNeedsAttention(state, me).total
     + state.tasks.filter(t => t.status === 'OPEN' && t.assignMode === 'SPECIFIC_EMPLOYEE' && !t.assigneeId).length
   /* N2.2 §8 + N2.3 §1/§9: the badge counts what THIS user can act on —
      management sees pending approvals; whoever holds fulfillment authority

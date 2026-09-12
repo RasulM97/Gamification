@@ -17,6 +17,8 @@ export const DATA_MODE: DataMode =
   (import.meta.env.VITE_CVE_DATA_MODE as string | undefined) === 'server' ? 'server' : 'demo'
 
 export const IS_DEMO = DATA_MODE === 'demo'
+// Destructive tooling is never shipped in a production build.
+export const WORKSPACE_TOOLS = import.meta.env.DEV && (IS_DEMO || import.meta.env.VITE_CVE_DEV_TOOLS === 'true')
 
 /* Dev-only test-account switcher (M1-D D2). All three conditions are
  * build-time constants, so in any production or demo build this folds to

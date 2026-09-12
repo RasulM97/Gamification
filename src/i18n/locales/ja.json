@@ -92,7 +92,7 @@
   "attention.declinedHint": "担当者が辞退 · タスクを開いて再割当てしてください",
   "attention.declinedReassign": "辞退 — 再割当てが必要",
   "attention.empty": "対応が必要なものはありません",
-  "attention.emptyHint": "却下された作業、辞退、返却されたクレームがここに表示されます。",
+  "attention.emptyHint": "あなたの対応が必要な未解決タスクのみ表示されます。",
   "attention.recentDeclines": "最近の辞退と返却されたクレーム",
   "attention.reworkInFlight": "やり直し進行中",
   "auth.email": "メール",
@@ -337,7 +337,7 @@
   "overview.teamOps": "チーム運営",
   "page.activity.subtitle": "業務アクティビティの全履歴",
   "page.admin.subtitle": "ユーザー、ルール、管理設定",
-  "page.attention.subtitle": "修正・辞退・返却されたタスク",
+  "page.attention.subtitle": "現在あなたの対応が必要なタスク",
   "page.availableWork.subtitle": "受け取り可能なタスク — 条件を満たす人が先着で担当できます",
   "page.myWork.subtitle": "担当中、対応が必要、または参加したタスク",
   "page.notifications.subtitle": "本当に対応が必要なことだけ",
@@ -883,5 +883,12 @@
   "testLab.severity.P1": "主要なワークフローの不具合",
   "testLab.severity.P2": "回避策のある不具合",
   "testLab.severity.P3": "軽微な操作性や外観の問題",
-  "testLab.storageWarning": "ブラウザーに記録を保存できませんでした。タブを閉じる前にエクスポートしてください。"
+  "testLab.storageWarning": "ブラウザーに記録を保存できませんでした。タブを閉じる前にエクスポートしてください。",
+  "admin.clearTestWorkspace": "テスト環境をクリア",
+  "admin.clearTestWorkspaceDescription": "会社とユーザーを保持し、業務のテストデータを削除します。",
+  "admin.clearTestWorkspaceWarning": "すべてのタスク、報酬、交換申請、コイン、通知、アクティビティ、テスト添付ファイルを削除します。ユーザー、会社設定、カテゴリ、テストラボの記録は保持されます。",
+  "admin.clearTestWorkspaceConfirmLabel": "確認のため CLEAR と入力",
+  "admin.clearWorkspace": "環境をクリア",
+  "admin.resetSeedDescription": "元のサンプルデータを含むデモを復元します。",
+  "attention.requiresAction": "対応が必要"
 }

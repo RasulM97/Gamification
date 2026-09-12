@@ -41,7 +41,7 @@ describe('N5 canonical dashboard read model', () => {
     expect(m.activeWork!.inReview).toBe(2)
     expect(m.activeWork!.tasks.map(t => t.id).sort()).toEqual(['manager-review', 'review', 'working'])
     expect(m.reviews!.length).toBe(2)
-    expect(m.attention).toMatchObject({ total: 3, personal: false })
+    expect(m.attention).toMatchObject({ total: 1, personal: false })
     expect(m.attention.assignments.map(t => t.id)).toEqual(['reassign'])
     expect(m.redemptions).toMatchObject({ pending: 2, ready: 1 })
     expect(m.capacity).toMatchObject({ at: 1, near: 1 })

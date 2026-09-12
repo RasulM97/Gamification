@@ -1,5 +1,6 @@
 import { EventText, EventReason } from '../components/EventText'
 import { CapacityControl } from '../components/CapacityControl'
+import { WorkspaceControls } from '../components/WorkspaceControls'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { capacityLimit, activeCount, balanceOf } from '../domain/engine'
@@ -155,11 +156,12 @@ export function AdminView() {
 
       <Panel title={t('admin.demoControls')}>
         <p className="dim" style={{ fontSize: 12.5, marginBottom: 12 }}>
-          {t('admin.demoStorageNote')}
+          {t('admin.resetSeedDescription')}
         </p>
         <button className="btn" onClick={() => {
           if (confirm(t('admin.resetConfirm'))) reset()
         }}>{t('admin.action.resetDemo')}</button>
+        <WorkspaceControls />
       </Panel>
 
       <PersonDrawer userId={personFor} onClose={() => setPersonFor(null)} />

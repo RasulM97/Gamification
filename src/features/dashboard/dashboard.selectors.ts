@@ -1,3 +1,4 @@
+import { selectNeedsAttention } from "../../domain/attention"
 import {
   activeOwnedTaskCount, isActiveOwnedTask, balanceOf, capacityLimit, canDecideRedemption,
   canFulfillReward, canSeeTask, canonicalSort, coinsInCirculation,
@@ -9,13 +10,6 @@ import type { CapacitySummary, DashboardModel, RedemptionSummary } from './dashb
 export function selectReviewsWaiting(tasks: Task[], viewer: User) {
   return viewer.role === 'EMPLOYEE' ? [] : tasks.filter(t => t.status === 'SUBMITTED' && t.ownerId !== viewer.id)
     .sort((a, b) => (a.submittedAt ?? 0) - (b.submittedAt ?? 0))
-}
-export function selectNeedsAttention(tasks: Task[], viewer: User) {
-  const personal = viewer.role === 'EMPLOYEE'
-  const rework = tasks.filter(t => t.status === 'REJECTED' && (!personal || t.ownerId === viewer.id))
-  const assignments = tasks.filter(t => t.status === 'OPEN' && t.assignMode === 'SPECIFIC_EMPLOYEE'
-    && (personal ? t.assigneeId === viewer.id : !t.assigneeId))
-  return { rework, assignments, total: rework.length + assignments.length, personal }
 }
 export function selectCapacity(state: State, viewer: User): CapacitySummary | undefined {
   if (viewer.role === 'EMPLOYEE') return undefined
@@ -67,7 +61,7 @@ export function buildDashboardModel(state: State, viewer: User, now: number): Da
   const names = management ? new Map(state.users.map(u => [u.id, u.name])) : new Map<string, string>()
   return {
     role: viewer.role,
-    attention: selectNeedsAttention(tasks, viewer),
+    attention: selectNeedsAttention(state, viewer),
     redemptions: selectRedemptions(state, viewer),
     ...(worker ? {
       personal: { active: personalActive, limit: capacityLimit(viewer), inReview: ownTasks.filter(t => t.status === 'SUBMITTED').length, tasks: ownTasks, manager: viewer.role === 'MANAGER' },
@@ -84,3 +78,5 @@ export function buildDashboardModel(state: State, viewer: User, now: number): Da
     } : {}),
   }
 }
+
+export { selectNeedsAttention } from "../../domain/attention"

@@ -92,7 +92,7 @@
   "attention.declinedHint": "असाइनी ने अस्वीकार किया · पुनः असाइन करने के लिए कार्य खोलें",
   "attention.declinedReassign": "अस्वीकृत — पुनः असाइनमेंट चाहिए",
   "attention.empty": "ध्यान देने योग्य कुछ नहीं",
-  "attention.emptyHint": "अस्वीकृत कार्य, मना किए गए असाइनमेंट और लौटाए गए क्लेम यहाँ दिखते हैं।",
+  "attention.emptyHint": "यहाँ केवल आपके कार्य की प्रतीक्षा कर रहे अनसुलझे कार्य दिखते हैं।",
   "attention.recentDeclines": "हाल के अस्वीकार और लौटाए क्लेम",
   "attention.reworkInFlight": "रीवर्क जारी",
   "auth.email": "ईमेल",
@@ -337,7 +337,7 @@
   "overview.teamOps": "टीम परिचालन",
   "page.activity.subtitle": "काम से जुड़ी पूरी गतिविधि का रिकॉर्ड",
   "page.admin.subtitle": "लोग, नियम और एडमिन सेटिंग्स",
-  "page.attention.subtitle": "वे टास्क जिन्हें सुधार, अस्वीकार या वापस किया गया है",
+  "page.attention.subtitle": "आपकी कार्रवाई माँगने वाले वर्तमान कार्य",
   "page.availableWork.subtitle": "उपलब्ध टास्क — पहला योग्य व्यक्ति टास्क ले सकता है",
   "page.myWork.subtitle": "वे टास्क जिनकी ज़िम्मेदारी आपके पास है, जिन पर आपको काम करना है या जिनमें आपने योगदान दिया",
   "page.notifications.subtitle": "सिर्फ़ वही चीज़ें जिन पर आपका ध्यान चाहिए",
@@ -883,5 +883,12 @@
   "testLab.severity.P1": "मुख्य कार्यप्रवाह खराब",
   "testLab.severity.P2": "वैकल्पिक उपाय वाला दोष",
   "testLab.severity.P3": "मामूली अनुभव या दृश्य समस्या",
-  "testLab.storageWarning": "ब्राउज़र में रिकॉर्ड नहीं सहेजे जा सके। टैब बंद करने से पहले निर्यात करें।"
+  "testLab.storageWarning": "ब्राउज़र में रिकॉर्ड नहीं सहेजे जा सके। टैब बंद करने से पहले निर्यात करें।",
+  "admin.clearTestWorkspace": "परीक्षण कार्यक्षेत्र साफ़ करें",
+  "admin.clearTestWorkspaceDescription": "कंपनी और लोगों को रखें; परिचालन परीक्षण डेटा हटाएँ।",
+  "admin.clearTestWorkspaceWarning": "सभी कार्य, पुरस्कार, मोचन, कॉइन, सूचनाएँ, गतिविधि और परीक्षण संलग्नक हट जाएँगे। उपयोगकर्ता, कंपनी सेटिंग, श्रेणियाँ और परीक्षण लैब के साक्ष्य बने रहेंगे।",
+  "admin.clearTestWorkspaceConfirmLabel": "पुष्टि के लिए CLEAR लिखें",
+  "admin.clearWorkspace": "कार्यक्षेत्र साफ़ करें",
+  "admin.resetSeedDescription": "मूल नमूना डेटा वाला डेमो परिदृश्य बहाल करें।",
+  "attention.requiresAction": "कार्रवाई आवश्यक"
 }

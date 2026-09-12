@@ -92,7 +92,7 @@
   "attention.declinedHint": "המוטל דחה · פתחו את המשימה להקצאה מחדש",
   "attention.declinedReassign": "נדחה — דורש הקצאה מחדש",
   "attention.empty": "שום דבר לא דורש תשומת לב",
-  "attention.emptyHint": "עבודות שנדחו, דחיות והחזרות תביעה מופיעות כאן.",
+  "attention.emptyHint": "כאן מופיעות רק משימות לא פתורות הדורשות פעולה ממך.",
   "attention.recentDeclines": "דחיות והחזרות אחרונות",
   "attention.reworkInFlight": "עבודה חוזרת בתהליך",
   "auth.email": "אימייל",
@@ -337,7 +337,7 @@
   "overview.teamOps": "תפעול הצוות",
   "page.activity.subtitle": "היסטוריית הפעילות המלאה",
   "page.admin.subtitle": "אנשים, כללים והגדרות ניהול",
-  "page.attention.subtitle": "משימות שדורשות תיקון, נדחו או הוחזרו",
+  "page.attention.subtitle": "משימות נוכחיות הדורשות פעולה ממך",
   "page.availableWork.subtitle": "משימות זמינות — העובד המתאים הראשון יכול לקחת את המשימה",
   "page.myWork.subtitle": "משימות שבאחריותך, דורשות ממך פעולה או שהשתתפת בהן",
   "page.notifications.subtitle": "רק מה שבאמת דורש את תשומת הלב שלך",
@@ -883,5 +883,12 @@
   "testLab.severity.P1": "תהליך מרכזי שבור",
   "testLab.severity.P2": "תקלה עם פתרון עוקף",
   "testLab.severity.P3": "ליטוש או בעיית חוויה קלה",
-  "testLab.storageWarning": "לא ניתן לשמור את הרישומים בדפדפן. ייצאו לפני סגירת הלשונית."
+  "testLab.storageWarning": "לא ניתן לשמור את הרישומים בדפדפן. ייצאו לפני סגירת הלשונית.",
+  "admin.clearTestWorkspace": "ניקוי סביבת הבדיקות",
+  "admin.clearTestWorkspaceDescription": "שמירת החברה והאנשים ומחיקת נתוני הבדיקות התפעוליים.",
+  "admin.clearTestWorkspaceWarning": "כל המשימות, הפרסים, המימושים, המטבעות, ההתראות, הפעילות והקבצים המצורפים לבדיקה יימחקו. המשתמשים, הגדרות החברה, הקטגוריות וראיות מעבדת הבדיקות יישמרו.",
+  "admin.clearTestWorkspaceConfirmLabel": "יש להקליד CLEAR לאישור",
+  "admin.clearWorkspace": "ניקוי הסביבה",
+  "admin.resetSeedDescription": "שחזור תרחיש ההדגמה המקורי ונתוני הדוגמה.",
+  "attention.requiresAction": "נדרשת פעולה"
 }

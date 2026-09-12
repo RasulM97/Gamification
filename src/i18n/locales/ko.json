@@ -92,7 +92,7 @@
   "attention.declinedHint": "담당자가 거절함 · 재할당하려면 작업을 여세요",
   "attention.declinedReassign": "거절됨 — 재할당 필요",
   "attention.empty": "주의가 필요한 항목이 없습니다",
-  "attention.emptyHint": "반려된 작업, 거절, 반환된 수임이 여기에 표시됩니다.",
+  "attention.emptyHint": "내 조치가 필요한 미해결 작업만 표시됩니다.",
   "attention.recentDeclines": "최근 거절 및 반환된 수임",
   "attention.reworkInFlight": "진행 중인 재작업",
   "auth.email": "이메일",
@@ -337,7 +337,7 @@
   "overview.teamOps": "팀 운영",
   "page.activity.subtitle": "전체 업무 활동 기록",
   "page.admin.subtitle": "사용자, 정책 및 관리자 설정",
-  "page.attention.subtitle": "수정, 거절 또는 반환된 작업",
+  "page.attention.subtitle": "현재 내 조치가 필요한 작업",
   "page.availableWork.subtitle": "가능한 작업 — 조건에 맞는 사람이 먼저 가져갈 수 있습니다",
   "page.myWork.subtitle": "내가 담당하거나 처리해야 하거나 참여한 작업",
   "page.notifications.subtitle": "정말 확인해야 할 것만",
@@ -883,5 +883,12 @@
   "testLab.severity.P1": "핵심 작업 흐름 고장",
   "testLab.severity.P2": "우회 방법이 있는 결함",
   "testLab.severity.P3": "경미한 사용성 또는 외관 문제",
-  "testLab.storageWarning": "브라우저에 기록을 저장하지 못했습니다. 탭을 닫기 전에 내보내세요."
+  "testLab.storageWarning": "브라우저에 기록을 저장하지 못했습니다. 탭을 닫기 전에 내보내세요.",
+  "admin.clearTestWorkspace": "테스트 작업 공간 지우기",
+  "admin.clearTestWorkspaceDescription": "회사와 사용자는 유지하고 운영 테스트 데이터를 삭제합니다.",
+  "admin.clearTestWorkspaceWarning": "모든 작업, 보상, 교환 요청, 코인, 알림, 활동 및 테스트 첨부 파일을 삭제합니다. 사용자, 회사 설정, 카테고리 및 테스트 랩 기록은 유지됩니다.",
+  "admin.clearTestWorkspaceConfirmLabel": "확인하려면 CLEAR 입력",
+  "admin.clearWorkspace": "작업 공간 지우기",
+  "admin.resetSeedDescription": "원래 샘플 데이터가 포함된 데모를 복원합니다.",
+  "attention.requiresAction": "조치 필요"
 }

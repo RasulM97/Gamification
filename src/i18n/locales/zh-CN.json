@@ -92,7 +92,7 @@
   "attention.declinedHint": "被指派人已拒绝 · 打开任务重新分配",
   "attention.declinedReassign": "已拒绝 — 需要重新分配",
   "attention.empty": "没有需要关注的事项",
-  "attention.emptyHint": "被退回的工作、拒绝和退回的认领会出现在这里。",
+  "attention.emptyHint": "此处仅显示需要您处理的未解决任务。",
   "attention.recentDeclines": "最近的拒绝与退回认领",
   "attention.reworkInFlight": "返工进行中",
   "auth.email": "邮箱",
@@ -337,7 +337,7 @@
   "overview.teamOps": "团队运营",
   "page.activity.subtitle": "完整的业务活动记录",
   "page.admin.subtitle": "人员、规则和管理设置",
-  "page.attention.subtitle": "需要修改、被拒绝或退回的任务",
+  "page.attention.subtitle": "当前需要您处理的任务",
   "page.availableWork.subtitle": "可领取任务——符合条件的人先领取先得",
   "page.myWork.subtitle": "你负责、待处理或参与过的任务",
   "page.notifications.subtitle": "只看真正需要关注的事项",
@@ -883,5 +883,12 @@
   "testLab.severity.P1": "核心流程损坏",
   "testLab.severity.P2": "有临时解决办法的缺陷",
   "testLab.severity.P3": "轻微体验或外观问题",
-  "testLab.storageWarning": "无法将记录保存到浏览器。请在关闭此标签页前导出。"
+  "testLab.storageWarning": "无法将记录保存到浏览器。请在关闭此标签页前导出。",
+  "admin.clearTestWorkspace": "清空测试工作区",
+  "admin.clearTestWorkspaceDescription": "保留公司和人员，删除业务测试数据。",
+  "admin.clearTestWorkspaceWarning": "这将删除所有任务、奖励、兑换、金币、通知、活动及测试附件。用户、公司设置、分类和测试实验室记录将保留。",
+  "admin.clearTestWorkspaceConfirmLabel": "输入 CLEAR 确认",
+  "admin.clearWorkspace": "清空工作区",
+  "admin.resetSeedDescription": "恢复包含示例数据的原始演示场景。",
+  "attention.requiresAction": "需要处理"
 }

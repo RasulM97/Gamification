@@ -15,6 +15,7 @@ const UAT_ALWAYS_INFO = new Set<Action['type']>([
 
 function entityTypeOf(a: Action): string | null {
   switch (a.type) {
+    case 'CLEAR_TEST_WORKSPACE': return 'workspace'
     case 'REDEEM': return 'reward'
     case 'APPROVE_REDEMPTION': case 'FULFILL_REDEMPTION': case 'CANCEL_REDEMPTION': return 'redemption'
     case 'ADMIN_ADJUST': case 'UPDATE_CAPACITY': case 'TOGGLE_FULFILL_PERMISSION': return 'user'
@@ -41,6 +42,7 @@ function entityIdOf(a: Action): string | null {
 export function endpointOf(a: Action): { method: string; path: string } | null {
   const id = entityIdOf(a)
   switch (a.type) {
+    case 'CLEAR_TEST_WORKSPACE': return { method: 'POST', path: '/admin/test-workspace/clear' }
     case 'CREATE_TASK': return { method: 'POST', path: '/tasks' }
     case 'CLAIM_TASK': return { method: 'POST', path: `/tasks/${id}/claim` }
     case 'DECLINE_ASSIGNMENT': return { method: 'POST', path: `/tasks/${id}/decline` }
@@ -121,7 +123,7 @@ export function beginAttempt(action: Action, actor: Actor, before: State): Attem
   const specific = action.type === 'CLAIM_TASK' && before.tasks.find(t => t.id === action.taskId)?.assignMode === 'SPECIFIC_EMPLOYEE'
   const payload = action as unknown as { reward?: { id?: string }; category?: { id?: string } }
   return { action, capture, started: performance.now(), completed: false, before,
-    operationType: specific ? 'ACCEPT_ASSIGNMENT' : action.type,
+    operationType: action.type === 'CLEAR_TEST_WORKSPACE' ? 'TEST_WORKSPACE_CLEARED' : specific ? 'ACCEPT_ASSIGNMENT' : action.type,
     entityType: type,
     entityId: payload.reward?.id ?? payload.category?.id ?? entityIdOf(action), priorIds: created.map(e => e.id) }
 }
@@ -161,7 +163,7 @@ export function finishDemoAttempt(attempt: Attempt | null, prev: State, next: St
   // The canonical reducer may clone before refusing. Reference inequality
   // alone is not proof of success. Compare its serializable result in memory;
   // never persist either snapshot or derive outcomes from Activity messages.
-  const unchanged = prev === next || JSON.stringify(prev) === JSON.stringify(next)
+  const unchanged = prev === next || (attempt.action.type !== 'CLEAR_TEST_WORKSPACE' && JSON.stringify(prev) === JSON.stringify(next))
   const outcome = unchanged ? UAT_ALWAYS_INFO.has(attempt.action.type) ? 'NO_CHANGE' : 'BLOCKED' : 'SUCCESS'
   const code = capacityRefusal(prev, attempt.action) ? 'CAPACITY_REACHED' : outcome === 'BLOCKED' ? 'DOMAIN_REFUSED' : outcome
   finish(attempt, outcome, code, next)

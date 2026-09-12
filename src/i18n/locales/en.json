@@ -92,7 +92,7 @@
   "attention.declinedHint": "assignee declined · open the task to reassign",
   "attention.declinedReassign": "Declined — needs reassignment",
   "attention.empty": "Nothing needs attention",
-  "attention.emptyHint": "Rejected work, declines and returned claims surface here.",
+  "attention.emptyHint": "Only unresolved tasks requiring your action appear here.",
   "attention.recentDeclines": "Recent declines & returned claims",
   "attention.reworkInFlight": "Rework in flight",
   "auth.email": "Email",
@@ -337,7 +337,7 @@
   "overview.teamOps": "Team operations",
   "page.activity.subtitle": "Canonical business history",
   "page.admin.subtitle": "People, adjustments and demo controls",
-  "page.attention.subtitle": "Rework, declines and returned claims",
+  "page.attention.subtitle": "Current tasks requiring your action",
   "page.availableWork.subtitle": "The marketplace — first valid claim wins",
   "page.myWork.subtitle": "Tasks you own, owe, or contributed to",
   "page.notifications.subtitle": "Attention, not noise",
@@ -883,5 +883,12 @@
   "testLab.severity.P1": "Core workflow broken",
   "testLab.severity.P2": "Defect with a workaround",
   "testLab.severity.P3": "Minor UX or polish",
-  "testLab.storageWarning": "Records could not be saved to this browser. Export before closing this tab."
+  "testLab.storageWarning": "Records could not be saved to this browser. Export before closing this tab.",
+  "admin.clearTestWorkspace": "Clear test workspace",
+  "admin.clearTestWorkspaceDescription": "Keep the company and people; remove operational test data.",
+  "admin.clearTestWorkspaceWarning": "This removes all Tasks, Rewards, Redemptions, Coins, Notifications and Activity test data, including attachments. Users, company settings, categories and Test Lab evidence remain.",
+  "admin.clearTestWorkspaceConfirmLabel": "Type CLEAR to confirm",
+  "admin.clearWorkspace": "Clear workspace",
+  "admin.resetSeedDescription": "Restore the original seeded demo scenario.",
+  "attention.requiresAction": "Requires action"
 }

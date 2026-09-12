@@ -81,8 +81,8 @@ test('N1-C: manager dashboard separates personal and management work', async ({ 
 })
 
 test('N1-D: task history shows compact transition markers', async ({ page }) => {
-  // REJECTED marker on the seeded rework task.
-  await navBtn(page, 'Needs Attention').click()
+  // History remains on Tasks; another worker's rework is not management attention.
+  await navBtn(page, 'Tasks').click()
   await page.locator('.trow', { hasText: 'Trade-show lead list cleanup' }).first().click()
   await expect(page.getByTestId('hist-marker-REJECTED').first()).toBeVisible()
   await page.locator('.drawer').getByRole('button', { name: 'Close' }).click()

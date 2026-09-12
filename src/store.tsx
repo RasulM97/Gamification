@@ -21,7 +21,7 @@ import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useS
 import type { ReactNode } from 'react'
 import { reducer, seed, DEFAULT_SETTINGS, normalizeDeadline } from './domain/engine'
 import type { Action, Attachment, State } from './domain/engine'
-import { DATA_MODE, IS_DEMO } from './runtime'
+import { DATA_MODE, IS_DEMO, WORKSPACE_TOOLS } from './runtime'
 import { ApiError, api, getToken, setToken } from './api'
 import type { MeUser } from './api'
 import { beginAttempt, prepareAttempt, finishDemoAttempt, finishServerAttempt, failAttempt } from './features/test-lab/testlab.instrumentation'
@@ -146,6 +146,7 @@ function useDemoStore(): Ctx {
   }, [meId])
 
   const demoDispatch = (a: Action) => {
+    if (a.type === 'CLEAR_TEST_WORKSPACE' && (!WORKSPACE_TOOLS || a.by !== meId)) return
     const before = latestDemoState.current
     const refusal = capacityRefusal(before, a)
     const actor = before.users.find(u => u.id === meId) ?? before.users[0]
@@ -193,6 +194,7 @@ function withFiles(fields: Record<string, string>, files?: Attachment[]): FormDa
    dispatching domain actions exactly as in demo mode. */
 async function send(a: Action): Promise<State | null> {
   switch (a.type) {
+    case 'CLEAR_TEST_WORKSPACE': return api.post('/admin/test-workspace/clear', { confirmation: 'CLEAR' })
     case 'CREATE_TASK':
       return api.postForm('/tasks', withFiles({
         title: a.title, description: a.description, priority: a.priority,

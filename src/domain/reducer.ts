@@ -1,4 +1,5 @@
 import type { EventParams, EventType } from './events'
+import { clearTestWorkspace } from './workspace-reset'
 /* Domain reducer — every state transition lives here (see engine.ts header
  * for the canonical rule list). Pure: structuredClone in, new State out. */
 import type {
@@ -12,6 +13,7 @@ import {
 } from './model'
 /* ── reducer ───────────────────────────────────────────────────────────── */
 export type Action =
+  | { type: 'CLEAR_TEST_WORKSPACE'; by: string }
   | { type: 'UPDATE_CAPACITY'; by: string; userId: string; maxActiveTasks: number }
   | { type: 'CREATE_TASK'; by: string; title: string; description: string; priority: Priority; deadline: string | null; reward: number; audience: Audience; assignMode: AssignMode; assigneeId: string | null; attachments?: Attachment[] }
   | { type: 'CLAIM_TASK'; taskId: string; userId: string }
@@ -61,6 +63,7 @@ export function capacityRefusal(s: State, a: Action) {
 }
 
 export function reducer(prev: State, a: Action): State {
+  if (a.type === 'CLEAR_TEST_WORKSPACE') return clearTestWorkspace(prev, a.by)
   if (capacityRefusal(prev, a)) return prev
   const s: State = structuredClone(prev)
   const now = Date.now()

@@ -1,5 +1,6 @@
 import { currentLocale, intlLocaleOf, tActive } from '../../i18n'
 export const operationKeys: Record<string, string> = {
+  CLEAR_TEST_WORKSPACE: 'admin.clearTestWorkspace', TEST_WORKSPACE_CLEARED: 'admin.clearTestWorkspace',
   CREATE_TASK: 'task.action.create', CLAIM_TASK: 'task.action.claim', ACCEPT_ASSIGNMENT: 'task.action.acceptStart',
   DECLINE_ASSIGNMENT: 'task.action.decline', RETURN_CLAIM: 'task.action.returnMarketplace',
   EDIT_TASK: 'task.action.edit', REASSIGN: 'task.field.ownership', REPORT_PROGRESS: 'task.field.reportedProgress',

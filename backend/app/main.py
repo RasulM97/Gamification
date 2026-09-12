@@ -24,6 +24,7 @@ from .db import engine, session_scope
 from .domain import DomainError
 from .models import Company
 from .routes import router
+from .workspace_routes import router as workspace_router
 
 STATIC_DIR = os.environ.get('CVE_STATIC_DIR') or str(
     Path(__file__).resolve().parents[2] / 'dist')
@@ -55,6 +56,7 @@ async def domain_error_handler(_: Request, exc: DomainError):
 
 
 app.include_router(router)
+app.include_router(workspace_router)
 
 
 @app.get('/api/health')

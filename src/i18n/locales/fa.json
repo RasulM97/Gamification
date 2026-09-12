@@ -92,7 +92,7 @@
   "attention.declinedHint": "گیرنده رد کرد · برای واگذاری مجدد وظیفه را باز کنید",
   "attention.declinedReassign": "ردشده — نیازمند واگذاری مجدد",
   "attention.empty": "چیزی نیاز به توجه ندارد",
-  "attention.emptyHint": "کارهای ردشده، ردّ مأموریت‌ها و مطالبات برگشتی اینجا نمایان می‌شوند.",
+  "attention.emptyHint": "فقط تسک‌های حل‌نشده‌ای که به اقدام شما نیاز دارند اینجا نمایش داده می‌شوند.",
   "attention.recentDeclines": "ردّها و مطالبات برگشتی اخیر",
   "attention.reworkInFlight": "بازکاری در جریان",
   "auth.email": "ایمیل",
@@ -337,7 +337,7 @@
   "overview.teamOps": "عملیات تیم",
   "page.activity.subtitle": "تاریخچه کامل فعالیت‌های سیستم",
   "page.admin.subtitle": "افراد، تغییر موجودی و تنظیمات نسخه آزمایشی",
-  "page.attention.subtitle": "تسک‌های نیازمند اصلاح، ردشده و برگردانده‌شده",
+  "page.attention.subtitle": "تسک‌های فعلی نیازمند اقدام شما",
   "page.availableWork.subtitle": "تسک‌های آزاد — اولین فرد واجد شرایط آن را می‌گیرد",
   "page.myWork.subtitle": "تسک‌هایی که مسئولشان هستید یا در آن‌ها مشارکت داشته‌اید",
   "page.notifications.subtitle": "فقط چیزهایی که ارزش توجه دارند",
@@ -883,5 +883,12 @@
   "testLab.severity.P1": "خرابی جریان اصلی کار",
   "testLab.severity.P2": "نقص با راه‌حل موقت",
   "testLab.severity.P3": "ایراد جزئی تجربه کاربری یا ظاهر",
-  "testLab.storageWarning": "ذخیره سوابق در مرورگر ممکن نشد. پیش از بستن این زبانه، آن‌ها را صادر کنید."
+  "testLab.storageWarning": "ذخیره سوابق در مرورگر ممکن نشد. پیش از بستن این زبانه، آن‌ها را صادر کنید.",
+  "admin.clearTestWorkspace": "پاک کردن فضای آزمایشی",
+  "admin.clearTestWorkspaceDescription": "شرکت و افراد حفظ می‌شوند؛ داده‌های عملیاتی آزمایشی حذف می‌شوند.",
+  "admin.clearTestWorkspaceWarning": "همهٔ تسک‌ها، جوایز، درخواست‌های جایزه، سکه‌ها، اعلان‌ها، فعالیت‌ها و پیوست‌های آزمایشی حذف می‌شوند. کاربران، تنظیمات شرکت، دسته‌بندی‌ها و شواهد محیط تست حفظ می‌شوند.",
+  "admin.clearTestWorkspaceConfirmLabel": "برای تأیید CLEAR را بنویسید",
+  "admin.clearWorkspace": "پاک کردن فضا",
+  "admin.resetSeedDescription": "بازگرداندن سناریوی اولیهٔ دمو با داده‌های نمونه.",
+  "attention.requiresAction": "نیازمند اقدام"
 }
