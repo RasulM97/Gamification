@@ -1,3 +1,4 @@
+import { canReviewTask } from '../../domain/taskAccess'
 import { selectNeedsAttention } from "../../domain/attention"
 import {
   activeOwnedTaskCount, isActiveOwnedTask, balanceOf, capacityLimit, canDecideRedemption,
@@ -7,8 +8,8 @@ import {
 } from '../../domain/engine'
 import type { CapacitySummary, DashboardModel, RedemptionSummary } from './dashboard.types'
 
-export function selectReviewsWaiting(tasks: Task[], viewer: User) {
-  return viewer.role === 'EMPLOYEE' ? [] : tasks.filter(t => t.status === 'SUBMITTED' && t.ownerId !== viewer.id)
+export function selectReviewsWaiting(tasks: Task[], viewer: User, state?: State) {
+  return viewer.role === 'EMPLOYEE' ? [] : tasks.filter(t => t.status === 'SUBMITTED' && (state ? canReviewTask(state, t, viewer) : viewer.role === 'ADMIN' && t.ownerId !== viewer.id))
     .sort((a, b) => (a.submittedAt ?? 0) - (b.submittedAt ?? 0))
 }
 export function selectCapacity(state: State, viewer: User): CapacitySummary | undefined {
@@ -17,8 +18,8 @@ export function selectCapacity(state: State, viewer: User): CapacitySummary | un
   for (const task of state.tasks) {
     if (task.ownerId && isActiveOwnedTask(task, task.ownerId)) counts.set(task.ownerId, (counts.get(task.ownerId) ?? 0) + 1)
   }
-  const people = state.users.filter(u => u.role !== 'ADMIN').map(user => {
-    const active = counts.get(user.id) ?? 0, limit = capacityLimit(user)
+  const people = state.users.filter(u => u.role !== 'ADMIN' && u.active !== false).map(user => {
+    const active = state.workload?.[user.id] ?? counts.get(user.id) ?? 0, limit = capacityLimit(user)
     return { user, active, limit, at: active >= limit, near: active === limit - 1 }
   }).sort((a, b) => Number(b.at) - Number(a.at) || Number(b.near) - Number(a.near)
     || a.user.name.localeCompare(b.user.name))
@@ -69,7 +70,7 @@ export function buildDashboardModel(state: State, viewer: User, now: number): Da
       available: { visible: visibleOffers.length, claimable: personalActive >= capacityLimit(viewer) ? 0 : visibleOffers.length, active: personalActive, limit: capacityLimit(viewer) },
     } : {}),
     ...(management ? {
-      reviews: selectReviewsWaiting(tasks, viewer), capacity,
+      reviews: selectReviewsWaiting(tasks, viewer, state), capacity,
       activeWork: { active: capacity!.people.reduce((sum, p) => sum + p.active, 0), inReview: tasks.filter(t => t.status === 'SUBMITTED' && t.ownerId).length,
         tasks: tasks.filter(t => t.ownerId && isActiveOwnedTask(t, t.ownerId)).sort(canonicalSort) },
       economy: selectEconomySummary(state),

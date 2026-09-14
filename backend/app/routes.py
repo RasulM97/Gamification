@@ -25,6 +25,7 @@ from .domain import DomainError, UploadCandidate, can_see_task, validate_attachm
 from .models import Attachment, Company, Task, User
 from .security import check_password, current_user, make_token
 from .serializers import bootstrap
+from .task_access import can_view
 from .storage import StoredFile, storage
 
 router = APIRouter(prefix='/api')
@@ -92,70 +93,6 @@ def update_capacity(user_id: str, body: CapacityIn, actor: User = Depends(curren
 
 
 # ── auth ────────────────────────────────────────────────────────────────────
-
-
-class LoginIn(BaseModel):
-    email: str
-    password: str
-
-
-@router.post('/auth/login')
-def login(body: LoginIn, db: Session = Depends(get_db)):
-    u = db.scalar(select(User).where(User.email == body.email.lower().strip()))
-    if u is None or not check_password(body.password, u.password_hash):
-        # never log the password; never reveal which half failed
-        log_action('-', '-', '-', 'login', body.email, 'denied', 0)
-        raise HTTPException(401, {'code': 'AUTH_INVALID', 'message': 'Invalid email or password'})
-    log_action(u.id, u.role, u.company_id, 'login', u.email, 'ok', 0)
-    return {'token': make_token(u), 'user': _me(u)}
-
-
-def _me(u: User) -> dict:
-    c = u.company_id
-    return {'id': u.id, 'name': u.name, 'role': u.role, 'position': u.position,
-            'email': u.email, 'companyId': c}
-
-
-@router.get('/auth/me')
-def me(actor: User = Depends(current_user)):
-    return _me(actor)
-
-
-@router.get('/dev/personas')
-def dev_personas(actor: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Demo quick-login list. DEV_MODE only — never in production."""
-    if not settings.dev_mode:
-        raise HTTPException(404, {'code': 'NOT_FOUND', 'message': 'Not found'})
-    from .dev_guard import seed_users
-    users = seed_users(db, actor)
-    return {'personas': [
-        {'id': u.id, 'name': u.name, 'role': u.role, 'position': u.position,
-         'email': u.email, 'password': 'demo1234'} for u in users]}
-
-
-@router.post('/dev/reseed')
-def dev_reseed(actor: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Demo control: wipe all tables and re-run the deterministic seed.
-    DEV_MODE only, admin role required. Never available in production."""
-    if not settings.dev_mode:
-        raise HTTPException(404, {'code': 'NOT_FOUND', 'message': 'Not found'})
-    if actor.role != 'ADMIN':
-        raise DomainError('FORBIDDEN', 'Admin role required')
-    from .dev_guard import require_seed_only
-    require_seed_only(db, actor)
-    from sqlalchemy import text
-    from .models import Base
-    from .seed import run as seed_run
-    actor_id, actor_role, actor_cid = actor.id, actor.role, actor.company_id
-    db.execute(text(f'TRUNCATE {", ".join(Base.metadata.tables.keys())} CASCADE'))
-    db.expunge_all()  # drop stale identity-map entries (incl. the actor row)
-    seed_run(db)
-    db.commit()
-    log_action(actor_id, actor_role, actor_cid, 'dev_reseed', 'all', 'ok', 0)
-    return _state(db, db.get(User, actor_id))
-
-
-# ── bootstrap ───────────────────────────────────────────────────────────────
 
 
 @router.get('/bootstrap')
@@ -227,6 +164,8 @@ def edit_task(task_id: str, body: EditTaskIn, actor: User = Depends(current_user
 
 
 class ReassignIn(BaseModel):
+    audience: Optional[str] = None
+    sensitivityConfirmed: bool = False
     assigneeId: Optional[str] = None
 
 
@@ -234,7 +173,7 @@ class ReassignIn(BaseModel):
 def reassign(task_id: str, body: ReassignIn, actor: User = Depends(current_user),
              db: Session = Depends(get_db)):
     return mutate(db, actor, 'reassign', task_id,
-                  lambda: svc.reassign(db, actor, task_id, body.assigneeId))
+                  lambda: svc.reassign(db, actor, task_id, body.assigneeId, audience=body.audience, sensitivity_confirmed=body.sensitivityConfirmed))
 
 
 class ProgressIn(BaseModel):
@@ -286,7 +225,8 @@ async def handoff(
     deadline: Optional[str] = Form(None),
     remainingReward: Optional[float] = Form(None),
     overrideReason: Optional[str] = Form(None),
-    files: list[UploadFile] = File(default=[]),
+    sensitivityConfirmed: bool = Form(False),
+                 files: list[UploadFile] = File(default=[]),
     actor: User = Depends(current_user), db: Session = Depends(get_db),
     request: Request = None,
 ):
@@ -297,19 +237,20 @@ async def handoff(
         db, actor, task_id, accepted_pct=acceptedPct, reason=reason,
         next_kind=nextKind, next_id=nextId, audience=audience, priority=priority,
         deadline=dl, remaining_reward=remainingReward,
-        override_reason=overrideReason, files=staged), staged=staged)
+        override_reason=overrideReason, files=staged, sensitivity_confirmed=sensitivityConfirmed), staged=staged)
 
 
 @router.post('/tasks/{task_id}/reopen')
 async def reopen(task_id: str, description: Optional[str] = Form(None),
                  audience: Optional[str] = Form(None),
                  assigneeId: Optional[str] = Form(None),
+                 sensitivityConfirmed: bool = Form(False),
                  files: list[UploadFile] = File(default=[]),
                  actor: User = Depends(current_user), db: Session = Depends(get_db)):
     staged = await stage_files(db, actor, files)
     return mutate(db, actor, 'reopen_task', task_id, lambda: svc.reopen_task(
         db, actor, task_id, description=description, audience=audience,
-        assignee_id=assigneeId, files=staged), staged=staged)
+        assignee_id=assigneeId, files=staged, sensitivity_confirmed=sensitivityConfirmed), staged=staged)
 
 
 class CancelIn(BaseModel):
@@ -329,12 +270,13 @@ async def reactivate(task_id: str, reason: str = Form(...),
                      description: Optional[str] = Form(None),
                      audience: Optional[str] = Form(None),
                      assigneeId: Optional[str] = Form(None),
-                     files: list[UploadFile] = File(default=[]),
+                     sensitivityConfirmed: bool = Form(False),
+                 files: list[UploadFile] = File(default=[]),
                      actor: User = Depends(current_user), db: Session = Depends(get_db)):
     staged = await stage_files(db, actor, files)
     return mutate(db, actor, 'reactivate_task', task_id, lambda: svc.reactivate_task(
         db, actor, task_id, reason=reason, description=description,
-        audience=audience, assignee_id=assigneeId, files=staged),
+        audience=audience, assignee_id=assigneeId, files=staged, sensitivity_confirmed=sensitivityConfirmed),
         staged=staged)
 
 
@@ -515,8 +457,7 @@ def get_file(attachment_id: str, actor: User = Depends(current_user),
     if a is None or a.company_id != actor.company_id:
         raise HTTPException(404, {'code': 'NOT_FOUND', 'message': 'File not found'})
     t = db.get(Task, a.task_id) if a.task_id else None
-    if t is not None and not can_see_task(t.audience, t.assignee_id, t.owner_id,
-                                          actor.role, actor.id):
+    if t is not None and not can_view(t, actor):
         raise HTTPException(404, {'code': 'NOT_FOUND', 'message': 'File not found'})
     return FileResponse(storage.abspath(a.storage_path),
                         media_type=a.type or 'application/octet-stream',

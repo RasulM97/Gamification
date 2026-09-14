@@ -24,6 +24,7 @@ def test_n4_backfill_current_baseline_and_noop(mig_url):
             if table=='users':
                 for row in after:
                     assert row.pop('max_active_tasks')==2
+                    assert row.pop('active') is True
                     assert row.pop('activation_hash') is None
                     assert row.pop('activation_expires_at') is None
             if table=='companies':
@@ -31,7 +32,7 @@ def test_n4_backfill_current_baseline_and_noop(mig_url):
                     assert row.pop('onboarding_status')=='COMPLETED'
                     assert row.pop('onboarding_completed_at') is None
             assert after==[dict(r) for r in rows]
-        assert c.scalar(sa.text('SELECT version_num FROM alembic_version'))=='b72e4d1f8307'
+        assert c.scalar(sa.text('SELECT version_num FROM alembic_version'))=='c71a1d902e64'
     command.upgrade(cfg,'head')
     with eng.connect() as c: assert c.scalar(sa.text('SELECT count(*) FROM users WHERE max_active_tasks=2'))==3
     with eng.begin() as c:

@@ -260,7 +260,7 @@ def test_n22_canonical_flow_approve_then_fulfill(client, auth):
     rd = _rd(r.json(), 'r2')
     assert rd['status'] == 'APPROVED' and rd['approvedBy'] == 'u-marcus' and rd['approvedAt']
     # executor notified, redeemer notified
-    notes = [n for n in r.json()['notices'] if n.get('redemptionId') == 'r2']
+    notes = [n for who in ('dana', 'priya', 'jonas') for n in _state(client, auth[who])['notices'] if n.get('redemptionId') == 'r2']
     assert any(n['userId'] == 'u-priya' and n.get('eventType') == 'REDEMPTION_APPROVED' for n in notes)
     assert any(n['userId'] == 'u-jonas' and n.get('eventType') == 'REDEMPTION_READY_FOR_FULFILLMENT' for n in notes)
     # the assigned executor fulfills with tracking details

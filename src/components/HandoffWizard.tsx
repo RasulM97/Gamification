@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { SensitivityGuard } from './SensitivityGuard'
+import { needsSensitivityConfirmation } from '../domain/taskAccess'
+import { useEffect, useState } from 'react'
 import { useStore, useMe } from '../store'
 import { partialPayout, activeCount, capacityLimit, capacityReached } from '../domain/engine'
 import type { Attachment, Audience, Task } from '../domain/engine'
@@ -19,6 +21,9 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
      PRIVATE work is always one-to-one — no marketplace. The admin never
      appears as a target: the founder arranges work, never owns it. */
   const [audience, setAudience] = useState<Audience>(task.audience)
+  const [confirmed, setConfirmed] = useState(false)
+  useEffect(() => setConfirmed(false), [audience, next])
+  const sensitive = needsSensitivityConfirmation(task, audience, state.users.find(u => u.id === next))
   const [mode, setMode] = useState<'AVAILABLE' | 'SPECIFIC'>(task.audience === 'PRIVATE' ? 'SPECIFIC' : 'AVAILABLE')
   /* Step 3 adjustments: the manager can change priority/deadline for the
      remaining work and override the suggested remaining reward — an override
@@ -49,7 +54,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
 
   const owner = state.users.find(u => u.id === task.ownerId)
   /* Targets follow the chosen audience; admins are never assignable. */
-  const targets = state.users.filter(u =>
+  const targets = state.users.filter(u => u.active !== false && !u.activationPending).filter(u =>
     (audience === 'EMPLOYEES' ? u.role === 'EMPLOYEE'
       : audience === 'MANAGEMENT' ? u.role === 'MANAGER'
       : u.role !== 'ADMIN') && u.id !== me.id)
@@ -83,7 +88,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
 
   const finish = () => {
     dispatch({
-      type: 'HANDOFF', taskId: task.id, managerId: me.id, acceptedPct: pct, reason: reason.trim(),
+      type: 'HANDOFF', sensitivityConfirmed: confirmed, taskId: task.id, managerId: me.id, acceptedPct: pct, reason: reason.trim(),
       next: next === 'AVAILABLE' ? { kind: 'AVAILABLE' } : { kind: 'EMPLOYEE', id: next },
       audience: audience !== task.audience ? audience : undefined,
       priority: newPriority !== task.priority ? newPriority : undefined,
@@ -216,6 +221,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
         </div>
       )}
 
+      {step === 4 && <SensitivityGuard required={sensitive} confirmed={confirmed} onConfirm={setConfirmed} />}
       {step === 4 && (
         <div className="summary">
           <div className="srow"><span>{tr('handoff.employeeReported')}</span><b className="num">{fmtPct(task.reported)}</b></div>
@@ -258,7 +264,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
         <div className="spacer" style={{ flex: 1 }} />
         {step < 4
           ? <button className="btn primary" disabled={!canNext} onClick={() => setStep(step + 1)}>{tr('handoff.continue')}</button>
-          : <button className="btn primary" onClick={finish}>{tr('handoff.confirm')}</button>}
+          : <button className="btn primary" disabled={sensitive && !confirmed} onClick={finish}>{tr('handoff.confirm')}</button>}
       </div>
     </Modal>
   )

@@ -46,7 +46,7 @@ def current_user(cred: HTTPAuthorizationCredentials | None = Depends(bearer),
     except jwt.PyJWTError:
         raise HTTPException(401, {'code': 'AUTH_INVALID', 'message': 'Invalid or expired session'})
     u = db.get(User, payload.get('sub')) if payload.get('sub') else None
-    if u is None or u.company_id != payload.get('cid') or u.activation_hash or u.role not in ('ADMIN', 'MANAGER', 'EMPLOYEE'):
+    if u is None or u.company_id != payload.get('cid') or u.active is False or u.activation_hash or u.role not in ('ADMIN', 'MANAGER', 'EMPLOYEE'):
         raise HTTPException(401, {'code': 'AUTH_INVALID', 'message': 'Invalid session'})
     return u
 

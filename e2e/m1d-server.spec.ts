@@ -27,6 +27,7 @@ interface LoginReq { email: string; password: string }
 /* Installs the API-contract mock. Returns the captured traffic. */
 async function mockApi(page: Page) {
   const logins: LoginReq[] = []
+  const switches: string[] = []
   const files: FileReq[] = []
 
   /* Server attachments always carry the backend id (serializers._att). The
@@ -61,8 +62,13 @@ async function mockApi(page: Page) {
     if (req.method() === 'GET' && path === '/bootstrap') return json(state)
     if (req.method() === 'GET' && path === '/dev/personas') {
       return json({
-        personas: Object.values(USERS).map(u => ({ ...u, password: PASSWORD })),
+        personas: Object.values(USERS),
       })
+    }
+    if (req.method() === 'POST' && path.startsWith('/dev/switch/')) {
+      const id = path.split('/').at(-1)!; switches.push(id)
+      const user = Object.values(USERS).find(u => u.id === id)
+      return user ? json({token: `tok-${id}`, user}) : json({code:'NOT_FOUND'},404)
     }
     const m = path.match(/^\/files\/(.+)$/)
     if (req.method() === 'GET' && m) {
@@ -74,7 +80,7 @@ async function mockApi(page: Page) {
     }
     return json({ code: 'NOT_FOUND', message: `unmocked ${req.method()} ${path}` }, 404)
   })
-  return { logins, files }
+  return { logins, files, switches }
 }
 
 async function uiLogin(page: Page, email: string) {
@@ -104,8 +110,8 @@ test.describe('M1-D fix — server dev runtime', () => {
     })
   })
 
-  test('D2: "Switch test account" renders after login and performs real credential sign-ins', async ({ page }) => {
-    const { logins } = await mockApi(page)
+  test('D2: "Switch test account" renders after login and uses authenticated dev switching without sharing passwords', async ({ page }) => {
+    const { logins, switches } = await mockApi(page)
     await uiLogin(page, 'dana@aster.demo')
     await expect(page.locator('button.who .nm')).toHaveText('Dana Cole')
 
@@ -120,25 +126,25 @@ test.describe('M1-D fix — server dev runtime', () => {
     await expect(picker).toBeVisible()
     await expect(picker.getByRole('button', { name: /Marcus Webb/ })).toBeVisible()
 
-    /* Select Manager → real POST /api/auth/login with that persona's
-       credentials → authenticated session as Marcus. */
+    /* The authenticated dev endpoint exchanges the current session. */
     await picker.getByRole('button', { name: /Marcus Webb/ }).click()
     await expect(page.locator('button.who .nm')).toHaveText('Marcus Webb')
-    expect(logins).toContainEqual({ email: 'marcus@aster.demo', password: PASSWORD })
+    expect(switches).toEqual(['u-marcus'])
 
-    /* Select Employee → same real login path. */
+    /* Switch to the employee using the same dev endpoint. */
     await page.locator('button.who').click()
     await page.locator('.who-pop button', { hasText: 'Switch test account' }).click()
     await page.getByTestId('dev-account-switcher').getByRole('button', { name: /Priya Nair/ }).click()
     await expect(page.locator('button.who .nm')).toHaveText('Priya Nair')
-    expect(logins).toContainEqual({ email: 'priya@aster.demo', password: PASSWORD })
+    expect(switches).toEqual(['u-marcus', 'u-priya'])
 
     /* Admin selection comes from the same list (initial UI login was Admin). */
     await page.locator('button.who').click()
     await page.locator('.who-pop button', { hasText: 'Switch test account' }).click()
     await page.getByTestId('dev-account-switcher').getByRole('button', { name: /Dana Cole/ }).click()
     await expect(page.locator('button.who .nm')).toHaveText('Dana Cole')
-    expect(logins).toContainEqual({ email: 'dana@aster.demo', password: PASSWORD })
+    expect(switches).toEqual(['u-marcus', 'u-priya', 'u-dana'])
+    expect(logins).toEqual([{email:'dana@aster.demo',password:PASSWORD}])
   })
 
   test('D6: server attachment chip is visibly interactive and downloads real bytes via authenticated GET /api/files/{id}', async ({ page }) => {

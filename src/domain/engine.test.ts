@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  reducer, seed, partialPayout, balanceOf, activeCount, canonicalSort, canSeeTask,
+  reducer, seed, partialPayout, balanceOf, coinDebtOf, activeCount, canonicalSort, canSeeTask,
   validateAttachments, visibleNotices, isMuted, CLAIM_PENALTY, DEFAULT_MAX_ACTIVE_TASKS, DEFAULT_SETTINGS,
 } from './engine'
 import type { State, Task } from './engine'
@@ -1325,7 +1325,7 @@ describe('RESUME_WORK capacity consistency (M0-B)', () => {
 })
 
 describe('ADMIN_ADJUST balance policy (M0-B)', () => {
-  it('negative adjustments clamp at zero — never-negative holds for every entry type', () => {
+  it('negative adjustments preserve debt while spendable balance stays nonnegative', () => {
     let s = seed()
     // Drain Aisha below zero attempt: balance is 20, adjust -50 → only -20 applied
     const bal = balanceOf(s, AISHA)
@@ -1333,14 +1333,17 @@ describe('ADMIN_ADJUST balance policy (M0-B)', () => {
     expect(balanceOf(s, AISHA)).toBe(0)
     const entry = s.ledger[0]
     expect(entry.type).toBe('ADMIN_ADJUSTMENT')
-    expect(entry.amount).toBe(-bal)
+    expect(entry.amount).toBe(-(bal + 50))
+    expect(coinDebtOf(s, AISHA)).toBe(50)
     // empty wallet + negative adjustment → no entry at all (no zero rows)
     const ids = ledgerIds(s)
     s = reducer(s, { type: 'ADMIN_ADJUST', by: ADMIN, userId: AISHA, amount: -10, reason: 'nothing to take' })
-    expect(ledgerIds(s)).toBe(ids)
+    expect(ledgerIds(s)).not.toBe(ids)
+    expect(coinDebtOf(s, AISHA)).toBe(60)
     // positive adjustments always apply
     s = reducer(s, { type: 'ADMIN_ADJUST', by: ADMIN, userId: AISHA, amount: 7, reason: 'correction' })
-    expect(balanceOf(s, AISHA)).toBe(7)
+    expect(balanceOf(s, AISHA)).toBe(0)
+    expect(coinDebtOf(s, AISHA)).toBe(53)
   })
 })
 
@@ -1356,7 +1359,7 @@ describe('new-cycle routing freedom (M1-D D7)', () => {
     s = reducer(s, { type: 'SUBMIT_WORK', taskId: 't-incentive', userId: MGR, note: 'plan drafted', attachments: [] })
     s = reducer(s, { type: 'APPROVE', taskId: 't-incentive', managerId: ADMIN })
     expect(task(s, 't-incentive').status).toBe('APPROVED')
-    s = reducer(s, { type: 'REOPEN', taskId: 't-incentive', by: ADMIN, audience: 'EMPLOYEES', assigneeId: PRIYA })
+    s = reducer(s, { type: 'REOPEN', taskId: 't-incentive', by: ADMIN, sensitivityConfirmed: true, audience: 'EMPLOYEES', assigneeId: PRIYA })
     const t = task(s, 't-incentive')
     expect(t.cycle).toBe(2)
     expect(t.audience).toBe('EMPLOYEES')

@@ -147,7 +147,9 @@ def test_first_real_lifecycles_and_two_company_isolation(pilot, client):
         assert client.post('/api' + path, headers=other, **({'json': body} if body else {})).status_code in (403, 404)
     assert client.patch(f'/api/users/{uid}/capacity', headers=other, json={'maxActiveTasks': 7}).status_code == 404
     assert client.post('/api/tasks', headers=other, data={'title': 'Cross tenant', 'reward': 5, 'assignMode': 'SPECIFIC_EMPLOYEE', 'assigneeId': uid}).status_code in (403, 404, 422)
-    assert ok(client.get('/api/dev/personas', headers=headers)) == {'personas': []}
+    personas = ok(client.get('/api/dev/personas', headers=headers))['personas']
+    assert {p['id'] for p in personas} == {u['id'] for u in s['users'] if not u.get('activationPending')}
+    assert all('password' not in p for p in personas)
     assert client.post('/api/dev/reseed', headers=headers).status_code == 403
     assert ok(client.get('/api/bootstrap', headers=headers)) == s
     assert company.id != second.id

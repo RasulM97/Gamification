@@ -276,7 +276,7 @@ def test_n23_race_double_approve_single_outcome(client, auth):
     assert sorted(r.status_code for r in rs) == [200, 409]
     state = _state(client, auth['dana'])
     assert _rd(state, 'r2')['status'] == 'APPROVED'
-    assert len(_notices(state, 'u-priya', 'REDEMPTION_APPROVED')) == 1  # no duplicate on retry
+    assert len(_notices(_state(client, auth['priya']), 'u-priya', 'REDEMPTION_APPROVED')) == 1  # no duplicate on retry
 
 
 def test_n23_race_double_fulfill_single_record(client, auth):
@@ -294,7 +294,7 @@ def test_n23_race_double_fulfill_single_record(client, auth):
     rd = _rd(state, 'r2')
     assert rd['status'] == 'FULFILLED'
     assert rd['fulfillmentReference'] in ('A', 'B', None)
-    assert len(_notices(state, 'u-priya', 'REDEMPTION_FULFILLED')) == 1
+    assert len(_notices(_state(client, auth['priya']), 'u-priya', 'REDEMPTION_FULFILLED')) == 1
     # fulfill never touches stock — the seeded 10 is unchanged (the request
     # decrement happened when r2 was placed, pre-seed)
     assert _rw(state, 'rw-lunch')['stock'] == 10
@@ -373,10 +373,10 @@ def test_n23_notifications_fire_once_per_transition(client, auth):
     r = client.post('/api/redemptions/r2/approve', headers=auth['marcus'])
     assert r.status_code == 200
     state = _state(client, auth['dana'])
-    assert len(_notices(state, 'u-priya', 'REDEMPTION_APPROVED')) == 1
-    assert len(_notices(state, 'u-jonas', 'REDEMPTION_READY_FOR_FULFILLMENT')) == 1
+    assert len(_notices(_state(client, auth['priya']), 'u-priya', 'REDEMPTION_APPROVED')) == 1
+    assert len(_notices(_state(client, auth['jonas']), 'u-jonas', 'REDEMPTION_READY_FOR_FULFILLMENT')) == 1
     r = client.post('/api/redemptions/r2/approve', headers=auth['dana'])
     assert r.status_code == 409  # idempotent retry — no second notification
     state = _state(client, auth['dana'])
-    assert len(_notices(state, 'u-priya', 'REDEMPTION_APPROVED')) == 1
-    assert len(_notices(state, 'u-jonas', 'REDEMPTION_READY_FOR_FULFILLMENT')) == 1
+    assert len(_notices(_state(client, auth['priya']), 'u-priya', 'REDEMPTION_APPROVED')) == 1
+    assert len(_notices(_state(client, auth['jonas']), 'u-jonas', 'REDEMPTION_READY_FOR_FULFILLMENT')) == 1

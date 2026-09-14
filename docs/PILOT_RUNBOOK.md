@@ -21,7 +21,7 @@ docker compose --env-file deploy/.env.pilot -f deploy/compose.pilot.yml logs --t
 Invoke-RestMethod http://localhost:8080/api/health
 ```
 
-The app runs Alembic to revision `b72e4d1f8307` before listening. On a fresh database, the company count is zero. No default login exists. `CVE_DEV_MODE=false` is explicit; a JWT secret shorter than 32 bytes or the known development secret stops startup. Port 8080 binds to localhost. For team access, put this origin behind an HTTPS reverse proxy and use its public origin when copying activation links. Do not expose a Vite development server as the pilot deployment.
+The app runs Alembic to revision `c71a1d902e64` before listening. On a fresh database, the company count is zero. No default login exists. `CVE_DEV_MODE=false` is explicit; a JWT secret shorter than 32 bytes or the known development secret stops startup. Port 8080 binds to localhost. For team access, put this origin behind an HTTPS reverse proxy and use its public origin when copying activation links. Do not expose a Vite development server as the pilot deployment.
 
 ## Provision the company and initial Admin
 
@@ -29,7 +29,7 @@ The app runs Alembic to revision `b72e4d1f8307` before listening. On a fresh dat
 docker compose --env-file deploy/.env.pilot -f deploy/compose.pilot.yml exec app python -m app.provision_company --company 'Your Company' --admin-name 'Your Name' --admin-email 'admin@your-company.example'
 ```
 
-The CLI prompts privately for a unique password and confirmation: minimum 12 characters, maximum 72 UTF-8 bytes. It prints only company ID, Admin ID, and whether it created them. Do not put passwords in shell arguments. For automation, `--password-stdin` accepts one line from a protected secret source; do not echo secrets into logs.
+The CLI prompts privately for a unique password and confirmation: minimum 8 characters (12 or more recommended), maximum 72 UTF-8 bytes. It prints only company ID, Admin ID, and whether it created them. Do not put passwords in shell arguments. For automation, `--password-stdin` accepts one line from a protected secret source; do not echo secrets into logs.
 
 Provisioning creates only Company, CompanySettings, and one ADMIN User in a transaction. IDs are generated, not seed IDs. Repeating the same company name and Admin email returns the existing identity without resetting its password, onboarding state, or business data. Conflicting company/login combinations fail. Email logins are globally unique. A second company requires a different name and Admin email; run the same command with those values. Changing a company's display name later does not change its ID.
 
@@ -89,3 +89,7 @@ Repeat sign-in, dashboard, and task/reward smoke checks. The startup migration i
 The founder's existing local `docker-compose.yml` uses `CVE_DEV_MODE=true`; `docker compose up -d --build` starts the normal development servers. Development can seed an empty database. Never enable this mode for a pilot database. The legacy reset endpoint now works only when the sole company is the canonical development seed company; the persona list requires authentication and includes only seeded-password identities in that company. A new pilot tenant receives no demo personas, even if development mode is accidentally enabled.
 
 The compiled pilot hides Test Lab, clear workspace, demo reset, and persona tools. Backend development endpoints are independently denied with dev mode off. Development's default known credentials are confined to seed infrastructure and are never used to provision pilot accounts.
+
+## N7.1 account maintenance
+
+Admin > People > Edit changes profile, role, and active status. Capacity remains in the existing Capacity control. Deactivation preserves records and requires unfinished responsibilities to be resolved; the sole active Admin cannot be removed. Production passwords require 8 characters, with 12 or more recommended. Short development passwords require both development mode and explicit `CVE_ALLOW_WEAK_DEV_PASSWORDS=true`, plus weak-password confirmation. Never enable this exception for a pilot deployment. See [N7.1-PILOT-INTEGRITY.md](N7.1-PILOT-INTEGRITY.md) for task privacy, review delegation, debt, and the eight Founder checks.

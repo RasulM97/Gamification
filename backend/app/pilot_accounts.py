@@ -25,9 +25,7 @@ def display_name(value: str, limit=120) -> str:
     return value
 
 
-def validate_password(password: str):
-    if len(password) < 12 or len(password.encode()) > 72:
-        raise DomainError('VALIDATION', 'Password must have at least 12 characters and at most 72 UTF-8 bytes')
+from .password_policy import validate_password
 
 
 def new_person(db: Session, company_id: str, *, name: str, email: str, role: str,
@@ -46,11 +44,11 @@ def new_person(db: Session, company_id: str, *, name: str, email: str, role: str
     return user, token
 
 
-def activate(db: Session, token: str, password: str):
-    validate_password(password)
+def activate(db: Session, token: str, password: str, weak_confirmed=False):
+    validate_password(password, weak_confirmed)
     digest = hashlib.sha256(token.encode()).hexdigest()
     user = db.scalar(select(User).where(User.activation_hash == digest).with_for_update())
-    if not user or not user.activation_expires_at or user.activation_expires_at < now_ms():
+    if not user or user.active is False or not user.activation_expires_at or user.activation_expires_at < now_ms():
         raise DomainError('VALIDATION', 'Activation link is invalid or expired')
     user.password_hash = hash_password(password)
     user.activation_hash = None; user.activation_expires_at = None

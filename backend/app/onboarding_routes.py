@@ -36,7 +36,8 @@ class PersonIn(BaseModel):
 
 class ActivationIn(BaseModel):
     token: str = Field(min_length=32, max_length=128)
-    password: str = Field(min_length=12, max_length=72)
+    password: str = Field(min_length=6, max_length=72)
+    weakConfirmed: bool = False
 
 
 @router.get('/onboarding/readiness')
@@ -100,9 +101,15 @@ def reissue(user_id: str, actor: User = Depends(current_user), db: Session = Dep
 @router.post('/auth/activate')
 def activate_account(body: ActivationIn, db: Session = Depends(get_db)):
     try:
-        activate(db, body.token, body.password)
+        activate(db, body.token, body.password, body.weakConfirmed)
         db.commit()
     except Exception:
         db.rollback()
         raise
     return {'ok': True}
+
+
+@router.get('/auth/password-policy')
+def password_policy():
+    from .password_policy import policy
+    return policy()

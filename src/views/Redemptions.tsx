@@ -159,7 +159,8 @@ export function RedemptionsView() {
             <span style={{ flex: 1 }}>
               <b dir="auto">{historyValue(r,'reward',reward(r.rewardId)?.name ?? '')}</b>
               <span className="dim"> — <span dir="auto">{historyValue(r,'employee',user(r.userId)?.name ?? '')}</span> · {ago(r.at)}</span>
-              {r.reason && <span className="faint" dir="auto"> · {r.reason}</span>}
+              {r.status === 'CANCELLED' && r.cancelledBy && <span data-testid="cancellation-actor">{t('integrity.cancelledBy', { actor: r.cancelledBy.name })}{r.cancelledAt ? ' / ' + fmtDateTimeL(r.cancelledAt) : ''}</span>}
+                {r.reason && <span className="faint" dir="auto"> · {r.reason}</span>}
             </span>
             <Coin n={r.cost} />
           </div>

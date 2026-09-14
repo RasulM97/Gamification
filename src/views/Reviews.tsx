@@ -1,3 +1,4 @@
+import { canReviewTask, canSeeTask } from '../domain/taskAccess'
 import { ActivityEvent } from '../components/EventText'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
@@ -14,7 +15,8 @@ export function ReviewsView({ openId, onOpen, onClose }: {
 }) {
   const { state } = useStore()
   const { t: tr } = useI18n()
-  const queue = state.tasks.filter(t => t.status === 'SUBMITTED').sort((a, b) => (a.submittedAt ?? 0) - (b.submittedAt ?? 0))
+  const me = useMe()
+  const queue = state.tasks.filter(t => canReviewTask(state, t, me) && t.status === 'SUBMITTED').sort((a, b) => (a.submittedAt ?? 0) - (b.submittedAt ?? 0))
   const user = (id: string | null) => state.users.find(u => u.id === id)
 
   return (
@@ -53,12 +55,12 @@ function ReviewDrawer({ task: t, onClose }: { task: Task | null; onClose: () => 
   const [handoff, setHandoff] = useState(false)
   const [cancel, setCancel] = useState(false)
   const user = (id: string | null) => state.users.find(u => u.id === id)
-  if (!t) return null
+  if (!t || !canSeeTask(t, me)) return null
   const owner = user(t.ownerId)
   const remaining = Math.max(0, t.reward - t.paid)
   const remainingPct = 100 - t.verified
   /* Reviewing your own submission is refused by the engine — hide it too. */
-  const selfReview = t.ownerId === me.id
+  const selfReview = !canReviewTask(state, t, me)
   /* M1-D D8: the reviewer must see HOW this task reached the submission —
      canonical business Activity for this task (created → assigned/claimed →
      progress → submission → reject/handoff/decline…), newest first, compact,
@@ -167,7 +169,7 @@ function ReviewDrawer({ task: t, onClose }: { task: Task | null; onClose: () => 
         <span className="eyebrow">{tr('review.decision')}</span>
         {selfReview ? (
           <div className="faint" style={{ fontSize: 12.5, marginTop: 8 }}>
-            {tr('review.selfReviewBlocked')}
+            {tr(t.ownerId === me.id ? 'review.selfReviewBlocked' : 'integrity.error.REVIEW_AUTHORITY_REQUIRED')}
           </div>
         ) : <>
           <div className="summary" style={{ marginTop: 8, marginBottom: 13 }}>
@@ -189,7 +191,7 @@ function ReviewDrawer({ task: t, onClose }: { task: Task | null; onClose: () => 
             {/* A task under review can move between several employees — handoff
                 and mid-work cancel live right here in the decision. */}
             <button className="btn" onClick={() => setHandoff(true)}>{tr('review.handoffAnother')}</button>
-            <button className="btn" onClick={() => setCancel(true)}>{tr('review.cancelTask')}</button>
+            {(me.role === 'ADMIN' || t.createdBy === me.id) && <button className="btn" onClick={() => setCancel(true)}>{tr('review.cancelTask')}</button>}
           </div>
         </>}
       </div>

@@ -1,9 +1,11 @@
+import { SensitivityGuard } from './SensitivityGuard'
+import { canReviewTask, needsSensitivityConfirmation } from '../domain/taskAccess'
 import { useEffect, useRef, useState } from 'react'
 import { useStore, useMe } from '../store'
-import { capacityLimit, activeCount, partialPayout, validateAttachments, claimPenalty } from '../domain/engine'
+import { capacityLimit, activeCount, partialPayout, validateAttachments, claimPenalty, economicPosition, netPositionOf, balanceOf } from '../domain/engine'
 import type { Audience, Task, Attachment } from '../domain/engine'
 import { AttachField, AttachmentQueue, Coin, DateInput, Field, Modal, coins } from '../ui'
-import { useI18n, fmtPct, fmtInt } from '../i18n'
+import { useI18n, fmtPct, fmtNum } from '../i18n'
 import { roleKey } from '../ui'
 
 /* Task action modals — submit / reject / decline / cancel / return /
@@ -143,7 +145,7 @@ export function CancelModal({ open, onClose, task }: { open: boolean; onClose: (
   const payout = pct > 0 ? Math.min(partialPayout(task.reward, pct), Math.max(0, task.reward - task.paid)) : 0
   return (
     <Modal open={open} onClose={onClose} title={<>{tr('task.action.cancel')}<small dir="auto">{tr('task.cancelSub', { title: task.title })}</small></>}>
-      {owner && maxPct > 0 && (
+      {owner && maxPct > 0 && canReviewTask(state, task, me) && (
         <Field label={tr('task.partialCredit', { name: owner.name })}
           hint={tr('task.partialCreditHint')}>
           <div className="range-row">
@@ -172,18 +174,20 @@ export function CancelModal({ open, onClose, task }: { open: boolean; onClose: (
 
 export function ReturnModal({ open, onClose, task }: { open: boolean; onClose: () => void; task: Task }) {
   const { t: tr } = useI18n()
-  const { dispatch } = useStore()
+  const { state, dispatch } = useStore()
   const me = useMe()
   const [reason, setReason] = useState('')
-  /* Priority-scaled claim penalty (base 5 × multiplier); the engine clamps
-     so the balance can never go below zero. */
+  // The ledger preserves the full penalty; the visible balance stays nonnegative.
   const pen = claimPenalty(task.priority)
+  const after = economicPosition(netPositionOf(state, me.id) - pen)
   return (
     <Modal open={open} onClose={onClose} title={<>{tr('task.action.returnMarketplace')}<small dir="auto">{tr('task.returnSub', { title: task.title })}</small></>}>
       <div className="neg" style={{ fontSize: 13, marginBottom: 12 }}>
-        ⚠ {tr('task.returnPenalty', { coins: fmtInt(pen) })}{' '}
+        ⚠ {tr('task.returnPenalty', { coins: fmtNum(pen) })}{' '}
         {task.priority !== 'NORMAL' && task.priority !== 'NONE' ? tr('task.returnPenaltyPriority', { priority: tr('task.priority.' + task.priority.toLowerCase()), mult: task.priority === 'URGENT' ? 2 : 1.5 }) : ''}.{' '}
-        {tr('task.returnPenaltyCap')}
+        <p>{tr('wallet.currentBalance')}: {coins(balanceOf(state, me.id))}</p>
+        <p>{tr('integrity.debtAfter')}: {coins(after.coinDebt)}</p>
+        <p>{tr('integrity.balanceAfter')}: {coins(after.spendableBalance)}</p>
       </div>
       <Field label={tr('common.reasonRequired')}>
         <textarea dir={reason ? 'auto' : undefined} value={reason} onChange={e => setReason(e.target.value)}
@@ -194,7 +198,7 @@ export function ReturnModal({ open, onClose, task }: { open: boolean; onClose: (
         <button className="btn primary" disabled={!reason.trim()} onClick={() => {
           dispatch({ type: 'RETURN_CLAIM', taskId: task.id, userId: me.id, reason: reason.trim() })
           onClose()
-        }}>{tr('task.action.returnPenalty', { coins: fmtInt(pen) })}</button>
+        }}>{tr('task.action.returnPenalty', { coins: fmtNum(pen) })}</button>
       </div>
     </Modal>
   )
@@ -247,7 +251,7 @@ function NewCycleRouting({ task, audience, setAudience, assigneeId, setAssigneeI
 }) {
   const { t: tr } = useI18n()
   const { state } = useStore()
-  const targets = state.users.filter(u =>
+  const targets = state.users.filter(u => u.active !== false && !u.activationPending).filter(u =>
     (audience === 'EMPLOYEES' ? u.role === 'EMPLOYEE'
       : audience === 'MANAGEMENT' ? u.role === 'MANAGER'
       : u.role !== 'ADMIN'))
@@ -286,7 +290,11 @@ export function ReopenModal({ open, onClose, task }: { open: boolean; onClose: (
   const [files, setFiles] = useState<Attachment[]>([])
   const [audience, setAudience] = useState<Audience>(task.audience)
   const [assigneeId, setAssigneeId] = useState('')
-  const routeBad = audience === 'PRIVATE' && !assigneeId
+  const { state } = useStore()
+  const [confirmed, setConfirmed] = useState(false)
+  useEffect(() => setConfirmed(false), [audience, assigneeId])
+  const sensitive = needsSensitivityConfirmation(task, audience, state.users.find(u => u.id === assigneeId))
+  const routeBad = (audience === 'PRIVATE' && !assigneeId) || (sensitive && !confirmed)
   return (
     <Modal open={open} onClose={onClose} title={<>{tr('task.reopenTitle')}<small dir="auto">{tr('task.reopenSub', { title: task.title, cycle: task.cycle + 1 })}</small></>}>
       <div style={{ fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>
@@ -294,6 +302,7 @@ export function ReopenModal({ open, onClose, task }: { open: boolean; onClose: (
       </div>
       <NewCycleRouting task={task} audience={audience} setAudience={setAudience}
         assigneeId={assigneeId} setAssigneeId={setAssigneeId} />
+      <SensitivityGuard required={sensitive} confirmed={confirmed} onConfirm={setConfirmed} />
       <BriefChoice task={task} update={update} setUpdate={setUpdate} desc={desc} setDesc={setDesc} files={files} setFiles={setFiles} />
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
         <button className="btn" onClick={onClose}>{tr('common.back')}</button>
@@ -301,7 +310,7 @@ export function ReopenModal({ open, onClose, task }: { open: boolean; onClose: (
           dispatch({ type: 'REOPEN', taskId: task.id, by: me.id,
             description: update ? desc : undefined, attachments: files.length > 0 ? files : undefined,
             audience: audience !== task.audience ? audience : undefined,
-            assigneeId: assigneeId || undefined })
+            assigneeId: assigneeId || undefined, sensitivityConfirmed: confirmed })
           onClose()
         }}>{tr('task.action.reopenCycle', { cycle: task.cycle + 1 })}</button>
       </div>
@@ -319,7 +328,11 @@ export function ReactivateModal({ open, onClose, task }: { open: boolean; onClos
   const [files, setFiles] = useState<Attachment[]>([])
   const [audience, setAudience] = useState<Audience>(task.audience)
   const [assigneeId, setAssigneeId] = useState('')
-  const routeBad = audience === 'PRIVATE' && !assigneeId
+  const { state } = useStore()
+  const [confirmed, setConfirmed] = useState(false)
+  useEffect(() => setConfirmed(false), [audience, assigneeId])
+  const sensitive = needsSensitivityConfirmation(task, audience, state.users.find(u => u.id === assigneeId))
+  const routeBad = (audience === 'PRIVATE' && !assigneeId) || (sensitive && !confirmed)
   return (
     <Modal open={open} onClose={onClose} title={<>{tr('task.action.reactivateTask')}<small dir="auto">{tr('task.reactivateSub', { title: task.title, cycle: task.cycle + 1 })}</small></>}>
       <div style={{ fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>
@@ -331,6 +344,7 @@ export function ReactivateModal({ open, onClose, task }: { open: boolean; onClos
       </Field>
       <NewCycleRouting task={task} audience={audience} setAudience={setAudience}
         assigneeId={assigneeId} setAssigneeId={setAssigneeId} />
+      <SensitivityGuard required={sensitive} confirmed={confirmed} onConfirm={setConfirmed} />
       <BriefChoice task={task} update={update} setUpdate={setUpdate} desc={desc} setDesc={setDesc} files={files} setFiles={setFiles} />
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
         <button className="btn" onClick={onClose}>{tr('common.back')}</button>
@@ -338,7 +352,7 @@ export function ReactivateModal({ open, onClose, task }: { open: boolean; onClos
           dispatch({ type: 'REACTIVATE', taskId: task.id, by: me.id, reason: reason.trim(),
             description: update ? desc : undefined, attachments: files.length > 0 ? files : undefined,
             audience: audience !== task.audience ? audience : undefined,
-            assigneeId: assigneeId || undefined })
+            assigneeId: assigneeId || undefined, sensitivityConfirmed: confirmed })
           onClose()
         }}>{tr('task.action.reactivateTask')}</button>
       </div>

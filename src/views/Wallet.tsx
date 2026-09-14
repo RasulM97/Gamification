@@ -1,3 +1,4 @@
+import { Debt } from '../presentation/Debt'
 import { EventText, EventReason, eventText } from '../components/EventText'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
@@ -74,6 +75,7 @@ export function WalletView() {
         </div>
       </div>
 
+      {!company && <Debt userId={targetId} />}
       {!company && byType.size > 0 && (
         <Panel title={targetId === me.id ? t('wallet.breakdown') : t('wallet.breakdownFor', { name: target?.name ?? '' })}>
           <div className="summary">

@@ -8,6 +8,11 @@
 import type { State } from './domain/engine'
 
 const TOKEN_KEY = 'cve-token'
+// Once authenticated, this tab owns its request identity. Another tab's
+// localStorage write must never silently change the actor of an action.
+let boundSessionToken: string | null | undefined
+export const bindSessionToken = (token: string | null) => { boundSessionToken = token }
+const requestToken = () => boundSessionToken === undefined ? getToken() : boundSessionToken
 const responseStatuses = new WeakMap<object, number>()
 /** Response metadata only; never persisted with domain state. */
 export const responseStatus = (body: object | null) => body ? responseStatuses.get(body) : undefined
@@ -47,7 +52,7 @@ export function setToken(t: string | null) {
 
 async function req<T>(path: string, opts: { method?: string; json?: unknown; form?: FormData } = {}): Promise<T> {
   const headers: Record<string, string> = {}
-  const tok = getToken()
+  const tok = requestToken()
   if (tok) headers.Authorization = `Bearer ${tok}`
   let body: BodyInit | undefined
   if (opts.json !== undefined) {
@@ -74,9 +79,10 @@ async function req<T>(path: string, opts: { method?: string; json?: unknown; for
 }
 
 export interface MeUser { id: string; name: string; role: string; position: string; email: string; companyId: string }
-export interface DevPersona { id: string; name: string; role: string; position: string; email: string; password: string }
+export interface DevPersona { id: string; name: string; role: string; position: string; email: string }
 
 export const api = {
+  passwordPolicy: () => req<{minimum: number; weakDevAllowed: boolean}>('/auth/password-policy'),
   login: (email: string, password: string) =>
     req<{ token: string; user: MeUser }>('/auth/login', { method: 'POST', json: { email, password } }),
   me: () => req<MeUser>('/auth/me'),
@@ -102,7 +108,7 @@ export function fetchDevPersonas() {
 
 /* Authenticated file download — opens the bytes in a new tab via blob URL. */
 export async function openStoredFile(id: string, name: string): Promise<void> {
-  const tok = getToken()
+  const tok = requestToken()
   const res = await fetch(apiUrl(`/files/${id}`), {
     headers: tok ? { Authorization: `Bearer ${tok}` } : {},
   })

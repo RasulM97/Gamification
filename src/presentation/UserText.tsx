@@ -64,7 +64,7 @@ export function ClampedText({ text, lines = 4, style, className }: {
   return (
     <div className={className}>
       <div className="clampbox" dir="auto" style={{
-        ...style,
+        ...style, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
         ...(open || !long ? {} : {
           display: '-webkit-box', WebkitBoxOrient: 'vertical',
           WebkitLineClamp: lines, overflow: 'hidden',

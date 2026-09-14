@@ -1,3 +1,4 @@
+import { integrityRefusal } from '../../domain/integrityRefusal'
 import { WORKSPACE_TOOLS } from '../../runtime'
 import type { Action, State } from '../../domain/engine'
 import { capacityRefusal } from '../../domain/reducer'
@@ -19,7 +20,7 @@ function entityTypeOf(a: Action): string | null {
     case 'CLEAR_TEST_WORKSPACE': return 'workspace'
     case 'REDEEM': return 'reward'
     case 'APPROVE_REDEMPTION': case 'FULFILL_REDEMPTION': case 'CANCEL_REDEMPTION': return 'redemption'
-    case 'ADMIN_ADJUST': case 'UPDATE_CAPACITY': case 'TOGGLE_FULFILL_PERMISSION': return 'user'
+    case 'UPDATE_USER': case 'ADMIN_ADJUST': case 'UPDATE_CAPACITY': case 'TOGGLE_FULFILL_PERMISSION': return 'user'
     case 'SAVE_REWARD': return 'reward'
     case 'SAVE_REWARD_CATEGORY': return 'reward-category'
     case 'MARK_READ': case 'ARCHIVE_NOTICE': return 'notice'
@@ -43,6 +44,8 @@ function entityIdOf(a: Action): string | null {
 export function endpointOf(a: Action): { method: string; path: string } | null {
   const id = entityIdOf(a)
   switch (a.type) {
+    case 'SET_TASK_ACCESS': return { method: 'PUT', path: `/tasks/${id}/access` }
+    case 'UPDATE_USER': return { method: 'PATCH', path: `/users/${id}` }
     case 'CLEAR_TEST_WORKSPACE': return { method: 'POST', path: '/admin/test-workspace/clear' }
     case 'CREATE_TASK': return { method: 'POST', path: '/tasks' }
     case 'CLAIM_TASK': return { method: 'POST', path: `/tasks/${id}/claim` }
@@ -167,7 +170,7 @@ export function finishDemoAttempt(attempt: Attempt | null, prev: State, next: St
   // never persist either snapshot or derive outcomes from Activity messages.
   const unchanged = prev === next || (attempt.action.type !== 'CLEAR_TEST_WORKSPACE' && JSON.stringify(prev) === JSON.stringify(next))
   const outcome = unchanged ? UAT_ALWAYS_INFO.has(attempt.action.type) ? 'NO_CHANGE' : 'BLOCKED' : 'SUCCESS'
-  const code = capacityRefusal(prev, attempt.action) ? 'CAPACITY_REACHED' : outcome === 'BLOCKED' ? 'DOMAIN_REFUSED' : outcome
+  const code = capacityRefusal(prev, attempt.action) ? 'CAPACITY_REACHED' : outcome === 'BLOCKED' ? integrityRefusal(prev, attempt.action) ?? 'DOMAIN_REFUSED' : outcome
   finish(attempt, outcome, code, next)
 }
 export function finishServerAttempt(attempt: Attempt | null, next: State | null) {

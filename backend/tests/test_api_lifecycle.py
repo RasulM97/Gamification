@@ -207,7 +207,7 @@ def test_new_cycle_routing_is_free_of_previous_worker_type(client, auth):
                        data={'note': 'plan drafted'}).status_code == 200
     assert client.post('/api/tasks/t-incentive/approve', headers=auth['dana']).status_code == 200
     r = client.post('/api/tasks/t-incentive/reopen', headers=auth['dana'],
-                    data={'audience': 'EMPLOYEES', 'assigneeId': 'u-priya'})
+                    data={'audience': 'EMPLOYEES', 'assigneeId': 'u-priya', 'sensitivityConfirmed': 'true'})
     assert r.status_code == 200, r.text
     t = _task(r.json(), 't-incentive')
     assert t['cycle'] == 2 and t['audience'] == 'EMPLOYEES' and t['assigneeId'] == 'u-priya'

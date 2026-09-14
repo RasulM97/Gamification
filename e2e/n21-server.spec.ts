@@ -56,10 +56,14 @@ async function mockApi(page: Page) {
     if (req.method() === 'GET' && path === '/auth/me')
       return me ? json({ ...me, companyId: 'co-aster' }) : json({ code: 'FORBIDDEN', message: 'bad token' }, 401)
     if (req.method() === 'GET' && path === '/dev/personas')
-      return json({ personas: Object.values(USERS).map(u => ({ ...u, password: PASSWORD })) })
+      return json({ personas: Object.values(USERS) })
     if (req.method() === 'GET' && path === '/bootstrap') return json(state)
     if (!me) return json({ code: 'FORBIDDEN', message: 'bad token' }, 401)
 
+    if (req.method() === 'POST' && path.startsWith('/dev/switch/')) {
+      const user = Object.values(USERS).find(u => u.id === path.split('/').at(-1))
+      return user ? json({token:`tok-${user.id}`,user}) : json({code:'NOT_FOUND'},404)
+    }
     // ── mutations: apply the real domain engine, return the fresh state ──
     calls.push(`${req.method()} ${path}`)
     if (req.method() === 'POST' && path === '/rewards') {

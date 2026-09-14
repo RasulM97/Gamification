@@ -1,5 +1,9 @@
 import capacityPolicy from '../../backend/app/capacity_policy.json' with { type: 'json' }
+import { canSeeTask } from './taskAccess'
+export { canSeeTask, canReviewTask, needsSensitivityConfirmation } from './taskAccess'
 import type { EventRecord } from './events'
+import { balanceOf } from './economyPosition'
+export { balanceOf, coinDebtOf, netPositionOf, economicPosition } from './economyPosition'
 /* Corporate Virtual Economy — domain engine.
  *
  * This module is the authoritative business core of the demo build: every
@@ -39,7 +43,7 @@ export type NotifLevel = 'ACTION_REQUIRED' | 'IMPORTANT' | 'INFORMATIONAL' | 'AU
 export type NotifCategory = 'Tasks' | 'Reviews' | 'Assignments' | 'Rewards' | 'Economy'
 
 export interface User { maxActiveTasks?: number | null; id: string; name: string; role: Role; position: string
-  email?: string; companyId?: string; activationPending?: boolean
+  active?: boolean; email?: string; companyId?: string; activationPending?: boolean
   /* N2.2 §6: the REWARD_FULFILL capability — the smallest clean permission
      representation (no enterprise permission-builder). Separate from the
      system Role: an employee or manager with this flag may EXECUTE assigned
@@ -106,6 +110,7 @@ export interface SubmissionRecord {
   reviewerId: string | null; reviewNote: string | null
 }
 export interface Task {
+  viewerIds?: string[]; reviewerIds?: string[]; restrictedAudiences?: Audience[]; privateWorkerRole?: string | null
   id: string; title: string; description: string
   priority: Priority; deadline: string | null; reward: number
   audience: Audience; assignMode: AssignMode; assigneeId: string | null
@@ -243,6 +248,7 @@ export const remainingQuota = (r: Pick<Reward, 'id' | 'perUserLimit'>, s: Pick<S
    redemption is never retro-cancelled). */
 export type RedemptionStatus = 'PENDING' | 'APPROVED' | 'FULFILLED' | 'CANCELLED'
 export interface Redemption {
+  cancelledBy?: { id: string; name: string; role?: string } | null; cancelledAt?: number | null
   id: string; userId: string; rewardId: string; cost: number
   status: RedemptionStatus; at: number; reason?: string
   /* N2.2 §10: approval + fulfillment facts. fulfilledBy/fulfilledAt are the
@@ -262,6 +268,7 @@ export interface Act extends EventRecord {
   taskId?: string; reason?: string; econ?: string; cycle?: number
 }
 export interface State {
+  workload?: Record<string, number>
   companyId?: string
   onboarding?: { status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED'; completedAt: number | null }
   company: string; seq: number; settings: Settings
@@ -282,7 +289,7 @@ export const PRIORITIES: Priority[] = ['URGENT', 'IMPORTANT', 'NORMAL', 'NONE']
 const PRI_RANK: Record<Priority, number> = { URGENT: 0, IMPORTANT: 1, NORMAL: 2, NONE: 3 }
 
 /* Wrong voluntary-claim penalty (L.2-A): base 5 Coins scaled by priority.
-   MVP invariant: a penalty may never drive a balance below zero. */
+   The full penalty enters the signed ledger; spendable balance stays nonnegative. */
 export const CLAIM_PENALTY_MULT: Record<Priority, number> = { NONE: 1, NORMAL: 1, IMPORTANT: 1.5, URGENT: 2 }
 export const claimPenalty = (p: Priority) => CLAIM_PENALTY * CLAIM_PENALTY_MULT[p]
 
@@ -290,14 +297,11 @@ export const claimPenalty = (p: Priority) => CLAIM_PENALTY * CLAIM_PENALTY_MULT[
 export const partialPayout = (reward: number, pct: number) =>
   Math.ceil((reward * pct) / 100 * 2) / 2
 
-export const balanceOf = (s: State, userId: string) =>
-  s.ledger.filter(l => l.userId === userId).reduce((a, l) => a + l.amount, 0)
-
 /** Pending offers and REJECTED rework reserve no slot; resume rechecks. */
 export const isActiveOwnedTask = (t: Task, userId: string) =>
   t.ownerId === userId && capacityPolicy.activeStatuses.includes(t.status)
 export const activeOwnedTaskCount = (s: State, userId: string) =>
-  s.tasks.filter(t => isActiveOwnedTask(t, userId)).length
+  s.workload?.[userId] ?? s.tasks.filter(t => isActiveOwnedTask(t, userId)).length
 export const activeCount = activeOwnedTaskCount
 export const capacityLimit = (u: User) => u.role === 'ADMIN' ? 0 : u.maxActiveTasks ?? DEFAULT_MAX_ACTIVE_TASKS
 export const canEditCapacity = (actor: User, target: User) => target.role !== 'ADMIN' &&
@@ -313,18 +317,13 @@ export const capacityReached = (s: State, id: string) => {
    never eligible to claim, be assigned, or receive a handoff. PRIVATE work
    is one-to-one with any chosen person (employee or manager). */
 export const roleFits = (t: Task, u: User) =>
-  u.role === 'ADMIN' ? false
+  u.active === false || u.activationPending || u.role === 'ADMIN' ? false
   : t.audience === 'MANAGEMENT' ? u.role === 'MANAGER'
   : t.audience === 'PRIVATE' ? true
   : u.role === 'EMPLOYEE'
 
 /* Visibility: management sees everything; employees never see MANAGEMENT
    work, and PRIVATE work only when they are the assignee or owner. */
-export const canSeeTask = (t: Task, u: User) =>
-  u.role !== 'EMPLOYEE'
-    ? true
-    : t.audience === 'EMPLOYEES' || (t.audience === 'PRIVATE' && (t.assigneeId === u.id || t.ownerId === u.id))
-
 export const coinsInCirculation = (s: State) =>
   s.users.reduce((a, u) => a + Math.max(0, balanceOf(s, u.id)), 0)
 

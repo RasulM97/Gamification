@@ -68,7 +68,7 @@ select,input,textarea { max-width:100% }
 .topbar { height:auto;min-height:58px;flex-wrap:wrap;padding-block:10px;gap:10px }
 .topbar>.bell,.topbar>.bell-btn,.topbar>.burger { flex:none }
 .welcome { padding-inline-end:48px }
-html[dir="rtl"] .directional-icon { display:inline-block;transform:scaleX(-1) }
+html[dir="rtl"] .directional-icon { display:inline-block;transform:rotate(-45deg) }
 html[dir="rtl"] .drawer { animation-name:slidein-rtl;box-shadow:24px 0 70px rgba(0,0,0,.5) }
 @keyframes slidein-rtl { from { transform:translateX(-40px);opacity:.4 } to { transform:none;opacity:1 } }
 @media (max-width:980px) {
@@ -120,3 +120,19 @@ html[dir="rtl"] .drawer { animation-name:slidein-rtl;box-shadow:24px 0 70px rgba
 .uat-lab p { overflow-wrap:anywhere }
 .uat-lab input,.uat-lab textarea,.uat-lab select { max-width:100% }
 @media(max-width:850px) { .testlab-fields { grid-template-columns:1fr } }
+
+/* N7.1: static metrics stay static; all dashboard navigation shares cues. */
+.dashboard-module .kpi2:hover { transform:none; border-color:var(--rim-soft) }
+.dashboard-module .kpi2 { cursor:default }
+.dashboard-module .dashboard-row[role=button] { cursor:pointer; border:1px solid transparent }
+.dashboard-module .dashboard-row[role=button]:hover { background:var(--raised); border-color:var(--accent) }
+.dashboard-module .dashboard-row[role=button]:focus-visible, .dashboard-module button:focus-visible { outline:2px solid var(--accent); outline-offset:3px }
+.dashboard-module .panel-body > .btn::after, .dashboard-actions > .btn::after { content:''; display:inline-block; width:6px; height:6px; border-block-start:1.5px solid currentColor; border-inline-end:1.5px solid currentColor; transform:rotate(45deg); margin-inline-start:8px }
+[dir=rtl] .dashboard-module .panel-body > .btn::after, [dir=rtl] .dashboard-actions > .btn::after { transform:scaleX(-1) }
+.system-toast {
+  position: fixed;
+  inset-block-start: 16px;
+  inset-inline-end: 16px;
+  max-width: min(560px, calc(100vw - 32px));
+  z-index: 10000;
+}

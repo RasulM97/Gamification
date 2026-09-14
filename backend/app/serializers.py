@@ -17,6 +17,8 @@ from .models import (
     RewardExecutor, Submission, Task, TaskCycle, User,
 )
 from .services import settings_of
+from .task_access import can_view
+from .domain import ACTIVE_TASK_STATUSES
 
 
 def _att(a: Attachment) -> dict:
@@ -39,6 +41,8 @@ def _task(db: Session, t: Task) -> dict:
     live_atts = [_att(a) for a in pending.attachments] if pending else []
     brief = sorted((a for a in t.brief_files), key=lambda a: a.created_at)
     return {
+        'viewerIds': t.viewer_ids or [], 'reviewerIds': t.reviewer_ids or [],
+        'restrictedAudiences': t.restricted_audiences or [], 'privateWorkerRole': t.private_worker_role,
         'id': t.id, 'title': t.title, 'description': t.description,
         'priority': t.priority,
         'deadline': t.deadline.isoformat() if t.deadline else None,
@@ -87,6 +91,8 @@ def bootstrap(db: Session, company: Company, viewer: User | None = None) -> dict
     activity = list(db.scalars(select(Activity).where(Activity.company_id == cid)
                     .order_by(Activity.at.desc())))
 
+    visible_tasks = {t.id for t in tasks if viewer is None or can_view(t, viewer)}
+
     def _ledger(l: LedgerTransaction) -> dict:
         d = {'id': l.id, 'at': l.at, 'userId': l.user_id, 'type': l.type,
              'amount': l.amount, 'ref': l.ref}
@@ -97,6 +103,9 @@ def bootstrap(db: Session, company: Company, viewer: User | None = None) -> dict
         if l.event_type:
             d['eventType'] = l.event_type
             d['params'] = l.params or {}
+        if l.task_id and l.task_id not in visible_tasks:
+            d.pop('taskId', None); d.pop('params', None); d.pop('eventType', None)
+            d['ref'] = ''
         return d
 
     def _notice(n: Notification) -> dict:
@@ -136,6 +145,8 @@ def bootstrap(db: Session, company: Company, viewer: User | None = None) -> dict
         if r.reason is not None:
             d['reason'] = r.reason
         # N2.2 §5/§10: decision + execution traceability.
+        d['cancelledBy'] = r.cancelled_by
+        d['cancelledAt'] = r.cancelled_at
         d['approvedBy'] = r.approved_by
         d['approvedAt'] = r.approved_at
         d['fulfilledBy'] = r.fulfilled_by
@@ -152,6 +163,7 @@ def bootstrap(db: Session, company: Company, viewer: User | None = None) -> dict
         exec_by_reward.setdefault(rid, []).append(uid)
 
     return {
+        'workload': {u.id: sum(1 for t in tasks if t.owner_id == u.id and t.status in ACTIVE_TASK_STATUSES) for u in users},
         'company': company.name,
         'companyId': company.id,
         'onboarding': {'status': company.onboarding_status, 'completedAt': company.onboarding_completed_at},
@@ -161,11 +173,11 @@ def bootstrap(db: Session, company: Company, viewer: User | None = None) -> dict
         'users': [{'id': u.id, 'name': u.name, 'role': u.role,
                    'companyId': u.company_id,
                    **({'email': u.email, 'activationPending': u.activation_hash is not None} if viewer is None or viewer.role == 'ADMIN' else {}),
-                   'position': u.position,
+                   'position': u.position, 'active': u.active,
                    # N2.2 §6: REWARD_FULFILL capability — separate from role
                    'maxActiveTasks': None if u.role == 'ADMIN' else u.max_active_tasks,
                    'canFulfillRewards': bool(u.can_fulfill_rewards)} for u in users],
-        'tasks': [_task(db, t) for t in tasks],
+        'tasks': [_task(db, t) for t in tasks if t.id in visible_tasks],
         'ledger': [_ledger(l) for l in ledger_rows],
         'rewardCategories': [{'id': c.id, 'name': c.name, 'active': c.active}
                              for c in db.scalars(select(RewardCategory)
@@ -185,7 +197,7 @@ def bootstrap(db: Session, company: Company, viewer: User | None = None) -> dict
                      'archived': bool(r.archived),
                      'executorIds': exec_by_reward.get(r.id, [])} for r in rewards],
         'redemptions': [_redemption(r) for r in redemptions],
-        'notices': [_notice(n) for n in notices],
-        'activity': [_act(a) for a in activity],
+        'notices': [_notice(n) for n in notices if (viewer is None or n.user_id == viewer.id) and (not n.task_id or n.task_id in visible_tasks)],
+        'activity': [_act(a) for a in activity if not a.task_id or a.task_id in visible_tasks],
         'notifMuted': {u.id: (u.notif_muted or []) for u in users},
     }

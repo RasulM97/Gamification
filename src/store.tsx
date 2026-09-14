@@ -1,17 +1,21 @@
+import { send } from './storeRequests'
+import { viewProjection } from './domain/viewProjection'
+import { integrityRefusal } from './domain/integrityRefusal'
+import { errorText } from './presentation/errorText'
 import { capacityRefusal } from './domain/reducer'
 import { demoSetup, type SetupOperation } from './features/onboarding/operations'
 import { currentLocale, translate } from './i18n'
 /* Store (M1-A) — dual-runtime data boundary.
  *
  * DEMO MODE (default; sandbox preview):
- *   The frozen M0-B reducer + seed + localStorage persistence, byte-for-byte
- *   the original behavior. No network, no backend. Persona switcher is the
+ *   The domain reducer, role projection, seed, and localStorage persistence.
+ *   No network or backend requests. Persona switcher is the
  *   demo identity mechanism.
  *
  * SERVER MODE (VITE_CVE_DATA_MODE=server; external PostgreSQL env only):
  *   The backend is canonical. Every dispatch maps 1:1 to a domain endpoint;
- *   the server applies the frozen rules inside a PostgreSQL transaction and
- *   returns the full bootstrap state, which replaces the client copy.
+ *   the server applies domain rules inside a PostgreSQL transaction and
+ *   returns the authorized bootstrap state, which replaces the client copy.
  *   Dispatches are serialized through one promise chain so ordering matches
  *   the synchronous demo reducer exactly.
  *
@@ -23,7 +27,7 @@ import type { ReactNode } from 'react'
 import { reducer, seed, DEFAULT_SETTINGS, normalizeDeadline } from './domain/engine'
 import type { Action, Attachment, State } from './domain/engine'
 import { DATA_MODE, IS_DEMO, WORKSPACE_TOOLS } from './runtime'
-import { ApiError, api, getToken, setToken } from './api'
+import { ApiError, api, getToken, setToken, bindSessionToken } from './api'
 import type { MeUser } from './api'
 import { beginAttempt, prepareAttempt, finishDemoAttempt, finishServerAttempt, failAttempt } from './features/test-lab/testlab.instrumentation'
 import { startRefreshLoop } from './refresh'
@@ -71,12 +75,19 @@ function migrate(s: State): State {
   s.tasks.forEach(t => {
     t.attachments = (t.attachments ?? []).map(a =>
       typeof a === 'string' ? { name: a, size: 0, type: '' } : a)
+    t.restrictedAudiences ??= [...new Set([t.audience, ...s.activity.filter(a => a.taskId === t.id).map(a => a.params?.audience)])].filter((a): a is 'PRIVATE' | 'MANAGEMENT' => a === 'PRIVATE' || a === 'MANAGEMENT')
+    if (t.audience === 'PRIVATE') t.privateWorkerRole ??= s.users.find(u => u.id === (t.ownerId ?? t.assigneeId))?.role
     t.audience = t.audience ?? 'EMPLOYEES' // pre-audience persisted states
     t.instructions = t.instructions ?? null // pre-instructions persisted states
     t.briefFiles = (t.briefFiles ?? []).map(a =>
       typeof a === 'string' ? { name: a, size: 0, type: '' } : a) // pre-brief persisted states
     t.submissions = t.submissions ?? [] // pre-history persisted states
     t.deadline = normalizeDeadline(t.deadline) // legacy ISO → date-only
+  })
+  s.redemptions.forEach(r => {
+    if (r.status !== 'CANCELLED' || r.cancelledBy) return
+    const event = s.activity.find(a => a.eventType === 'REDEMPTION_CANCELLED' && a.params?.redemptionId === r.id)
+    if (event && typeof event.params?.actor === 'string') { r.cancelledBy = { id: event.actorId, name: event.params.actor }; r.cancelledAt = event.at }
   })
   return s
 }
@@ -98,6 +109,8 @@ interface Ctx {
      simulation — identity comes only from real credentials. ── */
   auth: AuthPhase
   me: MeUser | null
+  switchDevAccount: (id: string) => Promise<void>
+  dismissError: () => void
   login: (email: string, password: string) => Promise<void>
   logout: () => void
   /* N2.1-C/F: ask the authoritative source for a fresh bootstrap. Server
@@ -139,9 +152,8 @@ function useDemoStore(): Ctx {
   useEffect(() => {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({ v: STATE_VERSION, state }))
-      setPersistError(null)
     } catch {
-      setPersistError('Could not save locally — this session’s changes may be lost on reload (browser storage full or blocked).')
+      setPersistError(translate(currentLocale(), 'integrity.storageError'))
     }
   }, [state])
   useEffect(() => {
@@ -156,7 +168,9 @@ function useDemoStore(): Ctx {
     const attempt = beginAttempt(a, actor, before)
     try {
       const next = reducer(before, a)
+      const code = integrityRefusal(before, a)
       if (refusal) setPersistError(translate(currentLocale(), 'capacity.reached', refusal))
+      else if (code) setPersistError(errorText(new ApiError(409, code, '')))
       // Apply exactly the observed result: running the reducer a second time
       // generates a different ID for creates and redemptions.
       latestDemoState.current = next
@@ -172,11 +186,12 @@ function useDemoStore(): Ctx {
       applyDemoState(next)
       return null
     },
-    state, dispatch: demoDispatch, meId, setMeId, persistError,
+    state: viewProjection(state, meId), dispatch: demoDispatch, meId, setMeId, persistError,
     reset: () => {
       try { localStorage.removeItem(STORE_KEY) } catch { /* ignore */ }
       window.location.reload()
     },
+    switchDevAccount: async () => {}, dismissError: () => setPersistError(null),
     auth: 'ready',
     me: null,
     /* Server-only API surface — never invoked in demo mode. */
@@ -190,96 +205,8 @@ function useDemoStore(): Ctx {
 
 /* ═════════════════════════ SERVER MODE (external env only) ═════════════ */
 
-const hasFile = (a: Attachment): a is Attachment & { file: File } => a.file instanceof File
-
-function withFiles(fields: Record<string, string>, files?: Attachment[]): FormData {
-  const fd = new FormData()
-  for (const [k, v] of Object.entries(fields)) fd.append(k, v)
-  for (const f of files ?? []) if (hasFile(f)) fd.append('files', f.file, f.name)
-  return fd
-}
-
-/* Action → endpoint mapping. The only place that knows HTTP; views keep
-   dispatching domain actions exactly as in demo mode. */
-async function send(a: Action): Promise<State | null> {
-  switch (a.type) {
-    case 'CLEAR_TEST_WORKSPACE': return api.post('/admin/test-workspace/clear', { confirmation: 'CLEAR' })
-    case 'CREATE_TASK':
-      return api.postForm('/tasks', withFiles({
-        title: a.title, description: a.description, priority: a.priority,
-        reward: String(a.reward), audience: a.audience, assignMode: a.assignMode,
-        ...(a.deadline ? { deadline: a.deadline } : {}),
-        ...(a.assigneeId ? { assigneeId: a.assigneeId } : {}),
-      }, a.attachments))
-    case 'CLAIM_TASK': return api.post(`/tasks/${a.taskId}/claim`)
-    case 'DECLINE_ASSIGNMENT': return api.post(`/tasks/${a.taskId}/decline`, { reason: a.reason })
-    case 'RETURN_CLAIM': return api.post(`/tasks/${a.taskId}/return`, { reason: a.reason })
-    case 'EDIT_TASK':
-      return api.patch(`/tasks/${a.taskId}`, {
-        ...(a.title !== undefined ? { title: a.title } : {}),
-        ...(a.description !== undefined ? { description: a.description } : {}),
-        ...(a.priority !== undefined ? { priority: a.priority } : {}),
-        ...(a.deadline !== undefined ? { deadline: a.deadline } : {}),
-        ...(a.reward !== undefined ? { reward: a.reward } : {}),
-      })
-    case 'REASSIGN': return api.post(`/tasks/${a.taskId}/reassign`, { assigneeId: a.assigneeId })
-    case 'REPORT_PROGRESS': return api.post(`/tasks/${a.taskId}/progress`, { pct: a.pct })
-    case 'SUBMIT_WORK':
-      return api.postForm(`/tasks/${a.taskId}/submit`, withFiles({
-        note: a.note, ...(a.pct != null ? { pct: String(a.pct) } : {}),
-      }, a.attachments))
-    case 'RESUME_WORK': return api.post(`/tasks/${a.taskId}/resume`)
-    case 'APPROVE': return api.post(`/tasks/${a.taskId}/approve`)
-    case 'REJECT': return api.post(`/tasks/${a.taskId}/reject`, { reason: a.reason })
-    case 'HANDOFF':
-      return api.postForm(`/tasks/${a.taskId}/handoff`, withFiles({
-        acceptedPct: String(a.acceptedPct), reason: a.reason, nextKind: a.next.kind,
-        ...(a.next.kind === 'EMPLOYEE' ? { nextId: a.next.id } : {}),
-        ...(a.audience ? { audience: a.audience } : {}),
-        ...(a.priority ? { priority: a.priority } : {}),
-        /* deadline: null clears — send an empty field so the server sees the key */
-        ...(a.deadline !== undefined ? { deadline: a.deadline ?? '' } : {}),
-        ...(a.remainingReward != null ? { remainingReward: String(a.remainingReward) } : {}),
-        ...(a.overrideReason ? { overrideReason: a.overrideReason } : {}),
-      }, a.attachments))
-    case 'REOPEN':
-      return api.postForm(`/tasks/${a.taskId}/reopen`, withFiles({
-        ...(a.description !== undefined ? { description: a.description } : {}),
-        ...(a.audience ? { audience: a.audience } : {}),
-        ...(a.assigneeId ? { assigneeId: a.assigneeId } : {}),
-      }, a.attachments))
-    case 'CANCEL_TASK':
-      return api.post(`/tasks/${a.taskId}/cancel`, {
-        reason: a.reason, ...(a.acceptedPct != null ? { acceptedPct: a.acceptedPct } : {}),
-      })
-    case 'REACTIVATE':
-      return api.postForm(`/tasks/${a.taskId}/reactivate`, withFiles({
-        reason: a.reason,
-        ...(a.description !== undefined ? { description: a.description } : {}),
-        ...(a.audience ? { audience: a.audience } : {}),
-        ...(a.assigneeId ? { assigneeId: a.assigneeId } : {}),
-      }, a.attachments))
-    case 'REDEEM': return api.post('/redemptions', { rewardId: a.rewardId })
-    case 'APPROVE_REDEMPTION': return api.post(`/redemptions/${a.id}/approve`)
-    case 'FULFILL_REDEMPTION': return api.post(`/redemptions/${a.id}/fulfill`, { reference: a.reference ?? null, note: a.note ?? null })
-    case 'CANCEL_REDEMPTION': return api.post(`/redemptions/${a.id}/cancel`, { reason: a.reason })
-    case 'ADMIN_ADJUST':
-      return api.post('/admin/adjust', { userId: a.userId, amount: a.amount, reason: a.reason })
-    case 'SAVE_REWARD': return api.post('/rewards', a.reward)
-    case 'SAVE_REWARD_CATEGORY': return api.post('/reward-categories', a.category)
-    case 'UPDATE_CAPACITY': return api.patch(`/users/${a.userId}/capacity`, { maxActiveTasks: a.maxActiveTasks })
-    case 'TOGGLE_FULFILL_PERMISSION': return api.post(`/users/${a.userId}/fulfill-permission`)
-    case 'MARK_READ': return api.post(`/notices/${a.id}/read`)
-    case 'MARK_ALL_READ': return api.post('/notices/read-all')
-    case 'ARCHIVE_NOTICE': return api.post(`/notices/${a.id}/archive`)
-    case 'ARCHIVE_ALL_READ': return api.post('/notices/archive-read')
-    case 'TOGGLE_NOTIF_MUTE': return api.post('/notif-mute', { level: a.level })
-    case 'UPDATE_SETTINGS': return api.put('/settings', a.settings)
-    default: return null
-  }
-}
-
 function useServerStore(): Ctx {
+  const sessionEpoch = useRef(0)
   const [state, setState] = useState<State | null>(null)
   const latestState = useRef<State | null>(null)
   const [me, setMe] = useState<MeUser | null>(null)
@@ -296,13 +223,16 @@ function useServerStore(): Ctx {
   const applyState = (s: State | null) => { if (s) { latestState.current = migrate(s); setState(latestState.current) } }
 
   const enqueue = (fn: () => Promise<State | null>) => {
+    const epoch = sessionEpoch.current
     queue.current = queue.current.then(async () => {
+      if (epoch !== sessionEpoch.current) return
       const s = await fn()
+      if (epoch !== sessionEpoch.current) return
       applyState(s)
-      setPersistError(null)
     }).catch((e: unknown) => {
+      if (epoch !== sessionEpoch.current) return
       if (e instanceof ApiError && e.status === 401) { logout(); return }
-      const msg = e instanceof ApiError ? (e.code === 'CAPACITY_REACHED' ? translate(currentLocale(), 'capacity.reached', e.details) : e.message) : 'Network error — the action may not have been applied.'
+      const msg = errorText(e)
       setPersistError(msg)
     })
     return queue.current
@@ -333,6 +263,7 @@ function useServerStore(): Ctx {
 
   const serverDispatch = (a: Action) => {
     const actor = me ? { id: me.id, name: me.name, role: me.role } : { id: '', name: '', role: '' }
+    const dispatchEpoch = sessionEpoch.current
     const attempt = beginAttempt(a, actor, state!)
     void enqueue(async () => {
       try {
@@ -340,24 +271,47 @@ function useServerStore(): Ctx {
         const result = await send(a)
         finishServerAttempt(attempt, result)
         return result
-      } catch (error) { failAttempt(attempt, error); throw error }
+      } catch (error) {
+        failAttempt(attempt, error)
+        if (!(error instanceof ApiError && error.status === 401)) {
+          const epoch = dispatchEpoch
+          if (epoch !== sessionEpoch.current) throw error
+          try { const fresh = await api.bootstrap(); if (epoch === sessionEpoch.current) applyState(fresh) } catch { /* preserve the original refusal */ }
+        }
+        throw error
+      }
     })
   }
 
   const boot = async () => {
-    if (!getToken()) { setAuth('anon'); return }
+    const epoch = ++sessionEpoch.current
+    const token = getToken()
+    bindSessionToken(token)
+    setMe(null); setState(null); latestState.current = null
+    setAuth(token ? 'loading' : 'anon')
+    if (!token) return
     try {
       const user = await api.me()
+      if (epoch !== sessionEpoch.current) return
+      const fresh = await api.bootstrap()
+      if (epoch !== sessionEpoch.current) return
       setMe(user)
-      applyState(await api.bootstrap())
+      applyState(fresh)
       setAuth('ready')
     } catch {
+      if (epoch !== sessionEpoch.current) return
       setToken(null)
+      bindSessionToken(null)
       setAuth('anon')
     }
   }
 
-  useEffect(() => { boot() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    void boot()
+    const changed = (event: StorageEvent) => { if (event.key === 'cve-token' || event.key === null) void boot() }
+    window.addEventListener('storage', changed)
+    return () => { ++sessionEpoch.current; window.removeEventListener('storage', changed) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* N2.1-F: lightweight near-real-time sync — refetch on window focus, on
      visibility restore, and on a light interval while the tab is visible.
@@ -370,16 +324,32 @@ function useServerStore(): Ctx {
     return startRefreshLoop({ refresh: refetch })
   }, [auth]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const switchDevAccount = async (id: string) => {
+    const epoch = ++sessionEpoch.current
+    const r = await api.post<{token: string; user: MeUser}>(`/dev/switch/${id}`)
+    if (epoch !== sessionEpoch.current) return
+    setToken(r.token); await boot()
+  }
+
   const login = async (email: string, password: string) => {
+    const epoch = ++sessionEpoch.current
     const r = await api.login(email, password)
+    if (epoch !== sessionEpoch.current) return
     setToken(r.token)
-    setMe(r.user)
-    applyState(await api.bootstrap())
-    setAuth('ready')
+    bindSessionToken(r.token)
+    setAuth('loading'); setState(null); latestState.current = null
+    try {
+      const fresh = await api.bootstrap()
+      if (epoch !== sessionEpoch.current) return
+      setMe(r.user); applyState(fresh); setAuth('ready')
+    } catch (error) { if (epoch === sessionEpoch.current) logout(); throw error }
   }
 
   const logout = () => {
+    ++sessionEpoch.current
     setToken(null)
+    bindSessionToken(null)
+    latestState.current = null
     setMe(null)
     setState(null)
     setAuth('anon')
@@ -405,7 +375,7 @@ function useServerStore(): Ctx {
          the authoritative state. DEV_MODE only on the server. */
       void enqueue(() => api.reseed())
     },
-    auth, me, login, logout,
+    auth, me, login, logout, switchDevAccount, dismissError: () => setPersistError(null),
     refresh: refetch,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [state, me, auth, persistError])

@@ -43,6 +43,7 @@ class Company(Base):
 
 class User(Base):
     __tablename__ = 'users'
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default='true')
     activation_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     activation_expires_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     __table_args__ = (CheckConstraint('max_active_tasks BETWEEN 1 AND 100', name='ck_users_capacity'),)
@@ -71,6 +72,10 @@ class CompanySettings(Base):
 
 class Task(Base):
     __tablename__ = 'tasks'
+    viewer_ids: Mapped[list] = mapped_column(JSONB, default=list, server_default='[]')
+    reviewer_ids: Mapped[list] = mapped_column(JSONB, default=list, server_default='[]')
+    restricted_audiences: Mapped[list] = mapped_column(JSONB, default=list, server_default='[]')
+    private_worker_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id('t'))
     company_id: Mapped[str] = mapped_column(ForeignKey('companies.id'), index=True)
     title: Mapped[str] = mapped_column(String(300))
@@ -240,6 +245,8 @@ class RewardExecutor(Base):
 
 class Redemption(Base):
     __tablename__ = 'redemptions'
+    cancelled_by: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    cancelled_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id('r'))
     company_id: Mapped[str] = mapped_column(String(40), index=True)
     user_id: Mapped[str] = mapped_column(String(40), index=True)

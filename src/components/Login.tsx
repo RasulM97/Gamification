@@ -20,7 +20,7 @@ export function LoginScreen() {
   const doLogin = (e: string, p: string) => {
     setBusy(true); setError(null)
     login(e, p)
-      .catch(err => setError(err?.message ?? tr('auth.loginFailed')))
+      .catch(() => setError(tr('auth.loginFailed')))
       .finally(() => setBusy(false))
   }
 

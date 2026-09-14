@@ -132,7 +132,7 @@ def test_n2_manager_redemption_decision_goes_to_other_managers(client, auth):
     assert r.status_code == 200
     r = client.post('/api/redemptions', headers=auth['marcus'], json={'rewardId': 'rw-devsetup'})
     assert r.status_code == 200
-    notices = r.json()['notices']
+    notices = client.get('/api/bootstrap', headers=auth['dana']).json()['notices']
     new_id = r.json()['redemptions'][0]['id']
     # the seeded n8 already covers r3 (same reward, same redeemer) — match on
     # the NEW redemption id so the assertion is about this redemption only
@@ -144,22 +144,23 @@ def test_n2_manager_redemption_decision_goes_to_other_managers(client, auth):
     assert len(danas) == 1 and danas[0]['level'] == 'ACTION_REQUIRED'
 
 
-def test_admin_adjust_clamp_and_invariant(client, auth):
+def test_admin_adjust_debt_and_invariant(client, auth):
     bal = _balance(client.get('/api/bootstrap', headers=auth['dana']).json(), 'u-aisha')  # 20
     assert bal == 20
     r = client.post('/api/admin/adjust', headers=auth['dana'],
                     json={'userId': 'u-aisha', 'amount': -100, 'reason': 'correction'})
     assert r.status_code == 200
     entry = [l for l in r.json()['ledger'] if l['type'] == 'ADMIN_ADJUSTMENT'][0]
-    assert entry['amount'] == -20  # clamped, never negative balance
-    assert _balance(r.json(), 'u-aisha') == 0
+    assert entry['amount'] == -100  # full signed deduction is preserved
+    assert _balance(r.json(), 'u-aisha') == -80
     # nothing left to deduct → refused, no zero-value ledger row
     r = client.post('/api/admin/adjust', headers=auth['dana'],
                     json={'userId': 'u-aisha', 'amount': -5, 'reason': 'more'})
-    assert r.status_code == 422
+    assert r.status_code == 200
+    assert _balance(r.json(), 'u-aisha') == -85
     n_adjust = len([l for l in client.get('/api/bootstrap', headers=auth['dana'])
                     .json()['ledger'] if l['type'] == 'ADMIN_ADJUSTMENT'])
-    assert n_adjust == 1
+    assert n_adjust == 2
 
 
 def test_upload_policy_enforced_server_side(client, auth):
@@ -176,7 +177,8 @@ def test_upload_policy_enforced_server_side(client, auth):
 
 def test_notice_scoping(client, auth):
     my = client.get('/api/bootstrap', headers=auth['priya']).json()['notices']
-    foreign = next(n for n in my if n['userId'] != 'u-priya')
+    assert all(n['userId'] == 'u-priya' for n in my)
+    foreign = client.get('/api/bootstrap', headers=auth['marcus']).json()['notices'][0]
     assert client.post(f"/api/notices/{foreign['id']}/read",
                        headers=auth['priya']).status_code == 404
     own = next(n for n in my if n['userId'] == 'u-priya')
@@ -234,4 +236,5 @@ def test_private_task_file_visibility(client, auth):
     att_id = t['briefFiles'][0]['id']
     assert client.get(f'/api/files/{att_id}', headers=auth['aisha']).status_code == 200
     assert client.get(f'/api/files/{att_id}', headers=auth['jonas']).status_code == 404
-    assert client.get(f'/api/files/{att_id}', headers=auth['marcus']).status_code == 200
+    assert client.get(f'/api/files/{att_id}', headers=auth['marcus']).status_code == 404
+    assert client.get(f'/api/files/{att_id}', headers=auth['dana']).status_code == 200

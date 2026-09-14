@@ -1,10 +1,12 @@
+import { SystemToast } from './presentation/SystemToast'
+import { NotificationAudio } from './presentation/NotificationAudio'
 import { selectNeedsAttention } from "./domain/attention"
 import { EventText, EventReason } from './components/EventText'
 import { useEffect, useRef, useState } from 'react'
 import { StoreProvider, useStore, useMe, IS_DEMO } from './store'
 import { DEV_TOOLS, WORKSPACE_TOOLS } from './runtime'
 import { ActivationScreen } from './features/onboarding/ActivationScreen'
-import { balanceOf, canFulfillReward, canSeeTask, sortNotices, visibleNotices } from './domain/engine'
+import { balanceOf, canFulfillReward, canSeeTask, canReviewTask, sortNotices, visibleNotices } from './domain/engine'
 import { Avatar, Coin, NotifBadge, ago, noticeTab, roleKey } from './ui'
 import { I18nProvider, fmtInt, useI18n } from './i18n'
 import { LocaleSwitcher } from './components/LocaleSwitcher'
@@ -51,7 +53,7 @@ const TITLE_KEYS: Record<View, [string, string]> = {
 interface NavItem { v: View; labelKey: string; icon: string; badge?: number; soft?: number }
 
 function Shell() {
-  const { state, dispatch, meId, setMeId, persistError, logout } = useStore()
+  const { state, dispatch, meId, setMeId, persistError, dismissError, logout } = useStore()
   const me = useMe()
   const { t, direction } = useI18n()
   const isMgr = me.role !== 'EMPLOYEE'
@@ -90,7 +92,7 @@ function Shell() {
   const unreadTasks = myNotices.filter(n => !n.read && noticeTab(n) === 'TASKS').length
   const unreadRewards = myNotices.filter(n => !n.read && noticeTab(n) === 'REWARDS').length
   const bellNotices = myNotices.filter(n => noticeTab(n).toLowerCase() === bellTab)
-  const reviewCount = state.tasks.filter(t => t.status === 'SUBMITTED').length
+  const reviewCount = state.tasks.filter(t => t.status === 'SUBMITTED' && canReviewTask(state, t, me)).length
   const attentionCount = selectNeedsAttention(state, me).total
   /* N2.2 §8 + N2.3 §1/§9: the badge counts what THIS user can act on —
      management sees pending approvals; whoever holds fulfillment authority
@@ -244,7 +246,7 @@ function Shell() {
                   <>
                     <div className="bp-head">{t('persona.switcher')}</div>
                     <div className="user-pick" style={{ padding: 6 }}>
-                      {state.users.map(u => (
+                      {state.users.filter(u => u.active !== false && !u.activationPending).map(u => (
                         <button key={u.id} className={u.id === meId ? 'on' : ''} onClick={() => switchUser(u.id)}>
                           <Avatar name={u.name} size={24} />
                           <span className="meta"><b dir="auto">{u.name}</b><small>{t(roleKey(u.role))} — <span dir="auto">{u.position}</span></small></span>
@@ -335,11 +337,8 @@ function Shell() {
         </div>
 
         <div className="content">
-          {persistError && (
-            <div className="panel" style={{ padding: '9px 14px', marginBottom: 12, fontSize: 12.5, borderInlineStart: '3px solid var(--neg)', color: 'var(--neg)' }}>
-              ⚠ {persistError}
-            </div>
-          )}
+          <NotificationAudio key={me.id} />
+          <SystemToast message={persistError} onClose={dismissError} />
           {view === 'overview' && <Overview onGo={go} />}
           {view === 'tasks' && <TasksView scope="all" onOpen={setTaskId} onCreate={() => setCreateOpen(true)} />}
           {/* Admin never gets the worker surface (M1-D D3) — even on a stale view. */}
@@ -382,7 +381,7 @@ function Gate() {
       <button className="btn" onClick={logout}>{t('common.signOut')}</button>
     </div></div>
   )
-  return <Shell />
+  return <Shell key={me?.id} />
 }
 
 export default function App() {

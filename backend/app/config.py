@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # DEV_MODE enables the demo persona quick-login buttons and the seed endpoint.
     # Never enable outside development/demo.
     dev_mode: bool = False
+    allow_weak_dev_passwords: bool = False
     cors_origins: str = 'http://localhost:5173,http://localhost:4173,http://localhost:4180'
 
     @property

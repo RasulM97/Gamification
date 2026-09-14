@@ -44,9 +44,11 @@ async function render(node: ReactNode) {
 }
 
 let dispatchRef: ((a: Action) => void) | null = null
+let switchPersona: (id: string) => void = () => {}
 let stateRef: () => ReturnType<typeof seed> = () => seed()
 function Capture() {
-  const { state, dispatch } = useStore()
+  const { state, dispatch, setMeId } = useStore()
+  switchPersona = setMeId
   dispatchRef = dispatch
   stateRef = () => state
   return null
@@ -295,6 +297,9 @@ describe('N2 — economy invariants unchanged', () => {
        then fulfills it (execution). */
     await act(async () => { dispatchRef!({ type: 'APPROVE_REDEMPTION', id: 'r3', by: 'u-dana' }) })
     await act(async () => { dispatchRef!({ type: 'FULFILL_REDEMPTION', id: 'r3', by: 'u-dana' }) })
+    // Each account sees only its own notifications, matching server bootstrap.
+    expect(stateRef().notices.every(x => x.userId === 'u-dana')).toBe(true)
+    await act(async () => { switchPersona('u-marcus') })
     const n = stateRef().notices.filter(x => x.redemptionId === 'r3' && x.userId === 'u-marcus')
     expect(n.some(x => x.eventType === 'REDEMPTION_FULFILLED')).toBe(true)
     // Dana fulfilled; Marcus got his "Fulfilled — …" notice; no third manager exists in the seed,

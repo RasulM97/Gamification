@@ -1,3 +1,5 @@
+import { Debt } from '../presentation/Debt'
+import { EditUserButton } from '../features/onboarding/EditUser'
 import { UploadPolicyForm } from '../components/UploadPolicyForm'
 import { EventText, EventReason } from '../components/EventText'
 import { CapacityControl } from '../components/CapacityControl'
@@ -36,7 +38,7 @@ function PersonDrawer({ userId, onClose }: { userId: string | null; onClose: () 
             <div className="dim" style={{ fontSize: 12 }} dir="auto">{u.position}</div>
           </div>
           <div style={{ flex: 1 }} />
-          <Coin n={balanceOf(state, u.id)} />
+          <><Coin n={balanceOf(state, u.id)} /><Debt userId={u.id} /></>
         </div>
         <dl className="kv">
           <dt>{t('admin.activeWork')}</dt><dd className="num">{u.role === 'ADMIN' ? t('capacity.notApplicable') : t(active === 1 ? 'admin.activeTasksOne' : 'admin.activeTasksMany', { active, max: capacityLimit(u) })}</dd>
@@ -110,8 +112,9 @@ export function AdminView({ onRewards }: { onRewards?: () => void }) {
                   </td>
                   {/* Admins manage the economy but do not participate in it —
                       no spendable wallet, no Adjust action (M1-C A1). */}
-                  <td className="n">{admin ? <span className="dim" style={{ fontSize: 11.5 }}>— n/a</span> : <Coin n={balanceOf(state, u.id)} />}</td>
-                  <td className="n">
+                  <td className="n">{admin ? <span className="dim" style={{ fontSize: 11.5 }}>— n/a</span> : <><Coin n={balanceOf(state, u.id)} /><Debt userId={u.id} /></>}</td>
+                  <td className="n" onClick={e => e.stopPropagation()}>
+                    <EditUserButton user={u} />
                     {!admin && (
                       <button className="btn" style={{ fontSize: 11.5, padding: '3px 10px' }}
                         onClick={e => { e.stopPropagation(); setAdjustFor(u.id); setAmount(''); setReason('') }}>{t('admin.action.adjust')}</button>

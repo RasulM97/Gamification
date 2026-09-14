@@ -28,7 +28,7 @@ export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () 
   /* Management tasks belong to managers only (the founder/admin arranges and
      reviews, never owns work); PRIVATE tasks are one-to-one with any chosen
      person — employee or manager — hidden from everyone else. */
-  const targets = state.users.filter(u =>
+  const targets = state.users.filter(u => u.active !== false && !u.activationPending).filter(u =>
     (audience === 'EMPLOYEES' ? u.role === 'EMPLOYEE'
       : audience === 'MANAGEMENT' ? u.role === 'MANAGER'
       : u.role !== 'ADMIN') && u.id !== me.id)

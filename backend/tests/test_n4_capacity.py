@@ -65,10 +65,10 @@ def test_default_bootstrap_edit_and_notice(client,auth):
     s=r.json()
     event=next(e for e in s['activity'] if e['eventType']=='USER_CAPACITY_UPDATED')
     assert event['params']=={'actorId':M,'actor':'Marcus Webb','targetUserId':W,'target':'Priya Nair','previousLimit':2,'newLimit':3,'objectType':'USER','objectId':W}
-    notice=[n for n in s['notices'] if n['eventType']=='USER_CAPACITY_UPDATED']
+    notice=[n for n in client.get('/api/bootstrap',headers=auth['priya']).json()['notices'] if n['eventType']=='USER_CAPACITY_UPDATED']
     assert len(notice)==1 and notice[0]['userId']==W and notice[0]['level']=='INFORMATIONAL'
     r=client.patch(f'/api/users/{W}/capacity',headers=auth['marcus'],json={'maxActiveTasks':3})
-    assert len([n for n in r.json()['notices'] if n['eventType']=='USER_CAPACITY_UPDATED'])==1
+    assert len([n for n in client.get('/api/bootstrap',headers=auth['priya']).json()['notices'] if n['eventType']=='USER_CAPACITY_UPDATED'])==1
 
 
 @pytest.mark.parametrize('status,expected',[('OPEN',0),('IN_PROGRESS',1),('SUBMITTED',1),('REJECTED',0),('APPROVED',0),('CANCELLED',0)])

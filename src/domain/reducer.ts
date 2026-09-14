@@ -1,3 +1,7 @@
+import { integrityTransition } from './integrityReducer'
+import { rewardTransition } from './rewardReducer'
+import { integrityRefusal } from './integrityRefusal'
+import { canSeeTask, canReviewTask, needsSensitivityConfirmation, routingAudience } from './taskAccess'
 import type { EventParams, EventType } from './events'
 import { clearTestWorkspace } from './workspace-reset'
 /* Domain reducer — every state transition lives here (see engine.ts header
@@ -7,49 +11,13 @@ import type {
   Priority, Redemption, Reward, RewardCategory, Settings, State, Task,
 } from './model'
 import {
-  capacityReached, capacityLimit, activeCount, canEditCapacity, validCapacity, MUTABLE_LEVELS, balanceOf, canCreateReward, canDecideRedemption,
-  canFulfillReward, canManageReward, claimPenalty,
-  normalizeDeadline, partialPayout, remainingQuota, rewardFits, rewardOpen, roleFits, validateAttachments,
+  capacityReached, capacityLimit, activeCount, canEditCapacity, validCapacity, MUTABLE_LEVELS,
+  canFulfillReward, claimPenalty,
+  normalizeDeadline, partialPayout, roleFits, validateAttachments,
 } from './model'
 /* ── reducer ───────────────────────────────────────────────────────────── */
-export type Action =
-  | { type: 'CLEAR_TEST_WORKSPACE'; by: string }
-  | { type: 'UPDATE_CAPACITY'; by: string; userId: string; maxActiveTasks: number }
-  | { type: 'CREATE_TASK'; by: string; title: string; description: string; priority: Priority; deadline: string | null; reward: number; audience: Audience; assignMode: AssignMode; assigneeId: string | null; attachments?: Attachment[] }
-  | { type: 'CLAIM_TASK'; taskId: string; userId: string }
-  | { type: 'DECLINE_ASSIGNMENT'; taskId: string; userId: string; reason: string }
-  | { type: 'RETURN_CLAIM'; taskId: string; userId: string; reason: string }
-  | { type: 'EDIT_TASK'; taskId: string; by: string; title?: string; description?: string; priority?: Priority; deadline?: string | null; reward?: number }
-  | { type: 'REASSIGN'; taskId: string; by: string; assigneeId: string | null }
-  | { type: 'REPORT_PROGRESS'; taskId: string; userId: string; pct: number }
-  | { type: 'SUBMIT_WORK'; taskId: string; userId: string; note: string; attachments: Attachment[]; pct?: number }
-  | { type: 'RESUME_WORK'; taskId: string; userId: string }
-  | { type: 'APPROVE'; taskId: string; managerId: string }
-  | { type: 'REJECT'; taskId: string; managerId: string; reason: string }
-  | { type: 'HANDOFF'; taskId: string; managerId: string; acceptedPct: number; reason: string; next: { kind: 'EMPLOYEE'; id: string } | { kind: 'AVAILABLE' }; audience?: Audience; priority?: Priority; deadline?: string | null; remainingReward?: number; overrideReason?: string; attachments?: Attachment[] }
-  /* M1-D D7: reopen/reactivate start a NEW cycle with NEW routing — the
-     previous cycle's worker type never constrains the new cycle. audience
-     re-decides who the work is for; assigneeId routes one-to-one. */
-  | { type: 'REOPEN'; taskId: string; by: string; description?: string; attachments?: Attachment[]; audience?: Audience; assigneeId?: string | null }
-  | { type: 'CANCEL_TASK'; taskId: string; by: string; reason: string; acceptedPct?: number }
-  | { type: 'REACTIVATE'; taskId: string; by: string; reason: string; description?: string; attachments?: Attachment[]; audience?: Audience; assigneeId?: string | null }
-  | { type: 'REDEEM'; userId: string; rewardId: string }
-  /* N2.2 §5: approval and fulfillment are separate transitions — approval
-     follows the N2.1-R2 decision matrix; fulfillment is executor work on an
-     already-APPROVED redemption and carries optional tracking details. */
-  | { type: 'APPROVE_REDEMPTION'; id: string; by: string }
-  | { type: 'FULFILL_REDEMPTION'; id: string; by: string; reference?: string; note?: string }
-  | { type: 'CANCEL_REDEMPTION'; id: string; by: string; reason: string }
-  | { type: 'SAVE_REWARD_CATEGORY'; by: string; category: RewardCategory }
-  | { type: 'TOGGLE_FULFILL_PERMISSION'; by: string; userId: string }
-  | { type: 'ADMIN_ADJUST'; by: string; userId: string; amount: number; reason: string }
-  | { type: 'SAVE_REWARD'; by: string; reward: Reward }
-  | { type: 'MARK_READ'; id: string }
-  | { type: 'MARK_ALL_READ'; userId: string }
-  | { type: 'ARCHIVE_NOTICE'; id: string }
-  | { type: 'ARCHIVE_ALL_READ'; userId: string }
-  | { type: 'TOGGLE_NOTIF_MUTE'; userId: string; level: NotifLevel }
-  | { type: 'UPDATE_SETTINGS'; by: string; settings: Settings }
+export type { Action } from './actions'
+import type { Action } from './actions'
 
 /** Structured refusal shared by demo dispatch and the reducer. */
 export function capacityRefusal(s: State, a: Action) {
@@ -64,13 +32,15 @@ export function capacityRefusal(s: State, a: Action) {
 
 export function reducer(prev: State, a: Action): State {
   if (a.type === 'CLEAR_TEST_WORKSPACE') return clearTestWorkspace(prev, a.by)
-  if (capacityRefusal(prev, a)) return prev
+  if (capacityRefusal(prev, a) || integrityRefusal(prev, a)) return prev
+  const integrity = integrityTransition(prev, a)
+  if (integrity) return integrity
   const s: State = structuredClone(prev)
   const now = Date.now()
   const nid = (p: string) => `${p}${s.seq++}`
   const user = (id: string) => s.users.find(u => u.id === id)!
   const task = (id: string) => s.tasks.find(t => t.id === id)!
-  const managers = () => s.users.filter(u => u.role !== 'EMPLOYEE')
+  const managers = () => s.users.filter(u => u.role !== 'EMPLOYEE' && u.active !== false && !u.activationPending)
   /* Domain-level authorization (M0-B): management acts require a MANAGER or
      ADMIN actor; economy adjustment is ADMIN-only. The engine never relies
      on UI gating for permissions. */
@@ -108,11 +78,14 @@ export function reducer(prev: State, a: Action): State {
   const act = (actorId:string,eventType:EventType,params:EventParams) =>
     s.activity.unshift({id:nid('a'),at:now,actorId,action:'',object:'',eventType,params,
       taskId:typeof params.taskId==='string'?params.taskId:undefined,cycle:typeof params.cycle==='number'?params.cycle:undefined})
-  const note = (userId:string,level:NotifLevel,category:NotifCategory,eventType:EventType,params:EventParams) =>
+  const note = (userId:string,level:NotifLevel,category:NotifCategory,eventType:EventType,params:EventParams) => {
+    const recipient = user(userId), subject = typeof params.taskId === 'string' ? task(params.taskId) : undefined
+    if (!recipient || recipient.active === false || (subject && !canSeeTask(subject, recipient))) return
     s.notices.unshift({id:nid('n'),userId,level,category,text:'',eventType,params,
       taskId:typeof params.taskId==='string'?params.taskId:undefined,
       redemptionId:typeof params.redemptionId==='string'?params.redemptionId:undefined,
       pri:typeof params.taskId==='string'?task(params.taskId)?.priority:undefined,at:now,read:false,archived:false})
+  }
   const ledger = (userId:string,type:LedgerType,amount:number,params:EventParams) =>
     s.ledger.unshift({id:nid('l'),at:now,userId,type,amount,ref:'',eventType:type,params:{...params,coins:amount},
       taskId:typeof params.taskId==='string'?params.taskId:undefined,cycle:typeof params.cycle==='number'?params.cycle:undefined})
@@ -132,6 +105,7 @@ export function reducer(prev: State, a: Action): State {
     return { effAudience, nu: nu ?? null }
   }
 
+  if (rewardTransition(a, { s, now, nid, user, managers, isAdmin, isMgmt, canFulfill, snap, rewardSnapshot, act, note, ledger })) return s
   switch (a.type) {
     case 'UPDATE_CAPACITY': {
       const target = user(a.userId)
@@ -160,6 +134,8 @@ export function reducer(prev: State, a: Action): State {
         id: nid('t'), title: a.title, description: a.description,
         priority: a.priority, deadline: normalizeDeadline(a.deadline), reward: a.reward,
         audience: a.audience,
+        restrictedAudiences: a.audience === 'EMPLOYEES' ? [] : [a.audience],
+        privateWorkerRole: a.audience === 'PRIVATE' && a.assigneeId ? user(a.assigneeId).role : null,
         assignMode: a.audience === 'PRIVATE' ? 'SPECIFIC_EMPLOYEE' : a.assignMode,
         assigneeId: (a.audience === 'PRIVATE' || a.assignMode === 'SPECIFIC_EMPLOYEE') ? a.assigneeId : null,
         status: 'OPEN', ownerId: null, cycle: 1,
@@ -174,11 +150,11 @@ export function reducer(prev: State, a: Action): State {
       s.tasks.unshift(t)
       act(a.by, 'TASK_CREATED', snap(t,{}))
       if (t.assigneeId) note(t.assigneeId, 'ACTION_REQUIRED', 'Assignments', 'TASK_ASSIGNED', snap(t,{}))
-      else if (t.priority === 'URGENT' || t.priority === 'IMPORTANT')
+      else if (t.audience === 'MANAGEMENT' || t.priority === 'URGENT' || t.priority === 'IMPORTANT')
         /* L.2-C: public urgent/important work notifies everyone eligible for
            the task's audience so it gets claimed fast; NORMAL/NONE rely on
            Available Work. Management work never pings employees. */
-        s.users.filter(u => roleFits(t, u) && u.id !== a.by)
+        s.users.filter(u => roleFits(t, u) && (t.audience === 'MANAGEMENT' || u.id !== a.by))
           .forEach(e => note(e.id, 'IMPORTANT', 'Tasks', 'TASK_AVAILABLE', snap(t,{})))
       break
     }
@@ -214,7 +190,7 @@ export function reducer(prev: State, a: Action): State {
       t.assigneeId = null; t.updatedAt = now
       act(a.userId, owned ? 'TASK_HANDED_BACK' : 'TASK_DECLINED', snap(t,{}))
       const lvl: NotifLevel = (t.priority === 'URGENT' || t.priority === 'IMPORTANT') ? 'ACTION_REQUIRED' : 'IMPORTANT'
-      managers().filter(m => m.id !== a.userId)
+      managers().filter(m => m.id !== a.userId && canSeeTask(t, m))
         .forEach(m => note(m.id, lvl, 'Assignments', owned ? 'TASK_HANDED_BACK' : 'TASK_DECLINED', snap(t,{})))
       break
     }
@@ -226,7 +202,7 @@ export function reducer(prev: State, a: Action): State {
       if (t.ownerId !== a.userId || (t.status !== 'IN_PROGRESS' && t.status !== 'REJECTED') || t.assignMode !== 'ALL_EMPLOYEES') break
       /* Priority-scaled penalty, clamped so the balance can never go negative
          (MVP rule); no zero-value ledger rows (Ledger §13.7). */
-      const pen = Math.min(claimPenalty(t.priority), Math.max(0, balanceOf(s, a.userId)))
+      const pen = claimPenalty(t.priority)
       if (pen > 0) ledger(a.userId, 'TASK_CLAIM_PENALTY', -pen, snap(t,{coins:-pen}))
       t.ownerId = null; t.status = 'OPEN'; t.reported = 0; t.updatedAt = now
       t.submissionNote = null; t.attachments = []; t.rejectionReason = null; t.submittedAt = null
@@ -274,7 +250,9 @@ export function reducer(prev: State, a: Action): State {
       const t = task(a.taskId)
       if (t.status !== 'OPEN') break
       if (a.assigneeId && user(a.assigneeId).role === 'ADMIN') break // economy exclusion (M1-C)
-      if (a.assigneeId && !roleFits(t, user(a.assigneeId))) break
+      const audience = routingAudience(t, a.assigneeId ? user(a.assigneeId) : undefined, a.audience)
+      if (a.assigneeId && !roleFits({ ...t, audience }, user(a.assigneeId))) break
+      t.audience = audience
       t.assignMode = a.assigneeId ? 'SPECIFIC_EMPLOYEE' : 'ALL_EMPLOYEES'
       t.assigneeId = a.assigneeId; t.updatedAt = now
       act(a.by, a.assigneeId ? 'TASK_REASSIGNED' : 'TASK_AVAILABLE', snap(t,{}))
@@ -533,180 +511,6 @@ export function reducer(prev: State, a: Action): State {
       break
     }
 
-    case 'REDEEM': {
-      const u = user(a.userId)
-      if (u.role === 'ADMIN') break // economy exclusion (M1-C): admins never redeem
-      const r = s.rewards.find(x => x.id === a.rewardId)!
-      if (!rewardFits(r, u)) break // N2-A: eligibility is enforced in the engine, never only in UI
-      /* N2.2 §3/§4: the reward must be open right now — active, not archived,
-         inside its availability window, in stock. UPCOMING/EXPIRED/ARCHIVED
-         rewards stay visible to management but can never be redeemed. */
-      if (!rewardOpen(r, now)) break
-      /* N2.2 §2: per-user limit — only non-CANCELLED redemptions count, so a
-         cancellation restores quota and a FULFILLED one keeps it consumed. */
-      if (remainingQuota(r, s, a.userId) === 0) break
-      if (balanceOf(s, a.userId) < r.cost) break
-      /* Economy timing (N2.2 §9, documented): Coins are debited and stock is
-         decremented at REQUEST time; both are refunded/restored exactly once
-         if the redemption is cancelled from PENDING or APPROVED; a FULFILLED
-         redemption keeps them consumed. No double-debit, no double-restore. */
-      if (r.stock !== null) r.stock -= 1
-      ledger(a.userId, 'REDEMPTION', -r.cost, rewardSnapshot(r,a.userId))
-      s.redemptions.unshift({ id: nid('r'), userId: a.userId, rewardId: r.id, cost: r.cost, status: 'PENDING', at: now })
-      act(a.userId, 'REDEMPTION_REQUESTED', rewardSnapshot(r,a.userId,s.redemptions[0]))
-      /* N2.1-R2: the decision request goes only to users who hold decision
-         authority over THIS redemption — an employee's redemption asks all
-         management; a manager's redemption asks admins only (managers may
-         never decide a manager's redemption, not even another's). */
-      managers().filter(m => canDecideRedemption(u, m))
-        .forEach(m => note(m.id, 'ACTION_REQUIRED', 'Rewards', 'REDEMPTION_REQUESTED', rewardSnapshot(r,a.userId,s.redemptions[0])))
-      break
-    }
-
-    case 'APPROVE_REDEMPTION': {
-      const rd = s.redemptions.find(x => x.id === a.id)!
-      if (rd.status !== 'PENDING') break // decided already — double approvals are refused
-      /* N2.1-R2 decision matrix, unchanged: admin decides all; a manager
-         decides EMPLOYEE redemptions only (never their own or another
-         manager's). Employees never decide. */
-      if (!canDecideRedemption(user(rd.userId), user(a.by))) break
-      rd.status = 'APPROVED'; rd.approvedBy = a.by; rd.approvedAt = now
-      const r = s.rewards.find(x => x.id === rd.rewardId)!
-      act(a.by, 'REDEMPTION_APPROVED', rewardSnapshot(r,rd.userId,rd))
-      note(rd.userId, 'INFORMATIONAL', 'Rewards', 'REDEMPTION_APPROVED', rewardSnapshot(r,rd.userId,rd))
-      /* N2.2 §12: the reward's executors are told the item is ready for
-         fulfillment. Admin holds fulfillment authority by office, so admins
-         are notified too; non-assigned users are not. */
-      s.users.filter(x => canFulfill(x.id, r))
-        .forEach(x => note(x.id, 'ACTION_REQUIRED', 'Rewards', 'REDEMPTION_READY_FOR_FULFILLMENT', rewardSnapshot(r,rd.userId,rd)))
-      break
-    }
-
-    case 'FULFILL_REDEMPTION': {
-      const rd = s.redemptions.find(x => x.id === a.id)!
-      /* N2.2 §5/§8: fulfillment executes on APPROVED items only, by an
-         executor of that reward (or an admin). Approval authority alone does
-         NOT fulfill — decision and execution stay technically separate. The
-         APPROVED gate makes double fulfills and fulfill-vs-cancel races
-         single-outcome. */
-      if (rd.status !== 'APPROVED') break
-      const r = s.rewards.find(x => x.id === rd.rewardId)!
-      if (!canFulfill(a.by, r)) break
-      rd.status = 'FULFILLED'; rd.fulfilledBy = a.by; rd.fulfilledAt = now
-      rd.fulfillmentReference = a.reference?.trim() || null
-      rd.fulfillmentNote = a.note?.trim() || null
-      act(a.by, 'REDEMPTION_FULFILLED', rewardSnapshot(r,rd.userId,rd))
-      note(rd.userId, 'INFORMATIONAL', 'Rewards', 'REDEMPTION_FULFILLED', rewardSnapshot(r,rd.userId,rd))
-      break
-    }
-
-    case 'CANCEL_REDEMPTION': {
-      const rd = s.redemptions.find(x => x.id === a.id)!
-      /* Domain authorization: an employee may cancel only their own open
-         redemption; management decisions follow the N2.1-R2 matrix — admin
-         decides all, a manager decides EMPLOYEE redemptions only. N2.2 §9:
-         cancellation is allowed from PENDING or APPROVED (never FULFILLED);
-         the status gate guarantees refund and stock restore each happen
-         exactly once, even against a concurrent fulfill. */
-      if (rd.status !== 'PENDING' && rd.status !== 'APPROVED') break
-      if (user(a.by).role === 'EMPLOYEE' && rd.userId !== a.by) break
-      if (user(a.by).role !== 'EMPLOYEE' && !canDecideRedemption(user(rd.userId), user(a.by))) break
-      rd.status = 'CANCELLED'; rd.reason = a.reason
-      const r = s.rewards.find(x => x.id === rd.rewardId)!
-      if (r.stock !== null) r.stock += 1
-      ledger(rd.userId, 'REFUND', rd.cost, rewardSnapshot(r,rd.userId,rd))
-      act(a.by, 'REDEMPTION_CANCELLED', rewardSnapshot(r,rd.userId,rd))
-      note(rd.userId, 'IMPORTANT', 'Rewards', 'REDEMPTION_CANCELLED', rewardSnapshot(r,rd.userId,rd))
-      /* N2-D: manager's redemption cancelled by management — the other
-         managers/admins see the decision and the refund. */
-      if (user(rd.userId).role === 'MANAGER' && user(a.by).role !== 'EMPLOYEE')
-        managers().filter(m => m.id !== a.by)
-          .forEach(m => note(m.id, 'INFORMATIONAL', 'Rewards', 'REDEMPTION_CANCELLED', rewardSnapshot(r,rd.userId,rd)))
-      break
-    }
-
-    case 'ADMIN_ADJUST': {
-      if (!isAdmin(a.by)) break // adjustments are an admin-only act
-      if (isAdmin(a.userId)) break // economy exclusion (M1-C): admins hold no personal wallet
-      if (a.amount === 0) break
-      /* Balance policy (M0-B, documented): the never-negative invariant holds
-         for EVERY entry type. A negative adjustment is clamped to the user's
-         current balance; if nothing can be deducted, no entry is written. */
-      const amount = a.amount < 0 ? -Math.min(-a.amount, Math.max(0, balanceOf(s, a.userId))) : a.amount
-      if (amount === 0) break
-      ledger(a.userId, 'ADMIN_ADJUSTMENT', amount, snap(undefined,{employee:user(a.userId).name,employeeId:a.userId,coins:amount}))
-      act(a.by, 'ADMIN_ADJUSTMENT', snap(undefined,{employee:user(a.userId).name,employeeId:a.userId,coins:amount}))
-      note(a.userId, 'IMPORTANT', 'Economy', 'ADMIN_ADJUSTMENT', snap(undefined,{employee:user(a.userId).name,employeeId:a.userId,coins:amount}))
-      break
-    }
-
-    case 'SAVE_REWARD': {
-      if (!isMgmt(a.by)) break
-      /* N2.2 §7: executor assignment is admin-only and must reference users
-         who actually hold the REWARD_FULFILL capability — a manager's edit
-         keeps the existing assignments untouched. */
-      const cleanExecutors = (ids: string[] | undefined, fallback: string[]) =>
-        !isAdmin(a.by) ? fallback
-        : (ids ?? []).filter(id => { const x = s.users.find(u => u.id === id); return !!x && x.role !== 'ADMIN' && x.canFulfillRewards })
-      const i = s.rewards.findIndex(x => x.id === a.reward.id)
-      if (i >= 0) {
-        /* Canonical governance matrix (N2.1-R2): a manager manages only
-           EMPLOYEES-targeted rewards — regardless of who created them — and
-           can never steer a reward to a MANAGERS audience (that would create
-           management scope they may not hold). createdBy is audit-only and
-           immutable: an edit can never transfer or launder it. */
-        if (!canManageReward(s.rewards[i], user(a.by))) break
-        if (!isAdmin(a.by) && a.reward.eligibility === 'MANAGERS') break
-        const prev = s.rewards[i]
-        const next: Reward = { ...a.reward, id: prev.id, createdBy: prev.createdBy, executorIds: cleanExecutors(a.reward.executorIds, prev.executorIds) }
-        s.rewards[i] = next
-        // Snapshot the final governance fields; executor transitions have their own code.
-        act(a.by, next.archived && !prev.archived ? 'REWARD_ARCHIVED' : 'REWARD_UPDATED', rewardSnapshot(next))
-        if (prev.executorIds.join(',') !== next.executorIds.join(','))
-          act(a.by, next.executorIds.length ? 'REWARD_EXECUTORS_UPDATED' : 'REWARD_EXECUTORS_CLEARED', rewardSnapshot(next))
-      } else {
-        /* Create follows the matrix too: a manager may create EMPLOYEES or
-           BOTH rewards (a BOTH reward is company-wide → admin-managed from
-           birth), never a MANAGERS-targeted one. */
-        if (!canCreateReward(a.reward.eligibility, user(a.by))) break
-        s.rewards.push({ ...a.reward, id: nid('rw'), createdBy: a.by, executorIds: cleanExecutors(a.reward.executorIds, []) })
-        act(a.by, 'REWARD_CREATED', rewardSnapshot(s.rewards[s.rewards.length-1]))
-      }
-      break
-    }
-
-    case 'SAVE_REWARD_CATEGORY': {
-      /* N2.2 §1: one flat category level, admin-managed. Archiving a category
-         never invalidates historical rewards — they keep the name string. */
-      if (!isAdmin(a.by)) break
-      const name = a.category.name.trim()
-      if (!name) break
-      const i = s.rewardCategories.findIndex(c => c.id === a.category.id)
-      if (i >= 0) {
-        const prev = s.rewardCategories[i]
-        s.rewardCategories[i] = { ...prev, name, active: a.category.active }
-        act(a.by, prev.active && !a.category.active ? 'REWARD_CATEGORY_ARCHIVED' : 'REWARD_CATEGORY_UPDATED', snap(undefined,{category:name,objectType:"REWARD_CATEGORY",objectId:a.category.id}))
-      } else if (s.rewardCategories.some(c => c.name.toLowerCase() === name.toLowerCase())) break
-      else {
-        s.rewardCategories.push({ id: nid('rc'), name, active: a.category.active })
-        act(a.by, 'REWARD_CATEGORY_CREATED', snap(undefined,{category:name,objectType:"REWARD_CATEGORY",objectId:a.category.id}))
-      }
-      break
-    }
-
-    case 'TOGGLE_FULFILL_PERMISSION': {
-      /* N2.2 §6: the REWARD_FULFILL capability is admin-granted, separate
-         from the system Role, and grants nothing else. Admins never carry it
-         (they fulfill by office). Revoking it also strips executor seats. */
-      if (!isAdmin(a.by)) break
-      const u = user(a.userId)
-      if (u.role === 'ADMIN') break
-      u.canFulfillRewards = !u.canFulfillRewards
-      if (!u.canFulfillRewards) s.rewards.forEach(r => { r.executorIds = r.executorIds.filter(id => id !== u.id) })
-      act(a.by, u.canFulfillRewards ? 'REWARD_FULFILL_PERMISSION_GRANTED' : 'REWARD_FULFILL_PERMISSION_REVOKED', snap(undefined,{employee:u.name,employeeId:u.id,objectType:"USER",objectId:u.id}))
-      break
-    }
-
     case 'MARK_READ': {
       const n = s.notices.find(x => x.id === a.id); if (n) n.read = true
       break
@@ -738,6 +542,17 @@ export function reducer(prev: State, a: Action): State {
       }
       act(a.by, 'UPLOAD_POLICY_UPDATED', snap(undefined,{perFile:s.settings.maxFileSizeMb,total:s.settings.maxSubmissionTotalMb}))
       break
+    }
+  }
+  if ('taskId' in a && ['REASSIGN', 'REOPEN', 'REACTIVATE', 'HANDOFF'].includes(a.type)) {
+    const old = prev.tasks.find(t => t.id === a.taskId)!, next = task(a.taskId)
+    if (s.activity.length > prev.activity.length) {
+      const target = s.users.find(u => u.id === next.assigneeId)
+      next.restrictedAudiences = [...new Set([...(old.restrictedAudiences ?? []), old.audience, next.audience])].filter(x => x !== 'EMPLOYEES')
+      if (next.audience === 'PRIVATE') next.privateWorkerRole = target?.role
+      if (needsSensitivityConfirmation(old, next.audience, target)) act(actorId, 'TASK_AUDIENCE_CONFIRMED', snap(next, {
+        previousAudience: old.audience, newAudience: next.audience, confirmed: true, targetUserId: target?.id ?? null,
+      }))
     }
   }
   return s
