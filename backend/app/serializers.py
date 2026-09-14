@@ -153,10 +153,14 @@ def bootstrap(db: Session, company: Company, viewer: User | None = None) -> dict
 
     return {
         'company': company.name,
+        'companyId': company.id,
+        'onboarding': {'status': company.onboarding_status, 'completedAt': company.onboarding_completed_at},
         'seq': company.seq,
         'settings': {'maxFileSizeMb': s.max_file_size_mb,
                      'maxSubmissionTotalMb': s.max_submission_total_mb},
         'users': [{'id': u.id, 'name': u.name, 'role': u.role,
+                   'companyId': u.company_id,
+                   **({'email': u.email, 'activationPending': u.activation_hash is not None} if viewer is None or viewer.role == 'ADMIN' else {}),
                    'position': u.position,
                    # N2.2 §6: REWARD_FULFILL capability — separate from role
                    'maxActiveTasks': None if u.role == 'ADMIN' else u.max_active_tasks,

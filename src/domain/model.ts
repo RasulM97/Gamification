@@ -39,6 +39,7 @@ export type NotifLevel = 'ACTION_REQUIRED' | 'IMPORTANT' | 'INFORMATIONAL' | 'AU
 export type NotifCategory = 'Tasks' | 'Reviews' | 'Assignments' | 'Rewards' | 'Economy'
 
 export interface User { maxActiveTasks?: number | null; id: string; name: string; role: Role; position: string
+  email?: string; companyId?: string; activationPending?: boolean
   /* N2.2 §6: the REWARD_FULFILL capability — the smallest clean permission
      representation (no enterprise permission-builder). Separate from the
      system Role: an employee or manager with this flag may EXECUTE assigned
@@ -261,6 +262,8 @@ export interface Act extends EventRecord {
   taskId?: string; reason?: string; econ?: string; cycle?: number
 }
 export interface State {
+  companyId?: string
+  onboarding?: { status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED'; completedAt: number | null }
   company: string; seq: number; settings: Settings
   users: User[]; tasks: Task[]; ledger: LedgerEntry[]
   rewardCategories: RewardCategory[] /* N2.2 §1 — flat admin-managed reward categories */

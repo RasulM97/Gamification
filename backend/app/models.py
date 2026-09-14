@@ -34,6 +34,8 @@ class Base(DeclarativeBase):
 
 class Company(Base):
     __tablename__ = 'companies'
+    onboarding_status: Mapped[str] = mapped_column(String(20), default='NOT_STARTED', server_default='NOT_STARTED')
+    onboarding_completed_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id('co'))
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     seq: Mapped[int] = mapped_column(Integer, default=100)  # legacy id counter, unused for uuids
@@ -41,6 +43,8 @@ class Company(Base):
 
 class User(Base):
     __tablename__ = 'users'
+    activation_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    activation_expires_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     __table_args__ = (CheckConstraint('max_active_tasks BETWEEN 1 AND 100', name='ck_users_capacity'),)
     max_active_tasks: Mapped[int] = mapped_column(Integer, default=2, server_default='2', nullable=False)
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id('u'))

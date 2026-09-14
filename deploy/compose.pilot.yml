@@ -1,0 +1,35 @@
+name: cve-pilot
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cve_pilot
+      POSTGRES_USER: cve
+      POSTGRES_PASSWORD: ${PILOT_DB_PASSWORD:?Set a random hex database password}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cve -d cve_pilot"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.pilot
+    environment:
+      CVE_DATABASE_URL: postgresql+psycopg2://cve:${PILOT_DB_PASSWORD:?Required}@db:5432/cve_pilot
+      CVE_JWT_SECRET: ${PILOT_JWT_SECRET:?Set a strong random JWT secret}
+      CVE_DEV_MODE: "false"
+      CVE_STATIC_DIR: /app/static
+      CVE_UPLOAD_DIR: /data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${PILOT_PORT:-8080}:8000"
+    volumes:
+      - uploads:/data/uploads
+volumes:
+  database:
+  uploads:

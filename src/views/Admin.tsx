@@ -1,3 +1,4 @@
+import { UploadPolicyForm } from '../components/UploadPolicyForm'
 import { EventText, EventReason } from '../components/EventText'
 import { CapacityControl } from '../components/CapacityControl'
 import { WorkspaceControls } from '../components/WorkspaceControls'
@@ -6,6 +7,8 @@ import { useStore, useMe } from '../store'
 import { capacityLimit, activeCount, balanceOf } from '../domain/engine'
 import { Avatar, Coin, Drawer, Field, LedgerBadge, Modal, Panel, ago, coins, roleKey } from '../ui'
 import { useI18n } from '../i18n'
+import { WORKSPACE_TOOLS } from '../runtime'
+import { OnboardingView } from '../features/onboarding/OnboardingView'
 
 /* Per-person operational view: workload, contribution mix and the wallet
    entries behind the balance — one click from the People table. */
@@ -66,33 +69,7 @@ function PersonDrawer({ userId, onClose }: { userId: string | null; onClose: () 
   )
 }
 
-/* Company-level upload policy editor (§18). */
-function UploadPolicyForm() {
-  const { state, dispatch } = useStore()
-  const me = useMe()
-  const { t } = useI18n()
-  const [perFile, setPerFile] = useState(String(state.settings.maxFileSizeMb))
-  const [total, setTotal] = useState(String(state.settings.maxSubmissionTotalMb))
-  const dirty = +perFile !== state.settings.maxFileSizeMb || +total !== state.settings.maxSubmissionTotalMb
-  return (
-    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-      <Field label={t('admin.maxFileSize')}>
-        <input type="number" min={1} max={100} value={perFile} onChange={e => setPerFile(e.target.value)} style={{ width: 130 }} />
-      </Field>
-      <Field label={t('admin.maxSubmissionTotal')}>
-        <input type="number" min={1} max={500} value={total} onChange={e => setTotal(e.target.value)} style={{ width: 130 }} />
-      </Field>
-      <button className="btn primary" disabled={!dirty || !(+perFile > 0) || !(+total > 0)}
-        style={{ marginBottom: 13 }}
-        onClick={() => dispatch({
-          type: 'UPDATE_SETTINGS', by: me.id,
-          settings: { maxFileSizeMb: +perFile, maxSubmissionTotalMb: +total },
-        })}>{t('admin.action.savePolicy')}</button>
-    </div>
-  )
-}
-
-export function AdminView() {
+export function AdminView({ onRewards }: { onRewards?: () => void }) {
   const { state, dispatch, reset } = useStore()
   const me = useMe()
   const { t } = useI18n()
@@ -103,6 +80,7 @@ export function AdminView() {
 
   return (
     <div className="wrap">
+      <OnboardingView onRewards={onRewards} />
       <Panel pad={false} title={t('admin.peopleWallets')} right={<span className="eyebrow" dir="auto">{state.company}</span>}>
         <div className="table-wrap">
           <table className="people-table">
@@ -154,7 +132,7 @@ export function AdminView() {
         <UploadPolicyForm />
       </Panel>
 
-      <Panel title={t('admin.demoControls')}>
+      {WORKSPACE_TOOLS && <Panel title={t('admin.demoControls')}>
         <p className="dim" style={{ fontSize: 12.5, marginBottom: 12 }}>
           {t('admin.resetSeedDescription')}
         </p>
@@ -162,7 +140,7 @@ export function AdminView() {
           if (confirm(t('admin.resetConfirm'))) reset()
         }}>{t('admin.action.resetDemo')}</button>
         <WorkspaceControls />
-      </Panel>
+      </Panel>}
 
       <PersonDrawer userId={personFor} onClose={() => setPersonFor(null)} />
 

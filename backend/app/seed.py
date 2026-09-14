@@ -49,7 +49,7 @@ def run(db: Session) -> None:
     now = now_ms()
     dl = lambda d: date.today() + timedelta(days=d)  # noqa: E731
 
-    co = Company(id='co-aster', name='Aster Dynamics', seq=100)
+    co = Company(id='co-aster', name='Aster Dynamics', seq=100, onboarding_status='COMPLETED')
     db.add(co)
     db.add(CompanySettings(company_id=co.id, max_file_size_mb=10,
                            max_submission_total_mb=25))

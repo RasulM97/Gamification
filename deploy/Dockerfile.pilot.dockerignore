@@ -1,0 +1,17 @@
+.git
+node_modules
+dist
+report
+app_log
+.codex
+.agents
+deploy/.env*
+deploy/backups
+backend/.env
+backend/uploads
+backend/test-uploads
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
+*.log
+*.zip

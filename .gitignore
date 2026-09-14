@@ -12,3 +12,5 @@ backend/.env
 backend/uploads/
 backend/test-uploads/
 *.tsbuildinfo
+deploy/.env.pilot
+deploy/backups/

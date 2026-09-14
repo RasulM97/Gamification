@@ -1,7 +1,7 @@
 {
   "name": "corporate-virtual-economy",
   "private": true,
-  "version": "1.6.1-n61",
+  "version": "1.7.0-n7",
   "type": "module",
   "scripts": {
     "dev": "vite",

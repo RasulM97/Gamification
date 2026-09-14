@@ -122,11 +122,12 @@ def me(actor: User = Depends(current_user)):
 
 
 @router.get('/dev/personas')
-def dev_personas(db: Session = Depends(get_db)):
+def dev_personas(actor: User = Depends(current_user), db: Session = Depends(get_db)):
     """Demo quick-login list. DEV_MODE only — never in production."""
     if not settings.dev_mode:
         raise HTTPException(404, {'code': 'NOT_FOUND', 'message': 'Not found'})
-    users = list(db.scalars(select(User).order_by(User.role, User.name)))
+    from .dev_guard import seed_users
+    users = seed_users(db, actor)
     return {'personas': [
         {'id': u.id, 'name': u.name, 'role': u.role, 'position': u.position,
          'email': u.email, 'password': 'demo1234'} for u in users]}
@@ -140,6 +141,8 @@ def dev_reseed(actor: User = Depends(current_user), db: Session = Depends(get_db
         raise HTTPException(404, {'code': 'NOT_FOUND', 'message': 'Not found'})
     if actor.role != 'ADMIN':
         raise DomainError('FORBIDDEN', 'Admin role required')
+    from .dev_guard import require_seed_only
+    require_seed_only(db, actor)
     from sqlalchemy import text
     from .models import Base
     from .seed import run as seed_run

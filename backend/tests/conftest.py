@@ -9,6 +9,7 @@ import os
 import sys
 
 os.environ.setdefault('XDG_RUNTIME_DIR', '/tmp/xdg')
+os.environ.setdefault('CVE_DEV_MODE', 'true')
 os.makedirs(os.environ['XDG_RUNTIME_DIR'], exist_ok=True)
 
 BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

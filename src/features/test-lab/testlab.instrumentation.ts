@@ -1,3 +1,4 @@
+import { WORKSPACE_TOOLS } from '../../runtime'
 import type { Action, State } from '../../domain/engine'
 import { capacityRefusal } from '../../domain/reducer'
 import { ApiError, responseStatus } from '../../api'
@@ -116,6 +117,7 @@ export function verdict(expected: ExpectedOutcome, actual: ActualOutcome): UatRe
   return expected === actual ? 'PASS' : 'FAIL'
 }
 export function beginAttempt(action: Action, actor: Actor, before: State): Attempt | null {
+  if (!WORKSPACE_TOOLS) return null
   const capture = beginOperation(actor)
   if (!capture) return null
   const type = entityTypeOf(action)

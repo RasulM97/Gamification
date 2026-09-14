@@ -2,7 +2,8 @@ import { selectNeedsAttention } from "./domain/attention"
 import { EventText, EventReason } from './components/EventText'
 import { useEffect, useRef, useState } from 'react'
 import { StoreProvider, useStore, useMe, IS_DEMO } from './store'
-import { DEV_TOOLS } from './runtime'
+import { DEV_TOOLS, WORKSPACE_TOOLS } from './runtime'
+import { ActivationScreen } from './features/onboarding/ActivationScreen'
 import { balanceOf, canFulfillReward, canSeeTask, sortNotices, visibleNotices } from './domain/engine'
 import { Avatar, Coin, NotifBadge, ago, noticeTab, roleKey } from './ui'
 import { I18nProvider, fmtInt, useI18n } from './i18n'
@@ -57,6 +58,9 @@ function Shell() {
   const isAdmin = me.role === 'ADMIN'
 
   const [view, setView] = useState<View>('overview')
+  useEffect(() => {
+    if (isAdmin && state.onboarding && state.onboarding.status !== 'COMPLETED') setView('admin')
+  }, [me.id, state.companyId]) // eslint-disable-line react-hooks/exhaustive-deps
   const [taskId, setTaskId] = useState<string | null>(null)
   /* Test Lab page context — keeps manual issues & events routed to the
      page where they happened. */
@@ -88,7 +92,6 @@ function Shell() {
   const bellNotices = myNotices.filter(n => noticeTab(n).toLowerCase() === bellTab)
   const reviewCount = state.tasks.filter(t => t.status === 'SUBMITTED').length
   const attentionCount = selectNeedsAttention(state, me).total
-    + state.tasks.filter(t => t.status === 'OPEN' && t.assignMode === 'SPECIFIC_EMPLOYEE' && !t.assigneeId).length
   /* N2.2 §8 + N2.3 §1/§9: the badge counts what THIS user can act on —
      management sees pending approvals; whoever holds fulfillment authority
      over an approved item (admin by office, management fallback when no
@@ -165,7 +168,7 @@ function Shell() {
         ],
       }, /* Test Lab is a dev/UAT tool, admin-only — its own group, visually
             and conceptually separate from product navigation. */
-      ...(isAdmin ? [{
+      ...(isAdmin && WORKSPACE_TOOLS ? [{
         groupKey: 'common.development', items: [
           { v: 'testlab', labelKey: 'nav.testLab', icon: '⚗' } as NavItem,
         ],
@@ -349,8 +352,8 @@ function Shell() {
           {view === 'wallet' && <WalletView />}
           {view === 'notifications' && <NotificationsView onOpenTask={setTaskId} onOpenRedemption={() => go('redemptions')} />}
           {view === 'activity' && <ActivityView onOpenTask={setTaskId} />}
-          {view === 'admin' && <AdminView />}
-          {view === 'testlab' && isAdmin && <TestLabView />}
+          {view === 'admin' && isAdmin && <AdminView onRewards={() => go('rewards')} />}
+          {view === 'testlab' && isAdmin && WORKSPACE_TOOLS && <TestLabView />}
         </div>
       </div>
 
@@ -367,12 +370,18 @@ function Shell() {
    renders only with loaded, server-authoritative state. DEMO mode skips the
    gate entirely and renders the shell exactly as M0-B always has. */
 function Gate() {
-  const { auth } = useStore()
+  const { auth, state, me, logout } = useStore()
   const { t } = useI18n()
   if (auth === 'loading') {
     return <div className="login-wrap"><div className="dim" style={{ fontSize: 13 }}>{t('common.loading')}</div></div>
   }
   if (auth === 'anon') return <LoginScreen />
+  if (state.onboarding && state.onboarding.status !== 'COMPLETED' && me?.role !== 'ADMIN') return (
+    <div className="login-wrap"><div className="login-card panel"><LocaleSwitcher />
+      <h2 dir="auto">{state.company}</h2><p>{t('setup.waiting')}</p>
+      <button className="btn" onClick={logout}>{t('common.signOut')}</button>
+    </div></div>
+  )
   return <Shell />
 }
 
@@ -382,7 +391,7 @@ export default function App() {
   return (
     <I18nProvider>
       <StoreProvider>
-        {IS_DEMO ? <Shell /> : <Gate />}
+        {!IS_DEMO && window.location.pathname === '/activate' ? <ActivationScreen /> : IS_DEMO ? <Shell /> : <Gate />}
       </StoreProvider>
     </I18nProvider>
   )

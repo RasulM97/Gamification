@@ -4,8 +4,8 @@ Serves the JSON API under /api and, when the built frontend exists
 (static dir), the React SPA for every other path — one deployable unit.
 
 Schema ownership: Alembic (`alembic upgrade head` in the entrypoint).
-On a completely empty database the Aster Dynamics demo seed is inserted so
-the product is immediately explorable; seeding never touches existing data.
+Development mode may seed an empty database. Pilot startup never seeds;
+the explicit provisioning CLI establishes its initial company and Admin.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, text
 
@@ -25,6 +25,7 @@ from .domain import DomainError
 from .models import Company
 from .routes import router
 from .workspace_routes import router as workspace_router
+from .onboarding_routes import router as onboarding_router
 
 STATIC_DIR = os.environ.get('CVE_STATIC_DIR') or str(
     Path(__file__).resolve().parents[2] / 'dist')
@@ -37,9 +38,12 @@ _ERROR_STATUS = {'FORBIDDEN': 403, 'NOT_FOUND': 404, 'VALIDATION': 422,
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from .seed import seed_if_empty
-    with session_scope() as db:
-        seed_if_empty(db)
+    if settings.dev_mode:
+        from .seed import seed_if_empty
+        with session_scope() as db:
+            seed_if_empty(db)
+    elif len(settings.jwt_secret.encode()) < 32 or settings.jwt_secret == 'dev-only-insecure-secret-change-me':
+        raise RuntimeError('Pilot requires an explicit strong CVE_JWT_SECRET (at least 32 bytes)')
     yield
 
 
@@ -57,6 +61,7 @@ async def domain_error_handler(_: Request, exc: DomainError):
 
 app.include_router(router)
 app.include_router(workspace_router)
+app.include_router(onboarding_router)
 
 
 @app.get('/api/health')
@@ -67,4 +72,8 @@ def health():
 
 
 if os.path.isdir(STATIC_DIR):
+    @app.get('/activate', include_in_schema=False)
+    def activation_page():
+        return FileResponse(Path(STATIC_DIR) / 'index.html', headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
+
     app.mount('/', StaticFiles(directory=STATIC_DIR, html=True), name='spa')

@@ -22,9 +22,16 @@ def test_n4_backfill_current_baseline_and_noop(mig_url):
         for table,rows in before.items():
             after=[dict(r) for r in c.execute(sa.text(f'SELECT * FROM {table}')).mappings()]
             if table=='users':
-                for row in after: assert row.pop('max_active_tasks')==2
+                for row in after:
+                    assert row.pop('max_active_tasks')==2
+                    assert row.pop('activation_hash') is None
+                    assert row.pop('activation_expires_at') is None
+            if table=='companies':
+                for row in after:
+                    assert row.pop('onboarding_status')=='COMPLETED'
+                    assert row.pop('onboarding_completed_at') is None
             assert after==[dict(r) for r in rows]
-        assert c.scalar(sa.text('SELECT version_num FROM alembic_version'))=='a41b7c9d2601'
+        assert c.scalar(sa.text('SELECT version_num FROM alembic_version'))=='b72e4d1f8307'
     command.upgrade(cfg,'head')
     with eng.connect() as c: assert c.scalar(sa.text('SELECT count(*) FROM users WHERE max_active_tasks=2'))==3
     with eng.begin() as c:

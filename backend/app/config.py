@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     upload_dir: str = '/tmp/cve-uploads'
     # DEV_MODE enables the demo persona quick-login buttons and the seed endpoint.
     # Never enable outside development/demo.
-    dev_mode: bool = True
+    dev_mode: bool = False
     cors_origins: str = 'http://localhost:5173,http://localhost:4173,http://localhost:4180'
 
     @property

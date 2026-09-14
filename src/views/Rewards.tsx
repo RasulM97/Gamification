@@ -272,7 +272,7 @@ function RewardEditModal({ open, reward, onClose }: { open: boolean; reward: Rew
   const me = useMe()
   const { t } = useI18n()
   const isAdmin = me.role === 'ADMIN'
-  const fallbackCat = state.rewardCategories.find(c => c.active)?.name ?? 'Company Perks'
+  const fallbackCat = state.rewardCategories.find(c => c.active)?.name ?? ''
   const [name, setName] = useState(reward?.name ?? '')
   const [desc, setDesc] = useState(reward?.description ?? '')
   const [cost, setCost] = useState(String(reward?.cost ?? 30))
@@ -323,8 +323,10 @@ function RewardEditModal({ open, reward, onClose }: { open: boolean; reward: Rew
         <Field label={t('reward.field.stock')}><input type="number" min={0} value={stock} onChange={e => setStock(e.target.value)} placeholder="∞" /></Field>
         <Field label={t('reward.field.category')}>
           <select value={cat} onChange={e => setCat(e.target.value)} aria-label={t('reward.field.category')}>
+            {!cat && <option value="" disabled>{t('reward.field.category')}</option>}
             {catOptions.map(c => <option key={c.id} value={c.name}>{c.name}{c.active ? '' : ` (${t('reward.archivedSuffix')})`}</option>)}
           </select>
+          {!catOptions.length && <p className="dim">{t('setup.categoryFirst')}</p>}
         </Field>
       </div>
       <Field label={t('reward.field.whoCanRedeem')} hint={me.role === 'ADMIN'

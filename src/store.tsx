@@ -1,4 +1,5 @@
 import { capacityRefusal } from './domain/reducer'
+import { demoSetup, type SetupOperation } from './features/onboarding/operations'
 import { currentLocale, translate } from './i18n'
 /* Store (M1-A) — dual-runtime data boundary.
  *
@@ -83,6 +84,7 @@ function migrate(s: State): State {
 export type AuthPhase = 'loading' | 'anon' | 'ready'
 
 interface Ctx {
+  setup: (op: SetupOperation) => Promise<string | null>
   state: State
   dispatch: (a: Action) => void
   meId: string
@@ -130,7 +132,8 @@ function useDemoStore(): Ctx {
   const latestDemoState = useRef(state)
   const [persistError, setPersistError] = useState<string | null>(null)
   const [meId, setMeId] = useState(() => {
-    try { return localStorage.getItem(ME_KEY) || 'u-marcus' } catch { return 'u-marcus' }
+    const fallback = state.users.find(u => u.role === 'MANAGER')?.id ?? state.users[0]?.id ?? ''
+    try { return localStorage.getItem(ME_KEY) || fallback } catch { return fallback }
   })
 
   useEffect(() => {
@@ -163,6 +166,12 @@ function useDemoStore(): Ctx {
   }
 
   return useMemo<Ctx>(() => ({
+    setup: async op => {
+      const next = demoSetup(latestDemoState.current, meId, op)
+      latestDemoState.current = next
+      applyDemoState(next)
+      return null
+    },
     state, dispatch: demoDispatch, meId, setMeId, persistError,
     reset: () => {
       try { localStorage.removeItem(STORE_KEY) } catch { /* ignore */ }
@@ -301,6 +310,27 @@ function useServerStore(): Ctx {
 
   const refetch = () => enqueue(() => api.bootstrap())
 
+  const setup = async (op: SetupOperation): Promise<string | null> => {
+    let token: string | null = null, failure: unknown
+    await enqueue(async () => {
+      try {
+        if (op.type === 'person' || op.type === 'activation') {
+          const response = await api.post<{ state: State; activationToken: string }>(
+            op.type === 'person' ? '/users' : `/users/${op.userId}/activation`, op.type === 'person' ? op.person : undefined)
+          token = response.activationToken
+          return response.state
+        }
+        return op.type === 'company' ? await api.patch('/company', { name: op.name })
+          : await api.post(`/onboarding/${op.type}`)
+      } catch (e) {
+        failure = e
+        throw new ApiError(e instanceof ApiError ? e.status : 0, e instanceof ApiError ? e.code : 'ERROR', translate(currentLocale(), 'setup.error'))
+      }
+    })
+    if (failure) throw failure
+    return token
+  }
+
   const serverDispatch = (a: Action) => {
     const actor = me ? { id: me.id, name: me.name, role: me.role } : { id: '', name: '', role: '' }
     const attempt = beginAttempt(a, actor, state!)
@@ -365,6 +395,7 @@ function useServerStore(): Ctx {
      the previous demo session exactly. */
   return useMemo<Ctx>(() => ({
     state: state as State,
+    setup,
     dispatch: serverDispatch,
     meId: me?.id ?? '',
     setMeId,

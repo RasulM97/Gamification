@@ -30,7 +30,7 @@ export function LoginScreen() {
       <div className="login-card panel">
         <div className="brand" style={{ marginBottom: 4 }}>
           <div className="logo"><span className="mark">◈</span>{tr('app.name')}</div>
-          <div className="co"><span dir="auto">Aster Dynamics</span> · {tr('app.pilotBuild')}</div>
+          <div className="co">{tr('app.pilotBuild')}</div>
         </div>
         <p className="dim" style={{ fontSize: 13, margin: '10px 0 18px' }}>
           {tr('auth.intro')}

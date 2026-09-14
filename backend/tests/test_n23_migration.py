@@ -88,7 +88,7 @@ def test_migration_clean_database_to_head(mig_url):
     # revision marker
     with sa.create_engine(mig_url).connect() as c:
         rev = c.scalar(sa.text('SELECT version_num FROM alembic_version'))
-    assert rev == 'a41b7c9d2601'
+    assert rev == 'b72e4d1f8307'
 
 
 def test_migration_from_pre_n22_preserves_data(mig_url):
