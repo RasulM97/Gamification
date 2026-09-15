@@ -5,9 +5,6 @@
       "ES2023"
     ],
     "module": "ESNext",
-    "types": [
-      "node"
-    ],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "noEmit": true,

@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cve
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cve"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    volumes:
+      - cve-postgres:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      CVE_DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/cve
+      CVE_JWT_SECRET: docker-dev-secret
+      CVE_UPLOAD_DIR: /data/uploads
+      CVE_DEV_MODE: "true"
+      CVE_CORS_ORIGINS: http://localhost:5173
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - cve-uploads:/data/uploads
+    command: >-
+      sh -c "alembic upgrade head &&
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    environment:
+      CVE_API_PROXY_TARGET: http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - cve-node-modules:/app/node_modules
+    command: npm run dev:server -- --host 0.0.0.0
+
+volumes:
+  cve-postgres:
+  cve-uploads:
+  cve-node-modules:
