@@ -12,6 +12,7 @@ if config.config_file_name is not None:
 # app models metadata is the migration target
 from app.config import settings  # noqa: E402
 from app.models import Base  # noqa: E402
+from app.canonical_events.model import CanonicalEvent  # noqa: E402,F401 — register event metadata
 
 config.set_main_option('sqlalchemy.url', os.environ.get('CVE_DATABASE_URL')
                        or settings.database_url)

@@ -41,7 +41,9 @@ The canonical event contract is a future shared contract. E0.1 does not implemen
 CanonicalEvent, event tables/ingestion, policy/rule/approval engines, an event-to-
 ledger bridge, recognition, connectors, Shadow Mode, capability discovery, or a
 new headless API. No database or Task/Reward/Ledger behavior changes are authorized
-by this ADR. E1.1 has not started.
+by this ADR. At acceptance, E1.1 had not started. The subsequent
+[E1.1 contract](../events/CANONICAL_EVENT_CONTRACT.md) implements only the canonical
+event persistence foundation under these deployment constraints.
 
 ## Focused static coupling audit
 

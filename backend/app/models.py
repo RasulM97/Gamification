@@ -46,7 +46,8 @@ class User(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default='true')
     activation_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     activation_expires_at: Mapped[float | None] = mapped_column(Float, nullable=True)
-    __table_args__ = (CheckConstraint('max_active_tasks BETWEEN 1 AND 100', name='ck_users_capacity'),)
+    __table_args__ = (CheckConstraint('max_active_tasks BETWEEN 1 AND 100', name='ck_users_capacity'),
+                      UniqueConstraint('company_id', 'id', name='uq_users_company_id_id'))
     max_active_tasks: Mapped[int] = mapped_column(Integer, default=2, server_default='2', nullable=False)
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id('u'))
     company_id: Mapped[str] = mapped_column(ForeignKey('companies.id'), index=True)
