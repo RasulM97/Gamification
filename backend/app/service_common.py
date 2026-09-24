@@ -180,9 +180,11 @@ def reward_snapshot(db, actor, reward, user_id=None, redemption=None, **extra):
 
 def act(db, company_id, actor_id, event_type, params):
     assert event_type in EVENT_TYPES
-    db.add(Activity(company_id=company_id,actor_id=actor_id,action='',object='',
+    record = Activity(company_id=company_id,actor_id=actor_id,action='',object='',
                     event_type=event_type,params=params,task_id=params.get('taskId'),
-                    cycle=params.get('cycle'),at=now_ms()))
+                    cycle=params.get('cycle'),at=now_ms())
+    db.add(record)
+    return record
 
 
 def note(db, company_id, user_id, level, category, event_type, params):

@@ -18,6 +18,7 @@ from .models import (
 )
 from .storage import StoredFile
 from .events import EVENT_TYPES
+from .task_events import record_task_review
 from .economy_position import balance_of
 
 from .task_access import require_view, require_review, can_review
@@ -293,8 +294,9 @@ def approve_work(db: Session, actor: User, task_id: str) -> Task:
     cyc.outcome = 'APPROVED'
     cyc.paid = t.paid
     cyc.verified = 100
-    act(db, actor.company_id, actor.id, 'TASK_APPROVED', snap(db,actor,t,coins=remaining,))
+    audit = act(db, actor.company_id, actor.id, 'TASK_APPROVED', snap(db,actor,t,coins=remaining,))
     note(db, actor.company_id, owner, 'IMPORTANT', 'Economy', 'TASK_APPROVED', snap(db,actor,t,coins=remaining,))
+    record_task_review(db, actor, t, audit, 'approved')
     return t
 
 
@@ -312,8 +314,9 @@ def reject_work(db: Session, actor: User, task_id: str, reason: str) -> Task:
     t.status = 'REJECTED'
     t.rejection_reason = reason
     t.updated_at = now_ms()
-    act(db, actor.company_id, actor.id, 'TASK_REWORK', snap(db,actor,t,reason=reason,))
+    audit = act(db, actor.company_id, actor.id, 'TASK_REWORK', snap(db,actor,t,reason=reason,))
     note(db, actor.company_id, t.owner_id, 'ACTION_REQUIRED', 'Tasks', 'TASK_REWORK', snap(db,actor,t,reason=reason,))
+    record_task_review(db, actor, t, audit, 'rejected')
     return t
 
 

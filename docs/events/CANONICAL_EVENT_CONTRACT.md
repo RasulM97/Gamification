@@ -14,9 +14,11 @@ change. PostgreSQL is the store; no broker, registry service or plugin runtime.
 format Activity, Notification and Ledger history. They are not Canonical Business
 Events. Their tables, code lists, helpers and behavior remain unchanged.
 
-There are no Task adapters, rule/policy/approval engines, economic effects,
-notifications, recognition, connectors, webhooks, capability discovery or event UI
-in E1.1. No existing action emits a CanonicalEvent. E1.2 has not started.
+E1.1 introduced no adapters, rule/policy/approval engines, economic effects,
+notifications, recognition, connectors, webhooks, capability discovery or event UI.
+The subsequent [E1.2 internal catalog](INTERNAL_EVENT_CATALOG.md) adds exactly five
+same-transaction observations through feature-owned adapters; this Core contract
+and schema remain unchanged. Existing business services retain authority.
 
 ## Envelope and storage
 

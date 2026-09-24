@@ -18,6 +18,7 @@ from .models import (
 )
 from .storage import StoredFile
 from .events import EVENT_TYPES
+from .reward_events import record_redemption_created, record_redemption_fulfilled
 from .economy_position import balance_of
 
 from .service_common import (
@@ -111,6 +112,7 @@ def redeem(db: Session, actor: User, reward_id: str) -> Redemption:
         if not _can_decide(actor, m):
             continue
         note(db, cid, m.id, 'ACTION_REQUIRED', 'Rewards', 'REDEMPTION_REQUESTED', reward_snapshot(db,actor,r,actor.id,rd,))
+    record_redemption_created(db, actor, r, rd)
     return rd
 
 
@@ -175,6 +177,7 @@ def fulfill_redemption(db: Session, actor: User, redemption_id: str, *,
     user = get_user(db, actor.company_id, rd.user_id)
     act(db, actor.company_id, actor.id, 'REDEMPTION_FULFILLED', reward_snapshot(db,actor,r,rd.user_id,rd,))
     note(db, actor.company_id, rd.user_id, 'INFORMATIONAL', 'Rewards', 'REDEMPTION_FULFILLED', reward_snapshot(db,actor,r,rd.user_id,rd,))
+    record_redemption_fulfilled(db, actor, rd)
     return rd
 
 

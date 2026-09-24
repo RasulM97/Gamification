@@ -30,7 +30,7 @@ from .onboarding_routes import router as onboarding_router
 STATIC_DIR = os.environ.get('CVE_STATIC_DIR') or str(
     Path(__file__).resolve().parents[2] / 'dist')
 
-_ERROR_STATUS = {'REVIEW_AUTHORITY_REQUIRED': 403, 'FORBIDDEN': 403, 'NOT_FOUND': 404, 'VALIDATION': 422,
+_ERROR_STATUS = {'EVENT_RECORDING_FAILED': 503, 'REVIEW_AUTHORITY_REQUIRED': 403, 'FORBIDDEN': 403, 'NOT_FOUND': 404, 'VALIDATION': 422,
                  'UPLOAD_REJECTED': 422, 'CAPACITY_REACHED': 409, 'BAD_STATE': 409,
                  'OUT_OF_STOCK': 409, 'INSUFFICIENT_FUNDS': 409,
                  'LIMIT_REACHED': 409, 'NO_CHANGE': 409}

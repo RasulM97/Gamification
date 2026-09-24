@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from .domain import DomainError
 from .models import User, now_ms
 from .security import hash_password
+from .user_events import record_user_activated
 
 
 def email_address(value: str) -> str:
@@ -53,3 +54,4 @@ def activate(db: Session, token: str, password: str, weak_confirmed=False):
     user.password_hash = hash_password(password)
     user.activation_hash = None; user.activation_expires_at = None
     db.flush()
+    record_user_activated(db, user, now_ms())
