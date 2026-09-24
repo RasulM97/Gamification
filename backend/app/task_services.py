@@ -26,7 +26,7 @@ from .audience_guard import route
 from .service_common import (
     _num, fmt_coins, _round, _clamp_pct, _dl, _dl_str, get_user, get_task, managers,
     settings_of, active_owned_task_count, lock_capacity_user, require_capacity, update_capacity,
-    snap, reward_snapshot, act, note, ledger, _attach, _close_pending_submission,
+    snap, reward_snapshot, act, note, notes, ledger, _attach, _close_pending_submission,
     _current_cycle, _is_mgmt, _reset_live_submission_slots, _own_notice, mark_read,
     mark_all_read, archive_notice, archive_all_read, toggle_notif_mute, update_settings,
     active_count,
@@ -65,9 +65,10 @@ def create_task(db: Session, actor: User, *, title: str, description: str,
     if eff_assignee:
         note(db, cid, eff_assignee, 'ACTION_REQUIRED', 'Assignments', 'TASK_ASSIGNED', snap(db,actor,t,))
     elif audience == 'MANAGEMENT' or priority in ('URGENT', 'IMPORTANT'):
-        for u in db.scalars(select(User).where(User.company_id == cid, User.active.is_(True), User.activation_hash.is_(None))):
-            if role_fits(audience, u.role) and (audience == 'MANAGEMENT' or u.id != actor.id):
-                note(db, cid, u.id, 'IMPORTANT', 'Tasks', 'TASK_AVAILABLE', snap(db,actor,t,))
+        recipients = [u.id for u in db.scalars(select(User).where(
+            User.company_id == cid, User.active.is_(True), User.activation_hash.is_(None)))
+            if role_fits(audience, u.role) and (audience == 'MANAGEMENT' or u.id != actor.id)]
+        notes(db, cid, recipients, 'IMPORTANT', 'Tasks', 'TASK_AVAILABLE', snap(db,actor,t,))
     return t
 
 

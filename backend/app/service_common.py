@@ -33,6 +33,8 @@ from .models import (
 )
 from .storage import StoredFile
 from .events import EVENT_TYPES
+from .notifications.contracts import NotificationIntent
+from .notifications.router import NotificationRouter
 from .economy_position import balance_of
 
 # ── small helpers ───────────────────────────────────────────────────────────
@@ -188,15 +190,28 @@ def act(db, company_id, actor_id, event_type, params):
 
 
 def note(db, company_id, user_id, level, category, event_type, params):
+    return notes(db, company_id, [user_id], level, category, event_type, params)
+
+
+def notes(db, company_id, user_ids, level, category, event_type, params):
+    """Feature-facing bridge: visibility here, delivery in NotificationRouter.
+
+    One shared business observation fans out once per selected recipient.
+    Separate calls remain separate notifications, as before E2.
+    """
     from .task_access import can_view
-    recipient = get_user(db, company_id, user_id)
+    ids = set(user_ids)
+    recipients = list(db.scalars(select(User).where(
+        User.company_id == company_id, User.id.in_(ids)))) if ids else []
+    if {u.id for u in recipients} != ids:
+        raise DomainError('NOT_FOUND', 'User not found')
     task = db.get(Task, params['taskId']) if params.get('taskId') else None
-    if recipient.active is False or (task is not None and not can_view(task, recipient)):
-        return
-    assert event_type in EVENT_TYPES
-    db.add(Notification(company_id=company_id,user_id=user_id,level=level,category=category,
-                        text='',event_type=event_type,params=params,task_id=params.get('taskId'),
-                        pri=params.get('priority'),redemption_id=params.get('redemptionId'),at=now_ms()))
+    if params.get('taskId') and (task is None or task.company_id != company_id):
+        raise DomainError('NOT_FOUND', 'Task not found')
+    intents = [NotificationIntent(company_id, u.id, level, category, event_type,
+                                  params, now_ms()) for u in recipients
+               if task is None or can_view(task, u)]
+    return NotificationRouter(db, company_id).notify_many(intents)
 
 
 def ledger(db, company_id, user_id, type_, amount, params):
