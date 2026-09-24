@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "cve-graphify": {
+      "command": "<REPOSITORY>/.venv/Scripts/python.exe",
+      "args": ["-m", "graphify.serve", "<REPOSITORY>/graphify-out/graph.json", "--transport", "stdio"],
+      "env": { "PYTHONUTF8": "1", "PYTHONHASHSEED": "0" }
+    }
+  }
+}

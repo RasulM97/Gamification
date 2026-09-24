@@ -1,0 +1,20 @@
+# Local data, credentials, generated files and founder UAT exports never enter the graph.
+.env*
+**/.env*
+*.log
+app_log/
+report/
+test-results/
+playwright-report/
+node_modules/
+dist/
+.venv/
+.git/
+.codex/
+.agents/
+graphify-out/
+backend/uploads/
+backend/test-uploads/
+deploy/backups/
+**/__pycache__/
+**/.pytest_cache/

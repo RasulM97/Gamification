@@ -4,6 +4,9 @@
   "version": "1.7.1-n71",
   "type": "module",
   "scripts": {
+    "graph": "node scripts/graph.mjs build",
+    "graph:status": "node scripts/graph.mjs status",
+    "graph:query": "node scripts/graph.mjs query",
     "dev": "vite",
     "dev:server": "vite --mode server",
     "build": "vite build",

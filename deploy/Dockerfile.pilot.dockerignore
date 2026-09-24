@@ -1,4 +1,6 @@
 .git
+.venv
+graphify-out
 node_modules
 dist
 report

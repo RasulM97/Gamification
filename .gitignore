@@ -14,3 +14,4 @@ backend/test-uploads/
 *.tsbuildinfo
 deploy/.env.pilot
 deploy/backups/
+graphify-out/
