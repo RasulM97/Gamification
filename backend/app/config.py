@@ -1,5 +1,6 @@
 """Centralized configuration (M1). Everything environment-driven; dev defaults only."""
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -9,6 +10,8 @@ class Settings(BaseSettings):
     database_url: str = 'postgresql+psycopg2://postgres@/cve?host=/tmp/cve-pg'
     jwt_secret: str = 'dev-only-insecure-secret-change-me'
     jwt_ttl_seconds: int = 60 * 60 * 12
+    # Independent 32-byte operator key (64 hex characters); empty disables webhook ingress.
+    webhook_master_key: str = Field(default='', repr=False)
     upload_dir: str = '/tmp/cve-uploads'
     # DEV_MODE enables the demo persona quick-login buttons and the seed endpoint.
     # Never enable outside development/demo.

@@ -26,6 +26,7 @@ from .models import Company
 from .routes import router
 from .workspace_routes import router as workspace_router
 from .onboarding_routes import router as onboarding_router
+from .ingestion.routes import router as ingestion_router
 
 STATIC_DIR = os.environ.get('CVE_STATIC_DIR') or str(
     Path(__file__).resolve().parents[2] / 'dist')
@@ -34,6 +35,10 @@ _ERROR_STATUS = {'EVENT_RECORDING_FAILED': 503, 'REVIEW_AUTHORITY_REQUIRED': 403
                  'UPLOAD_REJECTED': 422, 'CAPACITY_REACHED': 409, 'BAD_STATE': 409,
                  'OUT_OF_STOCK': 409, 'INSUFFICIENT_FUNDS': 409,
                  'LIMIT_REACHED': 409, 'NO_CHANGE': 409}
+_ERROR_STATUS.update(WEBHOOK_AUTH_FAILED=401, INGRESS_UNAVAILABLE=503,
+                     INVALID_EVENT_ENVELOPE=422, INVALID_EVENT_TYPE=422,
+                     NORMALIZATION_FAILED=422, PAYLOAD_TOO_LARGE=413,
+                     UNSUPPORTED_EVENT_MEDIA=415)
 
 
 @asynccontextmanager
@@ -66,6 +71,7 @@ app.include_router(integrity_router)
 app.include_router(router)
 app.include_router(workspace_router)
 app.include_router(onboarding_router)
+app.include_router(ingestion_router)
 
 
 @app.get('/api/health')

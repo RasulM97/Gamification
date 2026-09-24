@@ -157,7 +157,10 @@ def test_tenant_references_and_token_boundary(db):
     assert denied.status_code == absent.status_code == 404
     assert denied.json() == absent.json()
     assert client.get('/probe/' + event.id).status_code == 401
-    assert not any('canonical' in r.path or r.path.startswith('/api/events') for r in app.routes)
+    # E3 permits only an Admin-controlled raw manual route, not a trusted
+    # CanonicalEvent write/read API. Its RBAC/strict envelope have ingress tests.
+    assert not any('canonical' in r.path for r in app.routes)
+    assert {r.path for r in app.routes if r.path.startswith('/api/events')} == {'/api/events/manual'}
 
 
 def test_database_enforces_tenant_and_immutability(db):
