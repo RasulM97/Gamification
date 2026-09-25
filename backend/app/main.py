@@ -27,6 +27,7 @@ from .routes import router
 from .workspace_routes import router as workspace_router
 from .onboarding_routes import router as onboarding_router
 from .ingestion.routes import router as ingestion_router
+from .rules.routes import router as rules_router
 
 STATIC_DIR = os.environ.get('CVE_STATIC_DIR') or str(
     Path(__file__).resolve().parents[2] / 'dist')
@@ -39,6 +40,9 @@ _ERROR_STATUS.update(WEBHOOK_AUTH_FAILED=401, INGRESS_UNAVAILABLE=503,
                      INVALID_EVENT_ENVELOPE=422, INVALID_EVENT_TYPE=422,
                      NORMALIZATION_FAILED=422, PAYLOAD_TOO_LARGE=413,
                      UNSUPPORTED_EVENT_MEDIA=415)
+_ERROR_STATUS.update(INVALID_RULE=422, INVALID_CONDITION=422, INVALID_OUTCOME=422,
+                     RULE_NOT_FOUND=404, CANDIDATE_CONFLICT=409,
+                     RULE_EVALUATION_LIMIT=409, RULES_UNAVAILABLE=503)
 
 
 @asynccontextmanager
@@ -72,6 +76,7 @@ app.include_router(router)
 app.include_router(workspace_router)
 app.include_router(onboarding_router)
 app.include_router(ingestion_router)
+app.include_router(rules_router)
 
 
 @app.get('/api/health')
