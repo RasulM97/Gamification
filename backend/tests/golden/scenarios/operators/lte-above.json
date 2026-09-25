@@ -1,0 +1,70 @@
+{
+  "id": "lte-above",
+  "input": {
+    "kind": "canonical",
+    "tenant": "a",
+    "event": {
+      "type": "internal.task.approved",
+      "schema_version": 1,
+      "source_kind": "INTERNAL",
+      "source_id": "gold-source",
+      "source_event_id": "lte-above",
+      "occurred_at": 1790000000000,
+      "payload": {
+        "score": 11
+      },
+      "evidence": null,
+      "actor_id": null,
+      "subject_id": null
+    }
+  },
+  "rules": [
+    {
+      "ref": "rule-a",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic lte-above",
+        "description": "Handcrafted Golden correctness fixture",
+        "active": true,
+        "eventType": "internal.task.approved",
+        "conditions": [
+          {
+            "field": "payload.score",
+            "op": "LTE",
+            "value": 10
+          }
+        ],
+        "outcome": {
+          "kind": "INCENTIVE",
+          "data": {
+            "proposedReward": 5,
+            "reasonCode": "GOLDEN_FIXTURE"
+          }
+        },
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "canonical": {
+      "company_id": "gold-a",
+      "type": "internal.task.approved",
+      "schema_version": 1,
+      "source_kind": "INTERNAL",
+      "source_event_id": "lte-above",
+      "occurred_at": 1790000000000,
+      "payload": {
+        "score": 11
+      },
+      "evidence": null,
+      "actor_id": null,
+      "subject_id": null
+    },
+    "matchedRules": [],
+    "nonMatchedRules": [
+      "rule-a"
+    ],
+    "candidates": [],
+    "errors": []
+  }
+}

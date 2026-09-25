@@ -1,0 +1,91 @@
+{
+  "id": "path-nested-presence",
+  "input": {
+    "kind": "canonical",
+    "tenant": "a",
+    "event": {
+      "type": "external.repository.merged",
+      "schema_version": 1,
+      "source_kind": "GENERIC_WEBHOOK",
+      "source_id": "gold-source",
+      "source_event_id": "path-nested-presence",
+      "occurred_at": 1790000000000,
+      "payload": {
+        "review": {
+          "approved": false
+        }
+      },
+      "evidence": null,
+      "actor_id": null,
+      "subject_id": null
+    }
+  },
+  "rules": [
+    {
+      "ref": "rule-a",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic path-nested-presence",
+        "description": "Handcrafted Golden correctness fixture",
+        "active": true,
+        "eventType": "external.repository.merged",
+        "conditions": [
+          {
+            "field": "payload.review.approved",
+            "op": "EXISTS",
+            "value": true
+          },
+          {
+            "field": "payload.review.absent",
+            "op": "EXISTS",
+            "value": false
+          }
+        ],
+        "outcome": {
+          "kind": "INCENTIVE",
+          "data": {
+            "proposedReward": 5,
+            "reasonCode": "GOLDEN_FIXTURE"
+          }
+        },
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "canonical": {
+      "company_id": "gold-a",
+      "type": "external.repository.merged",
+      "schema_version": 1,
+      "source_kind": "GENERIC_WEBHOOK",
+      "source_event_id": "path-nested-presence",
+      "occurred_at": 1790000000000,
+      "payload": {
+        "review": {
+          "approved": false
+        }
+      },
+      "evidence": null,
+      "actor_id": null,
+      "subject_id": null
+    },
+    "matchedRules": [
+      "rule-a"
+    ],
+    "nonMatchedRules": [],
+    "candidates": [
+      {
+        "rule": "rule-a",
+        "ruleVersion": 1,
+        "kind": "INCENTIVE",
+        "data": {
+          "proposedReward": 5,
+          "reasonCode": "GOLDEN_FIXTURE"
+        },
+        "status": "PROPOSED",
+        "event": "path-nested-presence"
+      }
+    ],
+    "errors": []
+  }
+}

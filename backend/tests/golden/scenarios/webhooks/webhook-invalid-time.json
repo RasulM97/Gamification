@@ -1,0 +1,48 @@
+{
+  "id": "webhook-invalid-time",
+  "input": {
+    "kind": "webhook",
+    "tenant": "a",
+    "raw": {
+      "eventType": "external.repository.merged",
+      "sourceEventId": "webhook-invalid-time",
+      "occurredAt": 1800000300001,
+      "payload": {
+        "repository": "core"
+      }
+    }
+  },
+  "rules": [
+    {
+      "ref": "rule-a",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic webhook-invalid-time",
+        "description": "Handcrafted Golden correctness fixture",
+        "active": true,
+        "eventType": "external.repository.merged",
+        "conditions": [],
+        "outcome": {
+          "kind": "INCENTIVE",
+          "data": {
+            "proposedReward": 5,
+            "reasonCode": "GOLDEN_FIXTURE"
+          }
+        },
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "canonical": null,
+    "matchedRules": [],
+    "nonMatchedRules": [],
+    "candidates": [],
+    "errors": [
+      {
+        "stage": "ingestion",
+        "code": "NORMALIZATION_FAILED"
+      }
+    ]
+  }
+}

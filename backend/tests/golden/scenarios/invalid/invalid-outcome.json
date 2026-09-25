@@ -1,0 +1,67 @@
+{
+  "id": "invalid-outcome",
+  "input": {
+    "kind": "canonical",
+    "tenant": "a",
+    "event": {
+      "type": "external.customer.praise",
+      "schema_version": 1,
+      "source_kind": "GENERIC_WEBHOOK",
+      "source_id": "gold-source",
+      "source_event_id": "invalid-outcome",
+      "occurred_at": 1790000000000,
+      "payload": {
+        "score": 1
+      },
+      "evidence": null,
+      "actor_id": null,
+      "subject_id": null
+    }
+  },
+  "rules": [
+    {
+      "ref": "rule-a",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic invalid-outcome",
+        "description": "Handcrafted Golden correctness fixture",
+        "active": true,
+        "eventType": "external.customer.praise",
+        "conditions": [],
+        "outcome": {
+          "kind": "INCENTIVE",
+          "data": {
+            "note": "Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. Synthetic oversized fixture. "
+          }
+        },
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "canonical": {
+      "company_id": "gold-a",
+      "type": "external.customer.praise",
+      "schema_version": 1,
+      "source_kind": "GENERIC_WEBHOOK",
+      "source_event_id": "invalid-outcome",
+      "occurred_at": 1790000000000,
+      "payload": {
+        "score": 1
+      },
+      "evidence": null,
+      "actor_id": null,
+      "subject_id": null
+    },
+    "matchedRules": [],
+    "nonMatchedRules": [],
+    "candidates": [],
+    "errors": [
+      {
+        "stage": "rule",
+        "ref": "rule-a",
+        "code": "INVALID_OUTCOME"
+      }
+    ]
+  }
+}

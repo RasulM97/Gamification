@@ -1,0 +1,70 @@
+{
+  "id": "type-boolean-number",
+  "input": {
+    "kind": "canonical",
+    "tenant": "a",
+    "event": {
+      "type": "reward.redemption.created",
+      "schema_version": 1,
+      "source_kind": "INTERNAL",
+      "source_id": "gold-source",
+      "source_event_id": "type-boolean-number",
+      "occurred_at": 1790000000000,
+      "payload": {
+        "score": true
+      },
+      "evidence": null,
+      "actor_id": null,
+      "subject_id": null
+    }
+  },
+  "rules": [
+    {
+      "ref": "rule-a",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic type-boolean-number",
+        "description": "Handcrafted Golden correctness fixture",
+        "active": true,
+        "eventType": "reward.redemption.created",
+        "conditions": [
+          {
+            "field": "payload.score",
+            "op": "EQ",
+            "value": 1
+          }
+        ],
+        "outcome": {
+          "kind": "INCENTIVE",
+          "data": {
+            "proposedReward": 5,
+            "reasonCode": "GOLDEN_FIXTURE"
+          }
+        },
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "canonical": {
+      "company_id": "gold-a",
+      "type": "reward.redemption.created",
+      "schema_version": 1,
+      "source_kind": "INTERNAL",
+      "source_event_id": "type-boolean-number",
+      "occurred_at": 1790000000000,
+      "payload": {
+        "score": true
+      },
+      "evidence": null,
+      "actor_id": null,
+      "subject_id": null
+    },
+    "matchedRules": [],
+    "nonMatchedRules": [
+      "rule-a"
+    ],
+    "candidates": [],
+    "errors": []
+  }
+}

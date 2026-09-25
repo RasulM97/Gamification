@@ -1,0 +1,70 @@
+{
+  "id": "gte-below",
+  "input": {
+    "kind": "canonical",
+    "tenant": "a",
+    "event": {
+      "type": "external.customer.praise",
+      "schema_version": 1,
+      "source_kind": "GENERIC_WEBHOOK",
+      "source_id": "gold-source",
+      "source_event_id": "gte-below",
+      "occurred_at": 1790000000000,
+      "payload": {
+        "score": 9
+      },
+      "evidence": null,
+      "actor_id": null,
+      "subject_id": null
+    }
+  },
+  "rules": [
+    {
+      "ref": "rule-a",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic gte-below",
+        "description": "Handcrafted Golden correctness fixture",
+        "active": true,
+        "eventType": "external.customer.praise",
+        "conditions": [
+          {
+            "field": "payload.score",
+            "op": "GTE",
+            "value": 10
+          }
+        ],
+        "outcome": {
+          "kind": "INCENTIVE",
+          "data": {
+            "proposedReward": 5,
+            "reasonCode": "GOLDEN_FIXTURE"
+          }
+        },
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "canonical": {
+      "company_id": "gold-a",
+      "type": "external.customer.praise",
+      "schema_version": 1,
+      "source_kind": "GENERIC_WEBHOOK",
+      "source_event_id": "gte-below",
+      "occurred_at": 1790000000000,
+      "payload": {
+        "score": 9
+      },
+      "evidence": null,
+      "actor_id": null,
+      "subject_id": null
+    },
+    "matchedRules": [],
+    "nonMatchedRules": [
+      "rule-a"
+    ],
+    "candidates": [],
+    "errors": []
+  }
+}

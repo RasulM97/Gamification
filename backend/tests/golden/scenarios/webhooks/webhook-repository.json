@@ -1,0 +1,101 @@
+{
+  "id": "webhook-repository",
+  "input": {
+    "kind": "webhook",
+    "tenant": "a",
+    "raw": {
+      "eventType": "external.repository.merged",
+      "sourceEventId": "webhook-repository",
+      "occurredAt": 1790000000000,
+      "payload": {
+        "repository": "core",
+        "change": {
+          "ref": "CHANGE-SYN-7",
+          "approved": true
+        }
+      },
+      "evidence": [
+        {
+          "kind": "change",
+          "reference": "CHANGE-SYN-7",
+          "label": "Synthetic approved change"
+        }
+      ]
+    }
+  },
+  "rules": [
+    {
+      "ref": "rule-a",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic webhook-repository",
+        "description": "Handcrafted Golden correctness fixture",
+        "active": true,
+        "eventType": "external.repository.merged",
+        "conditions": [
+          {
+            "field": "payload.repository",
+            "op": "IN",
+            "value": [
+              "core",
+              "platform"
+            ]
+          }
+        ],
+        "outcome": {
+          "kind": "INCENTIVE",
+          "data": {
+            "proposedReward": 5,
+            "reasonCode": "GOLDEN_FIXTURE"
+          }
+        },
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "canonical": {
+      "company_id": "gold-a",
+      "type": "external.repository.merged",
+      "schema_version": 1,
+      "source_kind": "GENERIC_WEBHOOK",
+      "source_event_id": "webhook-repository",
+      "occurred_at": 1790000000000,
+      "payload": {
+        "repository": "core",
+        "change": {
+          "ref": "CHANGE-SYN-7",
+          "approved": true
+        }
+      },
+      "evidence": [
+        {
+          "kind": "change",
+          "reference": "CHANGE-SYN-7",
+          "label": "Synthetic approved change"
+        }
+      ],
+      "actor_id": null,
+      "subject_id": null
+    },
+    "matchedRules": [
+      "rule-a"
+    ],
+    "nonMatchedRules": [],
+    "candidates": [
+      {
+        "rule": "rule-a",
+        "ruleVersion": 1,
+        "kind": "INCENTIVE",
+        "data": {
+          "proposedReward": 5,
+          "reasonCode": "GOLDEN_FIXTURE"
+        },
+        "status": "PROPOSED",
+        "event": "webhook-repository"
+      }
+    ],
+    "errors": []
+  },
+  "duplicateInput": true
+}
