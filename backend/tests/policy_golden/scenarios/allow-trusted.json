@@ -1,0 +1,51 @@
+{
+  "id": "allow-trusted",
+  "candidateData": {
+    "proposedReward": 8
+  },
+  "eventPayload": {
+    "verified": true
+  },
+  "policies": [
+    {
+      "id": "p-allow",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-allow",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [
+          {
+            "field": "event.payload.verified",
+            "op": "EQ",
+            "value": true
+          },
+          {
+            "field": "event.sourceKind",
+            "op": "EQ",
+            "value": "GENERIC_WEBHOOK"
+          },
+          {
+            "field": "candidate.data.proposedReward",
+            "op": "LTE",
+            "value": 10
+          }
+        ],
+        "decision": "ALLOW",
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "effectiveDecision": "ALLOW",
+    "matchedPolicies": [
+      "p-allow"
+    ],
+    "nonMatchedPolicies": [],
+    "defaultUsed": false,
+    "winningPolicyId": "p-allow",
+    "errors": []
+  }
+}

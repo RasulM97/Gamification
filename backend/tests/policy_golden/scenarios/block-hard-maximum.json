@@ -1,0 +1,43 @@
+{
+  "id": "block-hard-maximum",
+  "candidateData": {
+    "proposedReward": 20,
+    "recognition": true,
+    "approvalHint": "MANAGER"
+  },
+  "eventPayload": {
+    "verified": true
+  },
+  "policies": [
+    {
+      "id": "p-block",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-block",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [
+          {
+            "field": "candidate.data.proposedReward",
+            "op": "GT",
+            "value": 15
+          }
+        ],
+        "decision": "BLOCK",
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "effectiveDecision": "BLOCK",
+    "matchedPolicies": [
+      "p-block"
+    ],
+    "nonMatchedPolicies": [],
+    "defaultUsed": false,
+    "winningPolicyId": "p-block",
+    "errors": []
+  }
+}

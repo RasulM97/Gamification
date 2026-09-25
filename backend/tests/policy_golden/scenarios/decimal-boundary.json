@@ -1,0 +1,46 @@
+{
+  "id": "decimal-boundary",
+  "candidateData": {
+    "proposedReward": 8.5
+  },
+  "eventPayload": {
+    "verified": true
+  },
+  "policies": [
+    {
+      "id": "p-allow",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-allow",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [
+          {
+            "field": "candidate.data.proposedReward",
+            "op": "GTE",
+            "value": 8.5
+          },
+          {
+            "field": "candidate.data.proposedReward",
+            "op": "LTE",
+            "value": 8.5
+          }
+        ],
+        "decision": "ALLOW",
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "effectiveDecision": "ALLOW",
+    "matchedPolicies": [
+      "p-allow"
+    ],
+    "nonMatchedPolicies": [],
+    "defaultUsed": false,
+    "winningPolicyId": "p-allow",
+    "errors": []
+  }
+}

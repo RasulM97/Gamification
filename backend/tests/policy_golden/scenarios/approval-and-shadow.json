@@ -1,0 +1,52 @@
+{
+  "id": "approval-and-shadow",
+  "candidateData": {
+    "proposedReward": 20,
+    "recognition": true,
+    "approvalHint": "MANAGER"
+  },
+  "eventPayload": {
+    "verified": true
+  },
+  "policies": [
+    {
+      "id": "p-approval",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-approval",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [],
+        "decision": "REQUIRE_APPROVAL",
+        "priority": 0
+      }
+    },
+    {
+      "id": "p-shadow",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-shadow",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [],
+        "decision": "SHADOW_ONLY",
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "effectiveDecision": "SHADOW_ONLY",
+    "matchedPolicies": [
+      "p-shadow",
+      "p-approval"
+    ],
+    "nonMatchedPolicies": [],
+    "defaultUsed": false,
+    "winningPolicyId": "p-shadow",
+    "errors": []
+  }
+}

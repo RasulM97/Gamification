@@ -1,0 +1,35 @@
+{
+  "id": "exact-event-scope",
+  "candidateData": {
+    "proposedReward": 20,
+    "recognition": true,
+    "approvalHint": "MANAGER"
+  },
+  "eventPayload": {
+    "verified": true
+  },
+  "policies": [
+    {
+      "id": "p-block",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-block",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": "internal.task.approved",
+        "conditions": [],
+        "decision": "BLOCK",
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "effectiveDecision": "REQUIRE_APPROVAL",
+    "matchedPolicies": [],
+    "nonMatchedPolicies": [],
+    "defaultUsed": true,
+    "winningPolicyId": null,
+    "errors": []
+  }
+}

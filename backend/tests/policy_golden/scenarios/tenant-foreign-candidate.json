@@ -1,0 +1,33 @@
+{
+  "id": "tenant-foreign-candidate",
+  "candidateData": {
+    "proposedReward": 20,
+    "recognition": true,
+    "approvalHint": "MANAGER"
+  },
+  "eventPayload": {
+    "verified": true
+  },
+  "policies": [
+    {
+      "id": "p-allow",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-allow",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [],
+        "decision": "ALLOW",
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "errors": [
+      "NOT_FOUND"
+    ]
+  },
+  "evaluateAs": "b"
+}

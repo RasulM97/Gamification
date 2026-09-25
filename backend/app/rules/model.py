@@ -35,6 +35,7 @@ class Rule(Base):
 class RuleCandidate(Base):
     __tablename__ = 'rule_candidates'
     __table_args__ = (
+        UniqueConstraint('company_id', 'id', name='uq_rule_candidates_company_id_id'),
         ForeignKeyConstraint(['company_id','canonical_event_id'], ['canonical_events.company_id','canonical_events.id'], name='fk_candidates_event'),
         ForeignKeyConstraint(['company_id','rule_id'], ['rules.company_id','rules.id'], name='fk_candidates_rule'),
         UniqueConstraint('company_id','canonical_event_id','rule_id','rule_version', name='uq_rule_candidate_identity'),

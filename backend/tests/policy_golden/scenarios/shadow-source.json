@@ -1,0 +1,45 @@
+{
+  "id": "shadow-source",
+  "candidateData": {
+    "proposedReward": 20,
+    "recognition": true,
+    "approvalHint": "MANAGER"
+  },
+  "eventPayload": {
+    "verified": true
+  },
+  "policies": [
+    {
+      "id": "p-shadow",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-shadow",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [
+          {
+            "field": "event.sourceKind",
+            "op": "IN",
+            "value": [
+              "GENERIC_WEBHOOK"
+            ]
+          }
+        ],
+        "decision": "SHADOW_ONLY",
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "effectiveDecision": "SHADOW_ONLY",
+    "matchedPolicies": [
+      "p-shadow"
+    ],
+    "nonMatchedPolicies": [],
+    "defaultUsed": false,
+    "winningPolicyId": "p-shadow",
+    "errors": []
+  }
+}

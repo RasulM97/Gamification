@@ -1,0 +1,53 @@
+{
+  "id": "version-history",
+  "candidateData": {
+    "proposedReward": 20,
+    "recognition": true,
+    "approvalHint": "MANAGER"
+  },
+  "eventPayload": {
+    "verified": true
+  },
+  "policies": [
+    {
+      "id": "p-policy",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-policy",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [],
+        "decision": "REQUIRE_APPROVAL",
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "effectiveDecision": "REQUIRE_APPROVAL",
+    "matchedPolicies": [
+      "p-policy"
+    ],
+    "nonMatchedPolicies": [],
+    "defaultUsed": false,
+    "winningPolicyId": "p-policy",
+    "errors": []
+  },
+  "update": {
+    "id": "p-policy",
+    "patch": {
+      "decision": "ALLOW"
+    }
+  },
+  "afterUpdate": {
+    "effectiveDecision": "ALLOW",
+    "matchedPolicies": [
+      "p-policy"
+    ],
+    "nonMatchedPolicies": [],
+    "defaultUsed": false,
+    "winningPolicyId": "p-policy",
+    "errors": []
+  }
+}

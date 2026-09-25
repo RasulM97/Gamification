@@ -1,0 +1,52 @@
+{
+  "id": "allow-and-block",
+  "candidateData": {
+    "proposedReward": 20,
+    "recognition": true,
+    "approvalHint": "MANAGER"
+  },
+  "eventPayload": {
+    "verified": true
+  },
+  "policies": [
+    {
+      "id": "p-allow",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-allow",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [],
+        "decision": "ALLOW",
+        "priority": 100
+      }
+    },
+    {
+      "id": "p-block",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-block",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [],
+        "decision": "BLOCK",
+        "priority": 1
+      }
+    }
+  ],
+  "expected": {
+    "effectiveDecision": "BLOCK",
+    "matchedPolicies": [
+      "p-block",
+      "p-allow"
+    ],
+    "nonMatchedPolicies": [],
+    "defaultUsed": false,
+    "winningPolicyId": "p-block",
+    "errors": []
+  }
+}

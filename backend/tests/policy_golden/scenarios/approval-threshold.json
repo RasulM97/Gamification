@@ -1,0 +1,43 @@
+{
+  "id": "approval-threshold",
+  "candidateData": {
+    "proposedReward": 20,
+    "recognition": true,
+    "approvalHint": "MANAGER"
+  },
+  "eventPayload": {
+    "verified": true
+  },
+  "policies": [
+    {
+      "id": "p-approval",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-approval",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [
+          {
+            "field": "candidate.data.proposedReward",
+            "op": "GT",
+            "value": 10
+          }
+        ],
+        "decision": "REQUIRE_APPROVAL",
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "effectiveDecision": "REQUIRE_APPROVAL",
+    "matchedPolicies": [
+      "p-approval"
+    ],
+    "nonMatchedPolicies": [],
+    "defaultUsed": false,
+    "winningPolicyId": "p-approval",
+    "errors": []
+  }
+}

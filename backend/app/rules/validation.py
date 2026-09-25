@@ -1,13 +1,11 @@
-"""Data-only bounded AND DSL; no expression parsing or object introspection."""
+"""Rules own field roots and outcomes; predicate semantics are shared."""
 from decimal import Decimal
 import re
 from ..canonical_events.validation import TYPE_PATTERN, json_data
 from ..domain import DomainError
-from .contracts import MAX_CONDITIONS, MAX_FIELD_DEPTH, MAX_IN_VALUES
+from ..safe_predicates import validation as predicates
 
-OPERATORS = {'EQ', 'NEQ', 'GT', 'GTE', 'LT', 'LTE', 'IN', 'EXISTS'}
 FIELDS = {'type', 'sourceKind', 'schemaVersion', 'subjectId', 'actorId'}
-RESERVED = {'constructor', 'prototype', '__proto__', '__class__', '__dict__'}
 
 
 def fail(code):
@@ -15,51 +13,17 @@ def fail(code):
 
 
 def field_path(value):
-    if type(value) is not str or len(value) > 200:
+    try:
+        return predicates.field_path(value, FIELDS, ('payload',))
+    except ValueError:
         fail('INVALID_CONDITION')
-    parts = value.split('.')
-    if value in FIELDS:
-        return parts
-    if not 2 <= len(parts) <= MAX_FIELD_DEPTH or parts[0] != 'payload':
-        fail('INVALID_CONDITION')
-    if any(not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,63}', p) or p in RESERVED or '__' in p for p in parts):
-        fail('INVALID_CONDITION')
-    return parts
-
-
-def primitive(value):
-    if value is None or type(value) is bool:
-        return True
-    if type(value) is str:
-        return len(value) <= 1024
-    if type(value) in (int, float):
-        return -10**12 <= value <= 10**12  # Also refuses NaN/infinity without coercion.
-    return False
 
 
 def conditions(value):
-    if type(value) is not list or len(value) > MAX_CONDITIONS:
-        fail('INVALID_CONDITION')
-    for condition in value:
-        if type(condition) is not dict or condition.keys() != {'field', 'op', 'value'}:
-            fail('INVALID_CONDITION')
-        field_path(condition['field'])
-        op, target = condition['op'], condition['value']
-        if type(op) is not str or op not in OPERATORS:
-            fail('INVALID_CONDITION')
-        if op == 'IN':
-            valid = type(target) is list and 1 <= len(target) <= MAX_IN_VALUES and all(primitive(v) for v in target)
-        elif op == 'EXISTS':
-            valid = type(target) is bool
-        elif op in ('GT', 'GTE', 'LT', 'LTE'):
-            valid = type(target) in (int, float) and primitive(target)
-        else:
-            valid = primitive(target)
-        if not valid:
-            fail('INVALID_CONDITION')
     try:
+        predicates.conditions(value, field_path)
         return json_data(value, 16 * 1024)
-    except DomainError:
+    except (ValueError, DomainError):
         fail('INVALID_CONDITION')
 
 

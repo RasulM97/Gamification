@@ -1,0 +1,67 @@
+{
+  "id": "severity-tie-order",
+  "candidateData": {
+    "proposedReward": 20,
+    "recognition": true,
+    "approvalHint": "MANAGER"
+  },
+  "eventPayload": {
+    "verified": true
+  },
+  "policies": [
+    {
+      "id": "p-block-b",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-block-b",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [],
+        "decision": "BLOCK",
+        "priority": 0
+      }
+    },
+    {
+      "id": "p-block-a",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-block-a",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [],
+        "decision": "BLOCK",
+        "priority": 0
+      }
+    },
+    {
+      "id": "p-block-priority",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-block-priority",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [],
+        "decision": "BLOCK",
+        "priority": 1
+      }
+    }
+  ],
+  "expected": {
+    "effectiveDecision": "BLOCK",
+    "matchedPolicies": [
+      "p-block-priority",
+      "p-block-a",
+      "p-block-b"
+    ],
+    "nonMatchedPolicies": [],
+    "defaultUsed": false,
+    "winningPolicyId": "p-block-priority",
+    "errors": []
+  }
+}

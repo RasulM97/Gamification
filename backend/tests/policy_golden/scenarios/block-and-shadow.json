@@ -1,0 +1,52 @@
+{
+  "id": "block-and-shadow",
+  "candidateData": {
+    "proposedReward": 20,
+    "recognition": true,
+    "approvalHint": "MANAGER"
+  },
+  "eventPayload": {
+    "verified": true
+  },
+  "policies": [
+    {
+      "id": "p-shadow",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-shadow",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [],
+        "decision": "SHADOW_ONLY",
+        "priority": 100
+      }
+    },
+    {
+      "id": "p-block",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-block",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [],
+        "decision": "BLOCK",
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "effectiveDecision": "BLOCK",
+    "matchedPolicies": [
+      "p-block",
+      "p-shadow"
+    ],
+    "nonMatchedPolicies": [],
+    "defaultUsed": false,
+    "winningPolicyId": "p-block",
+    "errors": []
+  }
+}

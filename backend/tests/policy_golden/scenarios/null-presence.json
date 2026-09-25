@@ -1,0 +1,47 @@
+{
+  "id": "null-presence",
+  "candidateData": {
+    "proposedReward": 5,
+    "note": null
+  },
+  "eventPayload": {
+    "verified": true
+  },
+  "policies": [
+    {
+      "id": "p-allow",
+      "tenant": "a",
+      "definition": {
+        "name": "Synthetic p-allow",
+        "description": "Golden governance only",
+        "active": true,
+        "candidateKind": "INCENTIVE",
+        "eventType": null,
+        "conditions": [
+          {
+            "field": "candidate.data.note",
+            "op": "EXISTS",
+            "value": true
+          },
+          {
+            "field": "candidate.data.note",
+            "op": "EQ",
+            "value": null
+          }
+        ],
+        "decision": "ALLOW",
+        "priority": 0
+      }
+    }
+  ],
+  "expected": {
+    "effectiveDecision": "ALLOW",
+    "matchedPolicies": [
+      "p-allow"
+    ],
+    "nonMatchedPolicies": [],
+    "defaultUsed": false,
+    "winningPolicyId": "p-allow",
+    "errors": []
+  }
+}

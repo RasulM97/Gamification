@@ -1,0 +1,20 @@
+{
+  "id": "default-empty",
+  "candidateData": {
+    "proposedReward": 20,
+    "recognition": true,
+    "approvalHint": "MANAGER"
+  },
+  "eventPayload": {
+    "verified": true
+  },
+  "policies": [],
+  "expected": {
+    "effectiveDecision": "REQUIRE_APPROVAL",
+    "matchedPolicies": [],
+    "nonMatchedPolicies": [],
+    "defaultUsed": true,
+    "winningPolicyId": null,
+    "errors": []
+  }
+}
