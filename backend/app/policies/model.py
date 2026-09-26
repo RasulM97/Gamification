@@ -36,6 +36,7 @@ class Policy(Base):
 class PolicyDecision(Base):
     __tablename__ = 'policy_decisions'
     __table_args__ = (
+        UniqueConstraint('company_id', 'id', 'candidate_id', name='uq_policy_decision_provenance'),
         ForeignKeyConstraint(['company_id', 'candidate_id'], ['rule_candidates.company_id', 'rule_candidates.id'], name='fk_policy_decisions_candidate'),
         UniqueConstraint('company_id', 'candidate_id', 'policy_set_fingerprint', name='uq_policy_decision_identity'),
         CheckConstraint("effective_decision IN ('ALLOW','BLOCK','REQUIRE_APPROVAL','SHADOW_ONLY')", name='ck_policy_decisions_effective'),

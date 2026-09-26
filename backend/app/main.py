@@ -29,6 +29,7 @@ from .onboarding_routes import router as onboarding_router
 from .ingestion.routes import router as ingestion_router
 from .rules.routes import router as rules_router
 from .policies.routes import router as policies_router
+from .approvals.routes import router as approvals_router
 
 STATIC_DIR = os.environ.get('CVE_STATIC_DIR') or str(
     Path(__file__).resolve().parents[2] / 'dist')
@@ -47,6 +48,10 @@ _ERROR_STATUS.update(INVALID_RULE=422, INVALID_CONDITION=422, INVALID_OUTCOME=42
 _ERROR_STATUS.update(INVALID_POLICY=422, INVALID_POLICY_CONDITION=422, INVALID_POLICY_DECISION=422,
                      POLICY_NOT_FOUND=404, POLICY_EVALUATION_CONFLICT=409,
                      POLICY_EVALUATION_LIMIT=409, POLICIES_UNAVAILABLE=503)
+_ERROR_STATUS.update(APPROVAL_NOT_REQUIRED=409, APPROVAL_NOT_FOUND=404, APPROVAL_FORBIDDEN=403,
+                     SELF_APPROVAL_FORBIDDEN=403, APPROVAL_ALREADY_DECIDED=409,
+                     INVALID_APPROVAL_DECISION=422, INVALID_APPROVAL_FILTER=422,
+                     APPROVER_INACTIVE=403, APPROVALS_UNAVAILABLE=503)
 
 
 @asynccontextmanager
@@ -82,6 +87,7 @@ app.include_router(onboarding_router)
 app.include_router(ingestion_router)
 app.include_router(rules_router)
 app.include_router(policies_router)
+app.include_router(approvals_router)
 
 
 @app.get('/api/health')
