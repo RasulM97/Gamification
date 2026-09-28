@@ -1,0 +1,34 @@
+{
+  "corpusVersion": 1,
+  "sanitizationVersion": 1,
+  "source": "GH Archive public GitHub Events API hour",
+  "sourceUrl": "https://data.gharchive.org/2025-01-15-12.json.gz",
+  "sourceReference": "https://www.gharchive.org/",
+  "retrievedAt": "2026-09-28T03:56:27.181525+00:00",
+  "publicAccessBasis": "Public unauthenticated archive of public GitHub activity",
+  "usageNote": "Archive code MIT / website CC-BY-4.0 are not dataset licenses. Third-party rights may apply. Tracked subset retains factual structure, dates, enums, counts; identities pseudonymized and expressive text removed. Raw archive remains ignored local evidence, not redistributed.",
+  "recordsRetrieved": 270553,
+  "recordsSelected": 1100,
+  "recordsSanitized": 1100,
+  "observedFamilies": {
+    "other": 73802,
+    "closed": 1492,
+    "merged": 6524,
+    "review": 5979,
+    "push": 181221,
+    "issue_closed": 1479,
+    "issue_reopened": 56
+  },
+  "eventFamilies": {
+    "closed": 200,
+    "merged": 250,
+    "review": 200,
+    "push": 200,
+    "issue_closed": 200,
+    "issue_reopened": 50
+  },
+  "rawArchiveSha256": "a2608f42dce173587c6632d5c9228307e3689c0f538e27dba8a85b1a2231c60c",
+  "sha256": "324c6b76f956bc6f39e5c334abbeec40c42038d681c3e24167cdb2d857728f18",
+  "sanitizedAt": "2026-09-28T08:37:00.770371+00:00",
+  "canonicalFixtureSha256": "44646befb3d829e3cecf7251b164e01708505a3994194ebc2ce84af0733b6274"
+}
