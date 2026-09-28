@@ -38,6 +38,7 @@ export type AssignMode = 'SPECIFIC_EMPLOYEE' | 'ALL_EMPLOYEES'
 export type Audience = 'EMPLOYEES' | 'MANAGEMENT' | 'PRIVATE'
 export type LedgerType =
   | 'TASK_REWARD' | 'TASK_PARTIAL_REWARD' | 'ADMIN_ADJUSTMENT'
+  | 'INCENTIVE_REWARD' | 'INCENTIVE_REVERSAL'
   | 'REDEMPTION' | 'REFUND' | 'REVERSAL' | 'TASK_CLAIM_PENALTY'
 export type NotifLevel = 'ACTION_REQUIRED' | 'IMPORTANT' | 'INFORMATIONAL' | 'AUDIT_ONLY'
 export type NotifCategory = 'Tasks' | 'Reviews' | 'Assignments' | 'Rewards' | 'Economy'

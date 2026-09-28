@@ -12,10 +12,13 @@ from app.policies.service import create_policy, evaluate_candidate
 from tests.test_n23_migration import mig_url, _alembic
 
 
+from tests.migration_values import historical_row
+
+
 def snapshot(conn):
     meta=sa.MetaData(); meta.reflect(conn)
-    return {name:sorted(repr(dict(r)) for r in conn.execute(sa.select(table)).mappings())
-            for name,table in meta.tables.items() if name not in ('alembic_version','approval_requests','approval_decisions')}
+    return {name:sorted(historical_row(r) for r in conn.execute(sa.select(table)).mappings())
+            for name,table in meta.tables.items() if name not in ('economic_effects','economic_reversals','alembic_version','approval_requests','approval_decisions')}
 
 
 def source(db):
@@ -36,7 +39,7 @@ def test_approval_migration(mig_url,populated):
         command.upgrade(cfg,'head'); command.upgrade(cfg,'head')
         with engine.connect() as conn:
             assert snapshot(conn)==before
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='e60a1c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='e70a1c9e2601'
             inspector=sa.inspect(conn)
             for model in (ApprovalRequest,ApprovalDecision):
                 name=model.__tablename__

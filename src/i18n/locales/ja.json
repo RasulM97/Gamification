@@ -1,4 +1,5 @@
 {
+  "wallet.ledger.incentiveReward": "インセンティブ報酬",
   "accessibility.availableFrom": "利用開始",
   "accessibility.availableUntil": "利用終了",
   "accessibility.chooseWallet": "表示するウォレットを選択",

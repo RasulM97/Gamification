@@ -232,6 +232,8 @@ export function actMarker(action: string): ActMarker | null {
 
 const LEDGER_KEY: Record<LedgerType, [string, string]> = {
   TASK_REWARD: ['wallet.ledger.taskReward', 'pos'],
+  INCENTIVE_REWARD: ['wallet.ledger.incentiveReward', 'pos'],
+  INCENTIVE_REVERSAL: ['wallet.ledger.reversal', 'neg'],
   TASK_PARTIAL_REWARD: ['wallet.ledger.partialReward', 'pos'],
   ADMIN_ADJUSTMENT: ['wallet.ledger.adjustment', 'warn'],
   REDEMPTION: ['wallet.ledger.redemption', 'neg'],

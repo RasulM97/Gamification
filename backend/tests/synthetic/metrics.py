@@ -33,7 +33,8 @@ class Metrics:
             stage = state['stage']
             state['count'] += 1
             words = statement.lower().split()
-            table = next((t for t in ('policy_decisions', 'rule_candidates', 'canonical_events',
+            table = next((t for t in ('economic_effects', 'economic_reversals', 'ledger',
+                                      'approval_requests', 'approval_decisions', 'policy_decisions', 'rule_candidates', 'canonical_events',
                                       'policies', 'rules', 'companies', 'users', 'webhook_sources')
                           if t in words or t+'.id' in words), 'other')
             with self.lock:

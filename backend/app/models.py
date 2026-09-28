@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import time
 import uuid
+from decimal import Decimal
 
 from sqlalchemy import (Boolean, Float, ForeignKey, Integer, String, Text, Date,
-                        UniqueConstraint, CheckConstraint)
+                        UniqueConstraint, CheckConstraint, Numeric, Index, text)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -177,15 +178,20 @@ class Contribution(Base):
 
 
 class LedgerTransaction(Base):
-    """Append-only. No update/delete anywhere in the codebase."""
+    """Append-only business ledger; explicit dev reset may clear legacy rows."""
     __tablename__ = 'ledger'
+    __table_args__ = (
+        UniqueConstraint('company_id', 'id', name='uq_ledger_company_id'),
+        Index('uq_ledger_economic_ref', 'company_id', 'ref', unique=True,
+              postgresql_where=text("type IN ('INCENTIVE_REWARD','INCENTIVE_REVERSAL')")),
+    )
     event_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id('l'))
     company_id: Mapped[str] = mapped_column(String(40), index=True)
     user_id: Mapped[str] = mapped_column(String(40), index=True)
     type: Mapped[str] = mapped_column(String(24))
-    amount: Mapped[float] = mapped_column(Float)
+    amount: Mapped[Decimal] = mapped_column(Numeric())
     ref: Mapped[str] = mapped_column(String(400))
     task_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     cycle: Mapped[int | None] = mapped_column(Integer, nullable=True)

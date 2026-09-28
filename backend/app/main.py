@@ -30,6 +30,7 @@ from .ingestion.routes import router as ingestion_router
 from .rules.routes import router as rules_router
 from .policies.routes import router as policies_router
 from .approvals.routes import router as approvals_router
+from .economic_effects.routes import router as economic_router
 
 STATIC_DIR = os.environ.get('CVE_STATIC_DIR') or str(
     Path(__file__).resolve().parents[2] / 'dist')
@@ -52,6 +53,11 @@ _ERROR_STATUS.update(APPROVAL_NOT_REQUIRED=409, APPROVAL_NOT_FOUND=404, APPROVAL
                      SELF_APPROVAL_FORBIDDEN=403, APPROVAL_ALREADY_DECIDED=409,
                      INVALID_APPROVAL_DECISION=422, INVALID_APPROVAL_FILTER=422,
                      APPROVER_INACTIVE=403, APPROVALS_UNAVAILABLE=503)
+_ERROR_STATUS.update(ECONOMIC_EFFECT_NOT_ELIGIBLE=409, ECONOMIC_EFFECT_ALREADY_EXISTS=409,
+                     ECONOMIC_BENEFICIARY_MISSING=422, ECONOMIC_AMOUNT_INVALID=422,
+                     LEGACY_ECONOMIC_SOURCE=409, ECONOMIC_EFFECT_NOT_FOUND=404,
+                     ECONOMIC_EFFECT_ALREADY_REVERSED=409, ECONOMIC_REVERSAL_FORBIDDEN=403,
+                     ECONOMIC_ENGINE_UNAVAILABLE=503)
 
 
 @asynccontextmanager
@@ -88,6 +94,7 @@ app.include_router(ingestion_router)
 app.include_router(rules_router)
 app.include_router(policies_router)
 app.include_router(approvals_router)
+app.include_router(economic_router)
 
 
 @app.get('/api/health')

@@ -95,7 +95,7 @@ def bootstrap(db: Session, company: Company, viewer: User | None = None) -> dict
 
     def _ledger(l: LedgerTransaction) -> dict:
         d = {'id': l.id, 'at': l.at, 'userId': l.user_id, 'type': l.type,
-             'amount': l.amount, 'ref': l.ref}
+             'amount': float(l.amount), 'ref': l.ref}
         if l.task_id is not None:
             d['taskId'] = l.task_id
         if l.cycle is not None:

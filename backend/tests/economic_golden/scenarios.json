@@ -1,0 +1,204 @@
+[
+  {
+    "id": "allow",
+    "options": {}
+  },
+  {
+    "id": "approved",
+    "options": {
+      "governance": "REQUIRE_APPROVAL",
+      "approval": "APPROVED"
+    }
+  },
+  {
+    "id": "default-approved",
+    "options": {
+      "default": true,
+      "approval": "APPROVED"
+    }
+  },
+  {
+    "id": "pending",
+    "options": {
+      "governance": "REQUIRE_APPROVAL",
+      "approval": "PENDING"
+    },
+    "error": "ECONOMIC_EFFECT_NOT_ELIGIBLE"
+  },
+  {
+    "id": "no-request",
+    "options": {
+      "governance": "REQUIRE_APPROVAL"
+    },
+    "error": "ECONOMIC_EFFECT_NOT_ELIGIBLE"
+  },
+  {
+    "id": "rejected",
+    "options": {
+      "governance": "REQUIRE_APPROVAL",
+      "approval": "REJECTED"
+    },
+    "error": "ECONOMIC_EFFECT_NOT_ELIGIBLE"
+  },
+  {
+    "id": "block",
+    "options": {
+      "governance": "BLOCK"
+    },
+    "error": "ECONOMIC_EFFECT_NOT_ELIGIBLE"
+  },
+  {
+    "id": "shadow_only",
+    "options": {
+      "governance": "SHADOW_ONLY"
+    },
+    "error": "ECONOMIC_EFFECT_NOT_ELIGIBLE"
+  },
+  {
+    "id": "valid-subject",
+    "options": {}
+  },
+  {
+    "id": "missing-subject",
+    "options": {
+      "subject": null
+    },
+    "error": "ECONOMIC_BENEFICIARY_MISSING"
+  },
+  {
+    "id": "foreign-subject",
+    "action": "foreign"
+  },
+  {
+    "id": "inactive-subject",
+    "action": "inactive"
+  },
+  {
+    "id": "admin-subject",
+    "options": {
+      "subject": "gold-admin-a"
+    },
+    "error": "ECONOMIC_BENEFICIARY_MISSING"
+  },
+  {
+    "id": "half-coin",
+    "options": {
+      "amount": 0.5
+    }
+  },
+  {
+    "id": "maximum",
+    "options": {
+      "amount": 10000
+    }
+  },
+  {
+    "id": "zero",
+    "rawAmount": 0,
+    "error": "ECONOMIC_AMOUNT_INVALID"
+  },
+  {
+    "id": "negative",
+    "rawAmount": -1,
+    "error": "ECONOMIC_AMOUNT_INVALID"
+  },
+  {
+    "id": "invalid-step",
+    "rawAmount": 0.1,
+    "error": "ECONOMIC_AMOUNT_INVALID"
+  },
+  {
+    "id": "above-maximum",
+    "rawAmount": 10000.5,
+    "error": "ECONOMIC_AMOUNT_INVALID"
+  },
+  {
+    "id": "string-amount",
+    "rawAmount": "10",
+    "error": "ECONOMIC_AMOUNT_INVALID"
+  },
+  {
+    "id": "boolean-amount",
+    "rawAmount": true,
+    "error": "ECONOMIC_AMOUNT_INVALID"
+  },
+  {
+    "id": "retry",
+    "action": "retry"
+  },
+  {
+    "id": "multi-policy",
+    "action": "multi-policy"
+  },
+  {
+    "id": "reversal",
+    "action": "reversal"
+  },
+  {
+    "id": "reversal-retry",
+    "action": "reversal-retry"
+  },
+  {
+    "id": "reissue-blocked",
+    "action": "reissue-blocked"
+  },
+  {
+    "id": "debt-offset",
+    "action": "debt-offset"
+  },
+  {
+    "id": "reversal-after-spend",
+    "action": "reversal-after-spend"
+  },
+  {
+    "id": "manual-task-spoof",
+    "options": {
+      "event_type": "internal.task.approved"
+    },
+    "error": "LEGACY_ECONOMIC_SOURCE"
+  },
+  {
+    "id": "webhook-task-spoof",
+    "options": {
+      "source_kind": "GENERIC_WEBHOOK",
+      "event_type": "internal.task.approved"
+    },
+    "error": "LEGACY_ECONOMIC_SOURCE"
+  },
+  {
+    "id": "internal-external-prefix",
+    "options": {
+      "source_kind": "INTERNAL",
+      "event_type": "external.customer.praise"
+    },
+    "error": "LEGACY_ECONOMIC_SOURCE"
+  },
+  {
+    "id": "unknown-type",
+    "options": {
+      "event_type": "external.unknown.reward"
+    },
+    "error": "LEGACY_ECONOMIC_SOURCE"
+  },
+  {
+    "id": "invalid-manual-source",
+    "options": {
+      "source_id": "unrelated"
+    },
+    "error": "ECONOMIC_EFFECT_NOT_ELIGIBLE"
+  },
+  {
+    "id": "legacy-task-already-paid",
+    "action": "legacy"
+  },
+  {
+    "id": "manager-cannot-issue",
+    "action": "manager",
+    "error": "FORBIDDEN"
+  },
+  {
+    "id": "foreign-policy-hidden",
+    "action": "tenant",
+    "error": "ECONOMIC_EFFECT_NOT_FOUND"
+  }
+]

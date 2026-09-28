@@ -43,6 +43,7 @@ from app.ingestion.model import WebhookSource  # noqa: E402,F401
 from app.rules.model import Rule, RuleCandidate  # noqa: E402,F401
 from app.policies.model import Policy, PolicyDecision  # noqa: E402,F401
 from app.approvals.model import ApprovalRequest, ApprovalDecision  # noqa: E402,F401
+from app.economic_effects.model import EconomicEffect, EconomicReversal  # noqa: E402,F401
 from app.seed import run as seed_run  # noqa: E402
 
 Base.metadata.create_all(engine)  # schema for tests (alembic owns prod schema)

@@ -32,6 +32,14 @@ def clear_workspace(db: Session, actor: User) -> dict:
         # are disabled and no other tenant's rows are deleted.
         tables = ', '.join(model.__tablename__ for model in OPERATIONAL_MODELS)
         db.execute(text(f'LOCK TABLE {tables} IN SHARE ROW EXCLUSIVE MODE'))
+        if db.scalar(select(LedgerTransaction.id).where(
+                LedgerTransaction.company_id == company_id,
+                LedgerTransaction.type.in_(('INCENTIVE_REWARD', 'INCENTIVE_REVERSAL'))).limit(1)):
+            raise DomainError('FORBIDDEN', 'Issued economic history cannot be cleared; use a separate test company')
+        # Transaction-local exception for the existing explicitly authorized
+        # development reset. The DB guard never permits deletion of E7 rows.
+        db.execute(text("SELECT set_config('cve.legacy_workspace_reset_company', :company_id, true)"),
+                   {'company_id': company_id})
         paths = list(db.scalars(select(Attachment.storage_path).where(Attachment.company_id == company_id)))
         files.prepare(paths)
         for model in OPERATIONAL_MODELS:

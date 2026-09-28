@@ -34,6 +34,7 @@ export function WalletView() {
   /* N3 §8: ledger types stay canonical codes; plural display names are keys. */
   const typeLabel: Record<string, string> = {
     TASK_REWARD: t('wallet.type.taskRewards'), TASK_PARTIAL_REWARD: t('wallet.type.partialRewards'),
+    INCENTIVE_REWARD: t('wallet.ledger.incentiveReward'), INCENTIVE_REVERSAL: t('wallet.type.reversals'),
     ADMIN_ADJUSTMENT: t('wallet.type.adjustments'), REDEMPTION: t('wallet.type.redemptions'),
     REFUND: t('wallet.type.refunds'), REVERSAL: t('wallet.type.reversals'), TASK_CLAIM_PENALTY: t('wallet.type.claimPenalties'),
   }
@@ -115,7 +116,7 @@ export function WalletView() {
                     </td>
                   )}
                   {/* ledger ref text is stored history — verbatim, bidi-safe */}
-                  <td><EventText record={l} legacy={l.ref} /><EventReason record={l} />{l.cycle ? <span className="faint"> · {t('task.row.cycle', { n: l.cycle })}</span> : null}</td>
+                  <td><EventText record={l} legacy={l.type === 'INCENTIVE_REWARD' || l.type === 'INCENTIVE_REVERSAL' ? typeLabel[l.type] : l.ref} /><EventReason record={l} />{l.cycle ? <span className="faint"> · {t('task.row.cycle', { n: l.cycle })}</span> : null}</td>
                   <td><LedgerBadge t={l.type} /></td>
                   <td className="n"><Coin n={l.amount} sign /></td>
                   <td className="n dim" style={{ fontSize: 11.5 }}>{ago(l.at)}</td>
