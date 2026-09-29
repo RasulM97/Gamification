@@ -1,4 +1,11 @@
 {
+  "event.peerThanks": "{{actor}} הודה ל־{{target}}.",
+  "event.managerRecognition": "{{actor}} הוקיר את תרומתו של {{target}}.",
+  "event.helpRequested": "{{actor}} ביקש עזרה: {{title}}.",
+  "event.helpAccepted": "{{actor}} קיבל את בקשת העזרה: {{title}}.",
+  "event.helpFinished": "{{actor}} סיים לעזור: {{title}}. נדרש אישור של מבקש העזרה.",
+  "event.helpConfirmed": "{{actor}} אישר את השלמת העזרה: {{title}}.",
+  "notification.category.collaboration": "שיתוף פעולה",
   "wallet.ledger.incentiveReward": "תגמול תמריץ",
   "accessibility.availableFrom": "זמין מ־",
   "accessibility.availableUntil": "זמין עד",

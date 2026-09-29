@@ -21,7 +21,7 @@ def snapshot(connection):
     metadata.reflect(connection)
     return {name: sorted([historical_row(row) for row in connection.execute(sa.select(table)).mappings()])
             for name, table in metadata.tables.items()
-            if name not in ('economic_effects','economic_reversals','alembic_version','approval_requests','approval_decisions', 'canonical_events', 'webhook_sources', 'rules', 'rule_candidates', 'policies', 'policy_decisions')}
+            if name not in ('trusted_producers','source_receipts','peer_thanks','manager_recognitions','help_requests','economic_effects','economic_reversals','alembic_version','approval_requests','approval_decisions', 'canonical_events', 'webhook_sources', 'rules', 'rule_candidates', 'policies', 'policy_decisions')}
 
 
 def test_existing_upgrade_preserves_all_rows_and_downgrade(mig_url):
@@ -38,7 +38,7 @@ def test_existing_upgrade_preserves_all_rows_and_downgrade(mig_url):
         with engine.connect() as conn:
             assert snapshot(conn) == before
             assert conn.scalar(sa.text('SELECT count(*) FROM canonical_events')) == 0
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'e70a1c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'e80b2d9e2603'
         with Session(engine) as db:
             store = PostgresEventStore(db)
             row = store.append('co-aster', incoming(actor_id='u-dana', subject_id='u-marcus'))

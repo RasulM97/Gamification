@@ -1,4 +1,11 @@
 {
+  "event.peerThanks": "{{actor}} поблагодарил(а) {{target}}.",
+  "event.managerRecognition": "{{actor}} отметил(а) вклад {{target}}.",
+  "event.helpRequested": "{{actor}} запросил(а) помощь: {{title}}.",
+  "event.helpAccepted": "{{actor}} принял(а) запрос помощи: {{title}}.",
+  "event.helpFinished": "{{actor}} завершил(а) помощь: {{title}}. Ожидается подтверждение автора.",
+  "event.helpConfirmed": "{{actor}} подтвердил(а) завершение помощи: {{title}}.",
+  "notification.category.collaboration": "Сотрудничество",
   "wallet.ledger.incentiveReward": "Поощрительное вознаграждение",
   "accessibility.availableFrom": "Доступно с",
   "accessibility.availableUntil": "Доступно до",

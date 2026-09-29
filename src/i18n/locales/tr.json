@@ -1,4 +1,11 @@
 {
+  "event.peerThanks": "{{actor}}, {{target}} kişisine teşekkür etti.",
+  "event.managerRecognition": "{{actor}}, {{target}} kişisinin katkısını takdir etti.",
+  "event.helpRequested": "{{actor}} yardım istedi: {{title}}.",
+  "event.helpAccepted": "{{actor}} yardım isteğini kabul etti: {{title}}.",
+  "event.helpFinished": "{{actor}} yardımı tamamladı: {{title}}. İstek sahibinin onayı bekleniyor.",
+  "event.helpConfirmed": "{{actor}} yardımın tamamlandığını onayladı: {{title}}.",
+  "notification.category.collaboration": "İş birliği",
   "wallet.ledger.incentiveReward": "Teşvik ödülü",
   "accessibility.availableFrom": "Başlangıç tarihi",
   "accessibility.availableUntil": "Bitiş tarihi",

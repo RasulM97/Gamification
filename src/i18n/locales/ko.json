@@ -1,4 +1,11 @@
 {
+  "event.peerThanks": "{{actor}}님이 {{target}}님에게 감사를 전했습니다.",
+  "event.managerRecognition": "{{actor}}님이 {{target}}님의 기여를 인정했습니다.",
+  "event.helpRequested": "{{actor}}님이 도움을 요청했습니다: {{title}}.",
+  "event.helpAccepted": "{{actor}}님이 도움 요청을 수락했습니다: {{title}}.",
+  "event.helpFinished": "{{actor}}님이 도움을 마쳤습니다: {{title}}. 요청자의 확인이 필요합니다.",
+  "event.helpConfirmed": "{{actor}}님이 도움 완료를 확인했습니다: {{title}}.",
+  "notification.category.collaboration": "협업",
   "wallet.ledger.incentiveReward": "인센티브 보상",
   "accessibility.availableFrom": "이용 시작일",
   "accessibility.availableUntil": "이용 종료일",

@@ -1,5 +1,9 @@
 # Internal canonical observations — E1.2
 
+This document preserves the E1.2 observational contract. E8's additional trusted
+collaboration facts are documented in [E8 Collaboration](../collaboration/E8_COLLABORATION.md):
+`internal.peer.thanks`, `internal.manager.recognition`, `internal.help.completed`.
+
 Existing business services remain authoritative. These five observations join the
 same PostgreSQL transaction **after** business authorization, mutation and existing
 Ledger/Activity/Notification work, and **before** the caller commits. They never

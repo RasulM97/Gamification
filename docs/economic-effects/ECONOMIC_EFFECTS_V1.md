@@ -27,6 +27,10 @@ commit, protecting against incomplete or mismatched direct writes.
 
 ## Source and beneficiary
 
+E8 adds a generic trusted-producer/receipt path alongside the frozen E7 source
+contract below. See [Trusted Source Authority](TRUSTED_SOURCE_AUTHORITY.md).
+The legacy combinations remain unchanged; event names alone grant no new authority.
+
 Both source kind and exact event type must match the closed v1 contract:
 
 | Source kind | Exact permitted event types | Additional provenance |

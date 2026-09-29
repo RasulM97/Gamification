@@ -1,4 +1,11 @@
 {
+  "event.peerThanks": "{{actor}}が{{target}}に感謝しました。",
+  "event.managerRecognition": "{{actor}}が{{target}}の貢献を称えました。",
+  "event.helpRequested": "{{actor}}が支援を依頼しました：{{title}}。",
+  "event.helpAccepted": "{{actor}}が支援依頼を引き受けました：{{title}}。",
+  "event.helpFinished": "{{actor}}が支援を終えました：{{title}}。依頼者の確認が必要です。",
+  "event.helpConfirmed": "{{actor}}が支援の完了を確認しました：{{title}}。",
+  "notification.category.collaboration": "協力",
   "wallet.ledger.incentiveReward": "インセンティブ報酬",
   "accessibility.availableFrom": "利用開始",
   "accessibility.availableUntil": "利用終了",

@@ -1,4 +1,11 @@
 {
+  "event.peerThanks": "{{actor}}感谢了{{target}}。",
+  "event.managerRecognition": "{{actor}}表彰了{{target}}。",
+  "event.helpRequested": "{{actor}}请求帮助：{{title}}。",
+  "event.helpAccepted": "{{actor}}接受了帮助请求：{{title}}。",
+  "event.helpFinished": "{{actor}}已完成帮助：{{title}}。等待请求者确认。",
+  "event.helpConfirmed": "{{actor}}确认帮助已完成：{{title}}。",
+  "notification.category.collaboration": "协作",
   "wallet.ledger.incentiveReward": "激励奖励",
   "accessibility.availableFrom": "开始可用日期",
   "accessibility.availableUntil": "截止可用日期",

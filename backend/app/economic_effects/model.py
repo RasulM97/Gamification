@@ -61,3 +61,10 @@ class EconomicReversal(Base):
 from .schema import INSTALL_SQL, UNINSTALL_SQL
 event.listen(EconomicReversal.__table__, 'after_create', DDL(INSTALL_SQL).execute_if(dialect='postgresql'))
 event.listen(EconomicReversal.__table__, 'before_drop', DDL(UNINSTALL_SQL).execute_if(dialect='postgresql'))
+
+# Current create_all schema matches Alembic head; E7 migration SQL stays frozen.
+from ..source_authority.model import TrustedProducer, SourceReceipt
+from ..source_authority.schema import INSTALL_SQL as SOURCE_SQL, UNINSTALL_SQL as DROP_SOURCE_SQL
+SourceReceipt.__table__.add_is_dependent_on(EconomicReversal.__table__)
+event.listen(SourceReceipt.__table__, 'after_create', DDL(SOURCE_SQL).execute_if(dialect='postgresql'))
+event.listen(SourceReceipt.__table__, 'before_drop', DDL(DROP_SOURCE_SQL).execute_if(dialect='postgresql'))

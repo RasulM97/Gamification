@@ -18,6 +18,7 @@ from app.rules.model import Rule, RuleCandidate  # noqa: E402,F401
 from app.policies.model import Policy, PolicyDecision  # noqa: E402,F401
 from app.approvals.model import ApprovalRequest, ApprovalDecision  # noqa: E402,F401
 from app.economic_effects.model import EconomicEffect, EconomicReversal  # noqa: E402,F401
+from app.collaboration.model import PeerThanks, ManagerRecognition, HelpRequest  # noqa: E402,F401
 
 config.set_main_option('sqlalchemy.url', os.environ.get('CVE_DATABASE_URL')
                        or settings.database_url)

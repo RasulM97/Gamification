@@ -22,7 +22,7 @@ LEDGER_TYPES = (
     'REDEMPTION', 'REFUND', 'REVERSAL', 'TASK_CLAIM_PENALTY',
 )
 NOTIF_LEVELS = ('ACTION_REQUIRED', 'IMPORTANT', 'INFORMATIONAL', 'AUDIT_ONLY')
-NOTIF_CATEGORIES = ('Tasks', 'Reviews', 'Assignments', 'Rewards', 'Economy')
+NOTIF_CATEGORIES = ('Tasks', 'Reviews', 'Assignments', 'Rewards', 'Economy', 'Collaboration')
 MUTABLE_LEVELS = ('INFORMATIONAL', 'AUDIT_ONLY')
 
 CLAIM_PENALTY = 5

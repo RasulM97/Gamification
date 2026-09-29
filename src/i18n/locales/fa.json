@@ -1,4 +1,11 @@
 {
+  "event.peerThanks": "{{actor}} از {{target}} تشکر کرد.",
+  "event.managerRecognition": "{{actor}} از مشارکت {{target}} قدردانی کرد.",
+  "event.helpRequested": "{{actor}} درخواست کمک کرد: {{title}}.",
+  "event.helpAccepted": "{{actor}} درخواست کمک را پذیرفت: {{title}}.",
+  "event.helpFinished": "{{actor}} کمک را تمام کرد: {{title}}. تأیید درخواست‌کننده لازم است.",
+  "event.helpConfirmed": "{{actor}} تکمیل کمک را تأیید کرد: {{title}}.",
+  "notification.category.collaboration": "همکاری",
   "wallet.ledger.incentiveReward": "پاداش تشویقی",
   "accessibility.availableFrom": "موجود از",
   "accessibility.availableUntil": "موجود تا",

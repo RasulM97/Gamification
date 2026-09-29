@@ -5,11 +5,11 @@ from sqlalchemy import Text, cast, select
 from ..approvals.model import ApprovalDecision, ApprovalRequest
 from ..canonical_events.model import CanonicalEvent
 from ..domain import DomainError
-from ..ingestion.model import WebhookSource
+from ..source_authority.service import require_authorized
 from ..models import User
 from ..policies.model import PolicyDecision
 from ..rules.model import RuleCandidate
-from .contracts import SAFE_EVENT_TYPES, SAFE_SOURCE_KINDS, candidate_amount
+from .contracts import candidate_amount
 
 
 @dataclass(frozen=True)
@@ -61,17 +61,8 @@ def is_candidate_economically_processable(db, company_id, policy_decision_id):
     if row is None or row[0].kind != 'INCENTIVE':
         raise DomainError('ECONOMIC_EFFECT_NOT_ELIGIBLE', 'An incentive candidate is required')
     candidate, source, serialized_data = row
-    # Reject even a spoofed MANUAL/webhook copy of an internal economic event.
-    # Unknown sources/types are closed by default, never allowed by a prefix.
-    if source.type not in SAFE_EVENT_TYPES or source.source_kind not in SAFE_SOURCE_KINDS:
-        raise DomainError('LEGACY_ECONOMIC_SOURCE', 'This source has no E7 economic authority')
-    if source.source_kind == 'MANUAL':
-        source_valid = source.actor_id is not None and source.source_id == source.actor_id
-    else:
-        source_valid = db.scalar(select(WebhookSource.id).where(
-            WebhookSource.id == source.source_id, WebhookSource.company_id == company_id)) is not None
-    if not source_valid:
-        raise DomainError('ECONOMIC_EFFECT_NOT_ELIGIBLE', 'Invalid canonical source provenance')
+    # The service and deferred DB guard use the same source-provenance predicate.
+    require_authorized(db,company_id,source.id)
     approval_id = None
     if pd.effective_decision == 'REQUIRE_APPROVAL':
         approval_id = db.scalar(select(ApprovalDecision.id).join(ApprovalRequest,

@@ -10,6 +10,7 @@ from .models import (Activity, Attachment, Company, Contribution, LedgerTransact
 from .serializers import bootstrap
 from .storage import storage
 from .workspace_files import WorkspaceFiles
+from .collaboration.model import PeerThanks, ManagerRecognition, HelpRequest
 
 # Dependency order. All deletion predicates use the authenticated actor's company.
 OPERATIONAL_MODELS = (Attachment, Contribution, TaskCycle, Submission,
@@ -30,8 +31,12 @@ def clear_workspace(db: Session, actor: User) -> dict:
         # Prevent concurrent writes from leaving half of a workflow across the
         # clear boundary. Locks last only for this transaction; no constraints
         # are disabled and no other tenant's rows are deleted.
-        tables = ', '.join(model.__tablename__ for model in OPERATIONAL_MODELS)
+        collaboration = (PeerThanks, ManagerRecognition, HelpRequest)
+        tables = ', '.join(model.__tablename__ for model in (*OPERATIONAL_MODELS, *collaboration))
         db.execute(text(f'LOCK TABLE {tables} IN SHARE ROW EXCLUSIVE MODE'))
+        if any(db.scalar(select(model.id).where(model.company_id == company_id).limit(1))
+               for model in collaboration):
+            raise DomainError('FORBIDDEN', 'Collaboration history cannot be cleared; use a separate test company')
         if db.scalar(select(LedgerTransaction.id).where(
                 LedgerTransaction.company_id == company_id,
                 LedgerTransaction.type.in_(('INCENTIVE_REWARD', 'INCENTIVE_REVERSAL'))).limit(1)):

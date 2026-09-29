@@ -1,4 +1,11 @@
 {
+  "event.peerThanks": "شكر {{actor}} {{target}}.",
+  "event.managerRecognition": "قدّر {{actor}} مساهمة {{target}}.",
+  "event.helpRequested": "طلب {{actor}} المساعدة: {{title}}.",
+  "event.helpAccepted": "قبل {{actor}} طلب المساعدة: {{title}}.",
+  "event.helpFinished": "أنهى {{actor}} المساعدة: {{title}}. يلزم تأكيد صاحب الطلب.",
+  "event.helpConfirmed": "أكد {{actor}} اكتمال المساعدة: {{title}}.",
+  "notification.category.collaboration": "التعاون",
   "wallet.ledger.incentiveReward": "مكافأة تحفيزية",
   "accessibility.availableFrom": "متاح من",
   "accessibility.availableUntil": "متاح حتى",

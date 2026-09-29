@@ -1,4 +1,11 @@
 {
+  "event.peerThanks": "{{actor}} thanked {{target}}.",
+  "event.managerRecognition": "{{actor}} recognized {{target}}.",
+  "event.helpRequested": "{{actor}} requested help: {{title}}.",
+  "event.helpAccepted": "{{actor}} accepted the help request: {{title}}.",
+  "event.helpFinished": "{{actor}} finished helping: {{title}}. Requester confirmation is needed.",
+  "event.helpConfirmed": "{{actor}} confirmed help completion: {{title}}.",
+  "notification.category.collaboration": "Collaboration",
   "wallet.ledger.incentiveReward": "Incentive reward",
   "accessibility.availableFrom": "Available from",
   "accessibility.availableUntil": "Available until",

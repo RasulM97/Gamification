@@ -41,7 +41,7 @@ export type LedgerType =
   | 'INCENTIVE_REWARD' | 'INCENTIVE_REVERSAL'
   | 'REDEMPTION' | 'REFUND' | 'REVERSAL' | 'TASK_CLAIM_PENALTY'
 export type NotifLevel = 'ACTION_REQUIRED' | 'IMPORTANT' | 'INFORMATIONAL' | 'AUDIT_ONLY'
-export type NotifCategory = 'Tasks' | 'Reviews' | 'Assignments' | 'Rewards' | 'Economy'
+export type NotifCategory = 'Tasks' | 'Reviews' | 'Assignments' | 'Rewards' | 'Economy' | 'Collaboration'
 
 export interface User { maxActiveTasks?: number | null; id: string; name: string; role: Role; position: string
   active?: boolean; email?: string; companyId?: string; activationPending?: boolean

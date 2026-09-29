@@ -31,6 +31,7 @@ from .rules.routes import router as rules_router
 from .policies.routes import router as policies_router
 from .approvals.routes import router as approvals_router
 from .economic_effects.routes import router as economic_router
+from .collaboration.routes import router as collaboration_router
 
 STATIC_DIR = os.environ.get('CVE_STATIC_DIR') or str(
     Path(__file__).resolve().parents[2] / 'dist')
@@ -58,6 +59,7 @@ _ERROR_STATUS.update(ECONOMIC_EFFECT_NOT_ELIGIBLE=409, ECONOMIC_EFFECT_ALREADY_E
                      LEGACY_ECONOMIC_SOURCE=409, ECONOMIC_EFFECT_NOT_FOUND=404,
                      ECONOMIC_EFFECT_ALREADY_REVERSED=409, ECONOMIC_REVERSAL_FORBIDDEN=403,
                      ECONOMIC_ENGINE_UNAVAILABLE=503)
+_ERROR_STATUS.update(COLLABORATION_UNAVAILABLE=503)
 
 
 @asynccontextmanager
@@ -95,6 +97,7 @@ app.include_router(rules_router)
 app.include_router(policies_router)
 app.include_router(approvals_router)
 app.include_router(economic_router)
+app.include_router(collaboration_router)
 
 
 @app.get('/api/health')

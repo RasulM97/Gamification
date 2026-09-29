@@ -1,4 +1,11 @@
 {
+  "event.peerThanks": "{{actor}} ने {{target}} को धन्यवाद दिया।",
+  "event.managerRecognition": "{{actor}} ने {{target}} के योगदान को सराहा।",
+  "event.helpRequested": "{{actor}} ने मदद माँगी: {{title}}।",
+  "event.helpAccepted": "{{actor}} ने मदद का अनुरोध स्वीकार किया: {{title}}।",
+  "event.helpFinished": "{{actor}} ने मदद पूरी की: {{title}}। अनुरोधकर्ता की पुष्टि आवश्यक है।",
+  "event.helpConfirmed": "{{actor}} ने मदद पूरी होने की पुष्टि की: {{title}}।",
+  "notification.category.collaboration": "सहयोग",
   "wallet.ledger.incentiveReward": "प्रोत्साहन पुरस्कार",
   "accessibility.availableFrom": "उपलब्धता प्रारंभ",
   "accessibility.availableUntil": "उपलब्धता समाप्ति",

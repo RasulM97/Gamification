@@ -10,6 +10,7 @@ import { useI18n } from '../i18n'
 const CATEGORY_KEY: Record<NotifCategory, string> = {
   Tasks:'common.tasks', Reviews:'common.reviews', Assignments:'notification.category.assignments',
   Rewards:'common.rewards', Economy:'common.economy',
+  Collaboration:'notification.category.collaboration',
 }
 
 /* Notification Center (N1-B): exactly two product tabs — TASKS and REWARDS —
