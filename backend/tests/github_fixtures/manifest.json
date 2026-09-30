@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "source": "https://github.com/RasulM97/cve-e9-webhook-test",
+  "capturedAt": "2026-09-29T16:52:08Z/2026-09-29T16:53:32Z",
+  "provenance": "Real GitHub HTTPS webhook deliveries accepted by production signature/repository verification and atomic canonical/source-receipt writes. Metadata observer hash matches immutable raw row.",
+  "sanitization": "Production raw allowlist only. Repository/resource/user IDs and number pseudonymized; numeric JSON types restored from stored decimal strings. Real lifecycle timestamps/state/merge flags preserved. Names, free text, URLs, signatures and secrets absent. These are minimized capture-derived specimens, not byte-for-byte wire payloads. Distinct original PR identities remain distinct: opened/closed-unmerged PR maps to 2001, merged PR to 2002.",
+  "fixtures": [
+    {
+      "file": "issue.opened.json",
+      "eventName": "issues",
+      "canonicalType": "github.issue.opened",
+      "sha256": "473a4602e84fbffaca11ddc33279f9e85515bb256a5f415f1f58ec0aacde9846",
+      "providerDeliveryId": "3b9c13bc-bc26-11f1-9d35-b1de67438a01",
+      "providerBodySha256": "e4aed588c330e4b36b611dfdb46895e179be31c83e4f2870fb7b246ef84d695b",
+      "originalBytes": 10475,
+      "rawId": "ghraw-443bb9e967c9",
+      "canonicalId": "ce-c4e997122d744662adf48c3d000b8bc7"
+    },
+    {
+      "file": "issue.closed.json",
+      "eventName": "issues",
+      "canonicalType": "github.issue.closed",
+      "sha256": "e60695e952485d2aa0e1da2f96b1ee53b3c7d6e8a0934b5653b9a9118218eeb4",
+      "providerDeliveryId": "4c7c9c10-bc26-11f1-844f-229f52a18fa1",
+      "providerBodySha256": "3f86981c737378f959d083a7901d86828d56ddcef0f0bb6b378a0bdd9abbeee0",
+      "originalBytes": 10502,
+      "rawId": "ghraw-fded2e1d6318",
+      "canonicalId": "ce-6242841d60d94ec698ecdd3500d8807a"
+    },
+    {
+      "file": "pull_request.opened.json",
+      "eventName": "pull_request",
+      "canonicalType": "github.pull_request.opened",
+      "sha256": "af5bb0f0920487e9c51161d546adb3536cd40e90e4950ffbc57901a9d27b14ad",
+      "providerDeliveryId": "1b391160-bc26-11f1-95c3-aee10cf97c37",
+      "providerBodySha256": "be346d43ffa9197d6f0c14e33b61c636c1a2c7437650026d57202689953bacb7",
+      "originalBytes": 23370,
+      "rawId": "ghraw-ea24fd1aab5f",
+      "canonicalId": "ce-c224b27cc55a4953b088c783c040a9f0"
+    },
+    {
+      "file": "pull_request.closed.json",
+      "eventName": "pull_request",
+      "canonicalType": "github.pull_request.closed",
+      "sha256": "fe0c930b8b2e7e0ea1fdee693eb2793362eb92dcea8ba500a59c6cff6b7ad2ae",
+      "providerDeliveryId": "37104bb0-bc26-11f1-8014-c4d7b002eb98",
+      "providerBodySha256": "bc5501739422938520e8a9f519932119bfb66ee074fbbd26fe777fb75808aed7",
+      "originalBytes": 23426,
+      "rawId": "ghraw-cf4e38ed24ce",
+      "canonicalId": "ce-976d042b36e243e1bf93f97ba6c82866"
+    },
+    {
+      "file": "pull_request.merged.json",
+      "eventName": "pull_request",
+      "canonicalType": "github.pull_request.merged",
+      "sha256": "ffecfefd0f7dfce50cfb452078159f5c3694f87b0d9c6657ccde0dada2f5b9cd",
+      "providerDeliveryId": "494b3240-bc26-11f1-9a20-03086dee9a2b",
+      "providerBodySha256": "56acd0c5aa1ecc9efbf7940a37c71f4793a8cc712183426c65d1a9e42fe22664",
+      "originalBytes": 24364,
+      "rawId": "ghraw-3bda8cfe7250",
+      "canonicalId": "ce-6358047ff1f046c089baacb0d3bc3806"
+    }
+  ]
+}

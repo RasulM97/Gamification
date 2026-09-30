@@ -1,0 +1,22 @@
+{
+  "action": "opened",
+  "pull_request": {
+    "closed_at": null,
+    "created_at": "2026-09-29T16:52:05Z",
+    "draft": false,
+    "id": 2001,
+    "merged": false,
+    "merged_at": null,
+    "number": 1,
+    "state": "open",
+    "user": {
+      "id": 20
+    }
+  },
+  "repository": {
+    "id": 123
+  },
+  "sender": {
+    "id": 20
+  }
+}

@@ -18,7 +18,7 @@ from tests.migration_values import historical_row
 def snapshot(conn):
     meta=sa.MetaData(); meta.reflect(conn)
     return {name:sorted(historical_row(r) for r in conn.execute(sa.select(table)).mappings())
-            for name,table in meta.tables.items() if name not in ('trusted_producers','source_receipts','peer_thanks','manager_recognitions','help_requests','economic_effects','economic_reversals','alembic_version','approval_requests','approval_decisions')}
+            for name,table in meta.tables.items() if name not in ('github_sources','github_identities','github_deliveries','trusted_producers','source_receipts','peer_thanks','manager_recognitions','help_requests','economic_effects','economic_reversals','alembic_version','approval_requests','approval_decisions')}
 
 
 def source(db):
@@ -39,7 +39,7 @@ def test_approval_migration(mig_url,populated):
         command.upgrade(cfg,'head'); command.upgrade(cfg,'head')
         with engine.connect() as conn:
             assert snapshot(conn)==before
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='e80b2d9e2603'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='e90a1c9e2601'
             inspector=sa.inspect(conn)
             for model in (ApprovalRequest,ApprovalDecision):
                 name=model.__tablename__

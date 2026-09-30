@@ -1,0 +1,20 @@
+{
+  "action": "closed",
+  "issue": {
+    "closed_at": "2026-09-29T16:53:30Z",
+    "created_at": "2026-09-29T16:53:00Z",
+    "id": 1001,
+    "merged_at": null,
+    "number": 1,
+    "state": "closed",
+    "user": {
+      "id": 20
+    }
+  },
+  "repository": {
+    "id": 123
+  },
+  "sender": {
+    "id": 20
+  }
+}

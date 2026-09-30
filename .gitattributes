@@ -1,3 +1,4 @@
 # Frozen replay hashes cover exact bytes on every checkout platform.
 backend/tests/public_replay/sanitized/*.jsonl -text
 backend/tests/public_replay/mappings/*.jsonl -text
+backend/tests/github_fixtures/*.json -text

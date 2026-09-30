@@ -45,6 +45,7 @@ from app.policies.model import Policy, PolicyDecision  # noqa: E402,F401
 from app.approvals.model import ApprovalRequest, ApprovalDecision  # noqa: E402,F401
 from app.economic_effects.model import EconomicEffect, EconomicReversal  # noqa: E402,F401
 from app.collaboration.model import PeerThanks, ManagerRecognition, HelpRequest  # noqa: E402,F401
+from app.github_connector.model import GithubSource, GithubIdentity, GithubDelivery  # noqa: E402,F401
 from app.seed import run as seed_run  # noqa: E402
 
 Base.metadata.create_all(engine)  # schema for tests (alembic owns prod schema)
