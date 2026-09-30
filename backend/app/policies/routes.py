@@ -10,7 +10,8 @@ from ..domain import DomainError
 from ..models import User
 from ..security import current_user, require_admin
 from .model import Policy
-from .service import create_policy, update_policy, policy_view, evaluate_candidate, get_decision
+from .service import create_policy, update_policy, policy_view, get_decision
+from ..shadow.service import evaluate_governance as evaluate_candidate
 
 router = APIRouter(prefix='/api/policies')
 

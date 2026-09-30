@@ -76,11 +76,17 @@ def is_candidate_economically_processable(db, company_id, policy_decision_id):
             raise DomainError('ECONOMIC_EFFECT_NOT_ELIGIBLE', 'Approved governance is required')
     elif pd.effective_decision != 'ALLOW':
         raise DomainError('ECONOMIC_EFFECT_NOT_ELIGIBLE', 'Governance does not authorize issuance')
+    beneficiary_id = participant_subject(db, company_id, source.subject_id)
+    return Eligibility(company_id, candidate.id, pd.id, approval_id, beneficiary_id,
+                       candidate_amount(serialized_data), source.type)
+
+
+def participant_subject(db, company_id, subject_id):
+    """Read-only participant eligibility shared by execution and observation."""
     # Historical inactive participants may receive ledger corrections/rewards.
     # Admin accounts have no participant wallet under the existing economy.
     beneficiary = db.scalar(select(User).where(User.company_id == company_id,
-                                               User.id == source.subject_id))
+                                               User.id == subject_id))
     if beneficiary is None or beneficiary.role == 'ADMIN':
         raise DomainError('ECONOMIC_BENEFICIARY_MISSING', 'A same-company participant subject is required')
-    return Eligibility(company_id, candidate.id, pd.id, approval_id, beneficiary.id,
-                       candidate_amount(serialized_data), source.type)
+    return beneficiary.id
