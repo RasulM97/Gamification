@@ -9,10 +9,14 @@ deployments use the same implementation.
 ## Authority
 
 An active same-company Admin explicitly selects a PolicyDecision ID. The server
-loads its candidate, canonical event and governance history. ALLOW is sufficient;
-REQUIRE_APPROVAL needs the exact same-company ApprovalRequest and its immutable
-APPROVED ApprovalDecision. BLOCK, SHADOW_ONLY, absent requests, pending requests
-and rejected decisions cannot pay. Manager approval is not issuance authority.
+loads its candidate, canonical event and governance history. Through E11, ALLOW
+also requires the current Safety gate: CLEAR/OBSERVE need no approval;
+REQUIRE_REVIEW needs the exact current immutable evaluation's INCENTIVE_SAFETY
+approval; SUPPRESS_INCENTIVE cannot pay. Policy REQUIRE_APPROVAL retains its
+same-company request and immutable APPROVED decision, with Safety suppression
+still a veto. See [Safety](../incentive_safety/SAFETY_V1.md). BLOCK and SHADOW_ONLY
+cannot pay; where approval is required, absent, pending or rejected requests
+also cannot pay. Manager approval is not issuance authority.
 
 Historical eligible policy evidence remains valid even after a newer decision.
 There is no implicit latest-wins rule. The first committed eligible history
@@ -89,7 +93,8 @@ coinDebt = max(0, -netPosition)
 ## Storage and transaction boundary
 
 EconomicEffect stores id, company, candidate, selected policy decision, optional
-exact approval decision, INCENTIVE_CREDIT, positive NUMERIC amount, beneficiary,
+exact approval decision, E11 nullable safety_evaluation_id provenance,
+INCENTIVE_CREDIT, positive NUMERIC amount, beneficiary,
 ISSUED, ledger transaction ID and creation time. EconomicReversal stores id,
 company, original effect, reason code, inverse NUMERIC amount, initiating Admin,
 ledger transaction ID and creation time. Both reject UPDATE and DELETE.
@@ -115,7 +120,9 @@ rolls back both even if an internal caller catches it. Deferred constraints reje
 an effect without its ledger row or an E7 ledger row without provenance at commit.
 Reversal uses the same pattern. A commit failure rolls back through the route.
 
-Candidate-scoped PostgreSQL advisory transaction locks coordinate issuance,
+E11 issuance takes the candidate Safety authority lock before the existing
+economic identity and account locks. Exact current Safety provenance is checked
+in services and PostgreSQL. Candidate-scoped advisory transaction locks coordinate issuance,
 historical-policy retries and reversal. Database uniqueness remains the final
 invariant. After candidate locking, actor and beneficiary accounts lock in stable
 ID order using NO KEY UPDATE, sharing the existing wallet serialization boundary.

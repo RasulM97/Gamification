@@ -1,8 +1,23 @@
 # ENGINEERING_RULES.md — Canonical Domain Rules (M0-B Rule Freeze)
 
-Every rule below is implemented in `src/domain/` (pure reducer, no exceptions via UI)
-and covered by `src/domain/engine.test.ts` + `e2e/smoke.spec.ts`. If code and this
-document disagree, the code is wrong — fix the code, not the rule.
+This is the historical M0-B freeze, not an instruction to revert later approved
+contracts. Its numbered rules are preserved for traceability. Current source,
+migrations and applicable tests take precedence; consult [architecture](ARCHITECTURE.md)
+and the [contract index](README.md) before implementation.
+
+Later approved changes supersede these specific historical statements:
+
+- R5/R7: PRIVATE visibility is task-scoped; Managers do not automatically see
+  every private task. See `backend/app/task_access.py`.
+- R9: per-user `maxActiveTasks` (1–100, default 2) replaces a fixed global limit;
+  see [N4 capacity](N4-USER-CAPACITY.md).
+- R12/R21: signed net position can be negative. Spendable balance and coin debt
+  are projections of ledger SUM; a never-negative net ledger rule is obsolete.
+  See `backend/app/economy_position.py` and `src/domain/economyPosition.ts`.
+- R22: reversals are implemented; E7 adds explicit exactly-once
+  INCENTIVE_REVERSAL provenance. See [Economic Effects](economic-effects/ECONOMIC_EFFECTS_V1.md).
+- R26 describes demo persistence only. Production uses authenticated APIs and
+  PostgreSQL; [runtime](RUNTIME.md) describes the boundary.
 
 ## Roles & actors
 - R1. Roles: ADMIN, MANAGER, EMPLOYEE.

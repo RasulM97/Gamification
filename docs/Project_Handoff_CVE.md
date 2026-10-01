@@ -1,5 +1,10 @@
 # Corporate Virtual Economy — Project Handoff
 
+> Historical September 2 demo handoff, retained as a phase snapshot. Backend availability,
+> test counts, runtime limitations and suggested next phases below describe that
+> date, not the current system. For E11 CLOSED / PASS, use [current status](STATUS.md),
+> [architecture](ARCHITECTURE.md), [runtime](RUNTIME.md) and [roadmap](ROADMAP.md).
+
 **Prepared for:** incoming Project Manager (next phases)
 **Date:** 2 September 2026
 **Build status:** stable demo; 102/102 engine tests passing; TypeScript clean; production build green

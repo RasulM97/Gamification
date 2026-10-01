@@ -1,5 +1,9 @@
 # Canonical Business Event contract — E1.1
 
+The E1.1 Core contract remains the event foundation. Its phase-boundary and
+verification sections describe E1.1, not the absence of later engines. See
+[current architecture](../ARCHITECTURE.md) for implemented consumers through E11.
+
 Status: implemented event foundation only. Deployment constraint:
 [one core, three deployment modes](../adr/ADR-CORE-DEPLOYMENT-MODEL.md).
 

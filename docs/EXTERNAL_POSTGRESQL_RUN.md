@@ -1,13 +1,13 @@
 # Running the CVE Backend Externally (Windows + PostgreSQL)
 
-This document covers running the recovered M1 backend (`backend/`) on your own
-Windows machine with a real PostgreSQL server. **None of these steps are for the
-Kimi sandbox** — the sandbox preview runs frontend-only with the demo adapter and
-must never start PostgreSQL, Alembic, or FastAPI.
+This guide runs the current FastAPI backend (`backend/`) on Windows with
+PostgreSQL. The verified implementation is E11; see [current status](STATUS.md).
+Standalone demo mode needs none of these services. For pilot deployment, use
+the [Pilot Runbook](PILOT_RUNBOOK.md) instead of development seeding.
 
 ## 1. Prerequisites
 
-- **Python 3.12** (3.11+ works; 3.12 is what the backend was developed and tested on)
+- **Python 3.12** (the verified backend runtime)
 - **PostgreSQL 15+** installed and running (e.g. the EDB Windows installer), with a
   superuser you can log in as (default below: `postgres`)
 - Git (to clone/copy this repository)
@@ -48,7 +48,7 @@ $env:CVE_DATABASE_URL = "postgresql+psycopg2://postgres:YOURPASSWORD@localhost:5
 $env:CVE_TEST_DATABASE_URL = "postgresql+psycopg2://postgres:YOURPASSWORD@localhost:5432/cve_test"
 
 # Security — REQUIRED outside development
-$env:CVE_JWT_SECRET = "generate-a-long-random-string"
+$env:CVE_JWT_SECRET = "<locally-generated-secret-at-least-32-bytes>"
 
 # Uploads (any writable folder)
 $env:CVE_UPLOAD_DIR = "C:\cve-uploads"
@@ -65,7 +65,7 @@ Equivalent `.env` file (place in `backend/.env`):
 ```
 CVE_DATABASE_URL=postgresql+psycopg2://postgres:YOURPASSWORD@localhost:5432/cve
 CVE_TEST_DATABASE_URL=postgresql+psycopg2://postgres:YOURPASSWORD@localhost:5432/cve_test
-CVE_JWT_SECRET=generate-a-long-random-string
+CVE_JWT_SECRET=<locally-generated-secret-at-least-32-bytes>
 CVE_UPLOAD_DIR=C:\cve-uploads
 CVE_DEV_MODE=true
 CVE_CORS_ORIGINS=http://localhost:5173,http://localhost:4173
@@ -80,16 +80,19 @@ cd backend
 alembic upgrade head
 ```
 
-Expected head revision: `bce2aa82978d` (initial schema).
+Expected repository head at E11: `eb01c9e2601`. Verify with `alembic heads` and
+`alembic current`; this guide does not assert the state of an existing database.
+The commands in each section assume its stated working directory; do not repeat
+`cd backend` if already there.
 
-## 6. Seed deterministic demo data
+## 6. Development data
 
-```powershell
-python -c "from app.seed import run; run()"
-```
-
-This creates the demo company, the 5 personas (dana/marcus/priya/jonas/aisha,
-password `demo1234`), 10 tasks and 6 rewards.
+With `CVE_DEV_MODE=true`, API startup calls `seed_if_empty` in a transaction.
+Only an empty development database should be seeded. The current fixture is
+maintained in `backend/app/seed.py`; do not call `run()` without its required
+Session or use seed/reset commands against founder or pilot data. Development
+accounts are test identities, not production credentials. For a real pilot,
+use the provisioning workflow in [Pilot Runbook](PILOT_RUNBOOK.md).
 
 ## 7. Run the backend test suite
 
@@ -98,8 +101,10 @@ cd backend
 python -m pytest tests/ -v
 ```
 
-This runs all 30 backend tests (domain parity, API lifecycle, economy/tenant
-isolation) against `CVE_TEST_DATABASE_URL`.
+This runs the backend suite against the disposable `CVE_TEST_DATABASE_URL`.
+The latest recorded E11 result is 985 unique passing checks (982 full-suite
+checks plus 3 workload cases run separately). See [testing](testing/README.md)
+for the exact recorded split and additional dedicated runners.
 
 ## 8. Concurrency tests only
 
@@ -107,7 +112,7 @@ isolation) against `CVE_TEST_DATABASE_URL`.
 python -m pytest tests/test_concurrency.py -v
 ```
 
-These 5 tests exercise first-valid-claim races, partial-payout atomicity and
+These tests exercise first-valid-claim races, partial-payout atomicity and
 ledger invariants under parallel workers — they require the real PostgreSQL
 test database.
 
@@ -138,7 +143,7 @@ python scripts/run_dev.py
   `VITE_CVE_DEV_TOOLS=true`) and proxies same-origin `/api/*` to
   http://localhost:8000 (override with `$env:CVE_API_PROXY_TARGET`), so no
   other frontend configuration is needed. Sign in with a seeded account
-  (e.g. `dana@aster.demo` / `demo1234`), or use the account menu's
+  (using the development seed only), or use the account menu's
   **Switch test account** dev tool, which performs real logins through
   `/api/auth/login`. The switcher exists only in this dev mode — never in
   demo mode, never without `VITE_CVE_DEV_TOOLS=true`, never in any
@@ -153,6 +158,9 @@ python scripts/run_dev.py
 
 - `DEV_MODE=true` exposes `/api/dev/personas` and `/api/dev/reseed`. Never enable it
   outside development.
-- The frozen M0-B domain rules remain the canonical behavior spec; the backend's
-  `app/domain.py` is the server-side port of those rules, parity-tested by
-  `tests/test_domain.py`.
+- The M0-B rule freeze is historical. Current behavior is defined by source,
+  migrations and tests, including later approved capacity, visibility and signed
+  ledger rules. See [architecture](ARCHITECTURE.md) and [testing](testing/README.md).
+- The root `.venv` belongs to Graphify; preserve it and use `backend/.venv`.
+- Automated fixtures truncate data. Use a dedicated disposable test database,
+  never founder or pilot data. Do not commit local environment files or secrets.

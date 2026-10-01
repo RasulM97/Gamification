@@ -1,5 +1,8 @@
 # E7.1 — public real data replay
 
+This document preserves E7.1 scope and measurements. E8–E11 are now complete
+separately; see [current status](../STATUS.md) and [latest regression evidence](README.md).
+
 This is offline validation tooling, not a connector or production orchestrator.
 Production code, database schema, Canonical Event contracts, reward semantics,
 Golden expectations and runtime dependencies are unchanged. No E8/E9 work is

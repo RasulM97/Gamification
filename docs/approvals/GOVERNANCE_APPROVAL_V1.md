@@ -8,17 +8,22 @@ cloud workflow service, message broker, new dependency or automatic orchestratio
 
 ## Identity, eligibility and audit history
 
-Creation is explicit and administrator-only. Only a persisted, same-company
-PolicyDecision with `effectiveDecision=REQUIRE_APPROVAL` is eligible, including
-`DEFAULT_GOVERNANCE` without any matched policies. ALLOW, BLOCK and SHADOW_ONLY
-cannot produce an approval. A database insert trigger enforces this eligibility
-even outside the service. A composite foreign key enforces that the request's
-company and candidate match the referenced policy decision.
+Creation is explicit and administrator-only. The ordinary path accepts a persisted,
+same-company PolicyDecision with `effectiveDecision=REQUIRE_APPROVAL`, including
+`DEFAULT_GOVERNANCE` without matched policies. E11 adds exactly one path: Policy
+ALLOW plus the exact current immutable Safety REQUIRE_REVIEW evaluation, with
+trigger INCENTIVE_SAFETY. Ordinary ALLOW, CLEAR, OBSERVE, SUPPRESS, BLOCK and
+SHADOW_ONLY cannot use that path. Service and PostgreSQL enforce the same gate;
+company, policy, candidate and Safety provenance must match. See
+[Safety approval contract](../incentive_safety/SAFETY_V1.md).
 
 `approval_requests` contains immutable identity: id, company_id,
-policy_decision_id, candidate_id, required_authority, requested_by, requested_at.
-UNIQUE(policy_decision_id) enforces one original request, including after a final
-decision. Retrying creation returns its existing request and current status.
+policy_decision_id, candidate_id, required_authority, requested_by, requested_at,
+and E11 trigger / nullable safety_evaluation_id. A partial unique index on
+policy_decision_id where safety_evaluation_id IS NULL preserves ordinary request
+identity; UNIQUE(policy_decision_id, safety_evaluation_id) binds Safety requests.
+Retrying the same eligible provenance returns its request/current status. Approval
+for a stale Safety evaluation cannot authorize the current one.
 
 `approval_decisions` stores id, company_id, approval_request_id, decision,
 decided_by, decided_at, reason_code and note. UNIQUE(approval_request_id) ensures
@@ -88,6 +93,7 @@ no later transition. No after-commit follow-up write is required.
 | Endpoint | Access / behavior |
 | --- | --- |
 | POST /api/approvals/from-policy/{policyDecisionId} | ADMIN; explicit creation/idempotent lookup |
+| POST /api/approvals/from-policy/{policyDecisionId}/safety/{evaluationId} | ADMIN; exact current Safety REQUIRE_REVIEW with Policy ALLOW |
 | GET /api/approvals | ADMIN / authority-filtered MANAGER |
 | GET /api/approvals/{id} | Same-company management with required authority |
 | POST /api/approvals/{id}/decision | Authorized non-subject management actor |
@@ -106,7 +112,9 @@ and offset 0–100000. Optional status is PENDING/APPROVED/REJECTED; optional
 requiredAuthority is ADMIN/MANAGER_OR_ADMIN. No full snapshots or per-row
 provenance reconstruction are included. A response carries request identifiers,
 authority, requester/time, derived status and an optional concise finalDecision.
-All responses have Cache-Control: no-store. Employee/subject UX is deferred.
+Safety-triggered responses additionally include trigger and safetyEvaluationId;
+ordinary response shapes remain unchanged. All responses have Cache-Control:
+no-store. Employee/subject UX is deferred.
 
 | Domain error | HTTP |
 | --- | ---: |
@@ -123,6 +131,10 @@ private note or database exception details. Technical logs contain only operatio
 company/request/policy IDs, authority, status/error code and duration.
 
 ## Migration and validation
+
+The original E6 migration below is historical. Current head `eb01c9e2601`
+adds Safety provenance and guards; [E11](../incentive_safety/SAFETY_V1.md)
+documents its history-preserving rollback barrier.
 
 Revision `e60a1c9e2601` follows `e50a1c9e2601`. It adds the two approval tables,
 constraints, listing index, immutable-history and eligibility triggers, and a
@@ -165,18 +177,18 @@ This dedicated load gate is separate from regular CI; E5.1 smoke stays in pytest
 Local Docker/TestClient/thread measurements are not a production SLA. Summarized
 SQL counts include actor revalidation; HTTP adds the existing authentication read.
 
-## Future economic eligibility: documentation only
+## Economic execution through E11
 
-A policy decision is potentially eligible for future economic processing if it
-is ALLOW, or it is REQUIRE_APPROVAL with an APPROVED governance decision. BLOCK,
-SHADOW_ONLY, PENDING and REJECTED are not eligible. APPROVED means governance
-authorization, **not payment**. Multiple policy decisions can reference a single
-candidate; their counts are not a promise of unique payments. E7 must define its
-own economic identity/idempotency contract before execution.
+APPROVED is governance authorization, not payment. [E7 execution](../economic-effects/ECONOMIC_EFFECTS_V1.md)
+explicitly enforces source authority, amount, beneficiary, Policy and current
+Safety. BLOCK and SHADOW_ONLY cannot pay. Safety SUPPRESS vetoes payment;
+ALLOW plus REQUIRE_REVIEW requires approval bound to that exact evaluation.
+Ordinary Policy REQUIRE_APPROVAL retains its existing approval path.
 
-E6 makes no ledger, wallet, activity, notification, recognition or shadow-execution
-writes. Approval requests are not automatically created from policy evaluations.
-No E7 processing is implemented.
+Approval operations themselves create no ledger or wallet mutation. Requests
+are not automatically created from Policy or Shadow evaluation. The E6 workload
+measurements below are historical; [current testing evidence](../testing/README.md)
+includes E7–E11 regressions.
 
 ## Executed synthetic acceptance
 

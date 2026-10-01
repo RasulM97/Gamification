@@ -1,4 +1,8 @@
-# E9 GitHub repository connector — implementation and acceptance plan
+# E9 GitHub repository connector — implemented contract
+
+E9 is complete and regression-verified through E11. [Current status](../STATUS.md)
+explains the preserved historical acceptance report and its stale PENDING marker.
+The selection preflight below is historical; it is not a current provider survey.
 
 Baseline: `45db2c8ec1a3f130d19f34692f1d9bc7abdd65d0`, graph 2,533 nodes /
 10,374 edges. Controlled real GitHub deliveries and the capture-derived workload

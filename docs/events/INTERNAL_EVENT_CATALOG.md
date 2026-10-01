@@ -141,4 +141,5 @@ test fixtures at founder/pilot databases. Graphify must be refreshed after chang
 inspect adapter/store edges and verify source directly when broad neighborhoods
 include unrelated consumers of shared model metadata.
 
-No E2 work is included: notification architecture and all later event phases remain deferred.
+This E1.2 adapter change included no E2 work. E2 and later phases are now
+implemented separately; see [current status](../STATUS.md).

@@ -217,4 +217,5 @@ work with an arbitrary local/self-hosted hostname. Run the full backend suite,
 TypeScript, `npm test -- src`, demo/server builds and existing browser regressions.
 Refresh Graphify after committing and verify source dependency direction.
 
-E4 is not included.
+E4 is not part of this E3 ingress subsystem. Rules and later E4–E11 capabilities
+are now implemented separately; see [current status](../STATUS.md).

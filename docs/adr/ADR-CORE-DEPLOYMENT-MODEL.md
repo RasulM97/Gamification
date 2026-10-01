@@ -1,5 +1,9 @@
 # ADR: Core deployment model
 
+Current status note: the accepted deployment constraint remains in force. The
+E0.1 scope and audit below are historical; the Canonical Event foundation and
+E1–E11 capabilities are now implemented. See [current architecture](../ARCHITECTURE.md).
+
 Status: Accepted (permanent architecture constraint)
 Date: 2026-09-24
 Scope: E0.1; no product implementation or migration

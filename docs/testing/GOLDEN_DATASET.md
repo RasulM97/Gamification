@@ -152,7 +152,9 @@ Changes to Rules, ingestion normalization or Canonical Event contracts must run
 this dataset as a regression gate. Change expectations only with an intentional,
 reviewed contract change, never simply to make a failure disappear.
 
-This is the first controlled raw-data testing asset. A future Synthetic Dataset
-may add volume and enterprise distributions; future Public Real Replay may add
-sanitized public inputs. Neither phase is implemented here. No public dataset is
-downloaded, no production history is replayed, and E5 has not started.
+This E4.1 harness remains focused on RuleCandidate correctness. The later
+[Synthetic Dataset](SYNTHETIC_ENTERPRISE_DATASET.md) and
+[Public Real Replay](PUBLIC_REAL_DATA_REPLAY.md) are now implemented separately,
+as are Policy, Approval, economics, Shadow and Safety. This harness itself does
+not download public data or replay production history. See [latest verified
+counts](README.md); the 47 scenarios plus two integrity checks remain 49 tests.

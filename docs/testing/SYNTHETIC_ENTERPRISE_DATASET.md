@@ -1,5 +1,9 @@
 # Synthetic enterprise validation (E5.1)
 
+This document preserves the E5.1 workload contract and historical measured runs.
+Later E6–E11 implementations and current regression results are indexed in
+[testing](README.md); historical no-later-phase statements are scoped to E5.1.
+
 This is a headless, test-only Event → Rule → Policy workload. It exercises the
 unchanged application services, PostgreSQL constraints and authenticated HTTP
 boundaries. It creates no approvals, economic transactions, notifications,
@@ -153,9 +157,11 @@ The acceptance instance uses ephemeral PostgreSQL storage.
 Golden's unchanged 47 event/rule scenarios and 23 policy scenarios remain the
 exact edge-semantics regression suite. Synthetic tests add generated volume,
 concurrency, isolation and provenance coverage, not a replacement semantic oracle.
-Future Public Real Replay is **not started**. Extra seeds and a >20k STRESS run
-are optional and must be labeled NOT EXECUTED unless actually run. E6/E7 are not
-implemented: REQUIRE_APPROVAL and ALLOW counts only inform future workload sizing.
+At the original E5.1 snapshot, Public Real Replay had not started; E7.1 is now
+complete separately. Extra seeds and a >20k STRESS run
+are optional and must be labeled NOT EXECUTED unless actually run. At the E5.1 snapshot, E6/E7 were not
+implemented; its REQUIRE_APPROVAL and ALLOW counts informed later workload sizing.
+Both phases are now implemented separately; see [current testing](README.md).
 
 ## Executed acceptance evidence
 

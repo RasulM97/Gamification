@@ -1,5 +1,10 @@
 # E10 Shadow Mode
 
+Current through E11: this E10 observation contract is unchanged. The separate
+[Safety sidecar](../incentive_safety/SAFETY_V1.md) adds Safety-aware hypothetical
+results without rewriting E10 observations or creating real approvals/economics.
+Preflight and phase measurements below describe E10; see [latest tests](../testing/README.md).
+
 Shadow observes the existing incentive chain without executing economics. It is
 an explicit, admin-only backend capability. It does not enable company feature
 flags, create human approval queues, or add a wallet or ledger.

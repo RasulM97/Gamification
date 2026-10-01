@@ -1,29 +1,43 @@
-# Runtime integration
+# Runtime integration through E11
 
 ## Demo mode
 
-Run `npm install` and `npm run dev` with no backend or database. This is the
-default (`VITE_CVE_DATA_MODE=demo`) and preserves the deterministic reducer,
-seed, persistence, and persona switcher.
+From the repository root, run `npm ci` and `npm run dev`. Any
+`VITE_CVE_DATA_MODE` value other than exactly `server` selects demo mode.
+The demo uses its TypeScript reducer, seed, browser persistence and persona
+switcher. It needs no backend and does not expose the entire E7–E11 API surface.
 
 ## Server mode
 
-Start PostgreSQL, then from `backend/` run `alembic upgrade head`, seed with
-`python -c "from app.seed import run; run()"`, and start FastAPI with
-`python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`.
-Run the frontend with `VITE_CVE_DATA_MODE=server VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev`
-(PowerShell: `$env:VITE_CVE_DATA_MODE="server"; $env:VITE_API_BASE_URL="http://127.0.0.1:8000"; npm run dev`).
-Use `CVE_DATABASE_URL` for the backend PostgreSQL URL and `cve_test` only for
-automated tests.
+Follow [local PostgreSQL setup](EXTERNAL_POSTGRESQL_RUN.md), using a backend
+virtual environment separate from the root Graphify `.venv`. Configure
+`CVE_DATABASE_URL`, uploads, origins and authentication locally; never copy
+actual credentials into tracked documentation. From `backend/`:
 
-Seeded development accounts are `dana@aster.demo` (ADMIN), `marcus@aster.demo`
-(MANAGER), `priya@aster.demo`, `jonas@aster.demo`, and `aisha@aster.demo`
-(EMPLOYEE); all use password `demo1234`. The API is at
-`http://127.0.0.1:8000`; the frontend is normally at `http://127.0.0.1:5173`.
+```sh
+alembic upgrade head
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
-Server responses replace the store with authoritative bootstrap data after
-every action. Bearer tokens are kept under `cve-server-token-v1`.
+Current repository head: `eb01c9e2601`. Reachability: `/api/health` and `/docs`.
+This does not assert that a local process or temporary public tunnel is running.
+Development mode may seed an empty database. For a real pilot, use
+[Pilot Runbook](PILOT_RUNBOOK.md): non-development startup never seeds and
+requires an explicit strong JWT secret. Do not run development seed/reset tools
+against pilot data.
 
-Use `useStore().login(email, password)` and `.logout()` for server sessions.
-Uploads are sent as multipart form data when a browser `File` is selected;
-server attachment IDs use `GET /api/files/{id}` for authenticated downloads.
+From the root, `npm run dev:server` loads the server-mode Vite configuration.
+`/api` is proxied to the configured backend (`CVE_API_PROXY_TARGET`, default
+`http://localhost:8000`). For a separate-origin build, configure
+`VITE_API_BASE_URL` and backend CORS deliberately. No availability auto-detection
+changes the chosen runtime mode.
+
+Server mode uses real login and authoritative bootstrap/mutation responses.
+The auth token storage key is `cve-token` (`src/api.ts`); browser preferences are
+also local, but persisted demo domain state is not server authority. Uploads
+send multipart bytes; authenticated downloads use `/api/files/{id}`.
+The test-account switcher requires Vite development mode, server mode and
+`VITE_CVE_DEV_TOOLS=true`; it is not a production identity mechanism.
+
+Managed, self-hosted and headless access share the same server contracts.
+See [architecture](ARCHITECTURE.md) and [recorded validation](testing/README.md).

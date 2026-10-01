@@ -1,5 +1,9 @@
 # Deterministic Policy / Governance Engine v1 (E5)
 
+Current integration: the pure Policy service still only records governance.
+The E10 HTTP wrapper may also record SHADOW_ONLY observation; E11 Safety stays
+separate from Policy. See [current architecture](../ARCHITECTURE.md).
+
 E5 evaluates an immutable RuleCandidate and records an immutable governance
 decision. It does not execute the proposed outcome. Production entry points remain
 explicit: ingest event, explicitly evaluate Rules, then explicitly evaluate Policy.
@@ -13,10 +17,10 @@ Exactly four decisions exist, with the following severity:
 
 `BLOCK > SHADOW_ONLY > REQUIRE_APPROVAL > ALLOW`
 
-| Decision | Meaning for a future execution stage |
+| Decision | Meaning for the explicit downstream execution stage |
 | --- | --- |
 | ALLOW | May proceed to the next stage; no coins are issued here |
-| REQUIRE_APPROVAL | Must pass a future approval step; no approval is created here |
+| REQUIRE_APPROVAL | Must pass Governance Approval; no approval is created by the Policy service |
 | SHADOW_ONLY | Observation only; no real economic effect or shadow ledger |
 | BLOCK | Must not proceed toward economic effect; no reversal is performed |
 
