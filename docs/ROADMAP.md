@@ -9,9 +9,10 @@ it does not authorize implementation of the next phase.
 2. **Module Flags / Capability Controls — complete (CLOSED / PASS).** Six optional company
    controls, default-enabled behavior, mandatory Safety, immutable change audit,
    server admission, minimal Admin UI and independent read-only demo settings.
-3. **Organization / Projects — only if validated.** Confirm a concrete product
-   need and compatible scope before starting; this is conditional, not an
-   automatically approved expansion.
+3. **Organization / Projects — validation complete; implementation awaiting approval.**
+   [Evidence-only validation](organization/VALIDATION.md) recommends minimal Team +
+   Project context for the supplied B–D scope requirements. Flat/repository-only
+   shapes do not need it. This recommendation is not implementation authorization.
 4. **System Integration / Maturity Gate.** Prove the existing parallel
    capabilities together end-to-end, including controls, tenant/role boundaries,
    source identity, real domain activity, event/rule/policy/Safety/approval

@@ -46,3 +46,10 @@ documentation audit, and no historical tunnel URL is a current service promise.
 
 [Roadmap](ROADMAP.md) defines the next authorized planning boundary;
 [architecture](ARCHITECTURE.md) defines the invariants that must survive it.
+
+## Evidence-only follow-up
+
+[Organization / Projects validation](organization/VALIDATION.md) completed on
+2026-10-02. Recommendation C awaits explicit approval and confirmation of the
+supplied scoped workflow requirements. Production remains the Module Flags
+baseline; no Organization / Projects schema or behavior has been implemented.
