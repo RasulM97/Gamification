@@ -1,5 +1,5 @@
 """Immutable request identity plus one immutable terminal decision."""
-from sqlalchemy import CheckConstraint, DDL, Float, ForeignKeyConstraint, Index, String, UniqueConstraint, event
+from sqlalchemy import CheckConstraint, DDL, Float, ForeignKeyConstraint, Index, String, UniqueConstraint, event, text
 from sqlalchemy.orm import Mapped, mapped_column
 from ..models import Base, new_id, now_ms
 
@@ -7,7 +7,11 @@ from ..models import Base, new_id, now_ms
 class ApprovalRequest(Base):
     __tablename__ = 'approval_requests'
     __table_args__ = (
-        UniqueConstraint('policy_decision_id', name='uq_approval_request_policy'),
+        Index('uq_approval_request_policy','policy_decision_id',unique=True,postgresql_where=text('safety_evaluation_id IS NULL')),
+        UniqueConstraint('policy_decision_id','safety_evaluation_id',name='uq_approval_request_safety'),
+        ForeignKeyConstraint(['company_id','safety_evaluation_id','candidate_id'],
+            ['incentive_safety_evaluations.company_id','incentive_safety_evaluations.id','incentive_safety_evaluations.candidate_id'],name='fk_approval_safety'),
+        CheckConstraint("(trigger='POLICY' AND safety_evaluation_id IS NULL) OR (trigger='INCENTIVE_SAFETY' AND safety_evaluation_id IS NOT NULL)",name='ck_approval_trigger'),
         UniqueConstraint('company_id','id', name='uq_approval_request_company_id'),
         ForeignKeyConstraint(['company_id','policy_decision_id','candidate_id'],
                              ['policy_decisions.company_id','policy_decisions.id','policy_decisions.candidate_id'],
@@ -20,6 +24,8 @@ class ApprovalRequest(Base):
     company_id: Mapped[str] = mapped_column(String(40))
     policy_decision_id: Mapped[str] = mapped_column(String(40))
     candidate_id: Mapped[str] = mapped_column(String(40))
+    trigger: Mapped[str] = mapped_column(String(32),default='POLICY',server_default='POLICY')
+    safety_evaluation_id: Mapped[str | None] = mapped_column(String(40),nullable=True)
     required_authority: Mapped[str] = mapped_column(String(32))
     requested_by: Mapped[str] = mapped_column(String(40))
     requested_at: Mapped[float] = mapped_column(Float, default=now_ms)

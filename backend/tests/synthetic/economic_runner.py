@@ -107,9 +107,16 @@ def main():
             if alternate[1]['decision']=='REQUIRE_APPROVAL': approve(alternate)
             histories.append(alternate)
         report['multiple_eligible_histories']=len(histories)
+        # This sustained batch has 20 workers over the application's 10+5 pool.
+        # Admit at most 15 sessions before checkout so fast returning workers
+        # cannot starve queued pool waiters past its 30-second timeout. This is
+        # test-harness admission only; production pool and economic contracts
+        # are unchanged, and stage latency includes admission waiting.
+        economic_admission=threading.BoundedSemaphore(15)
+        report['economic_connection_admission_limit']=15
         def execute(pair,stage='issue'):
             r,d=pair
-            with work.metrics.stage(stage,'economic'),SessionLocal() as db:
+            with work.metrics.stage(stage,'economic'),economic_admission,SessionLocal() as db:
                 effect=issue(db,work.actors[r['tenant']],d['id']); db.commit(); return effect
         barrier=threading.Barrier(50)
         def contested(i): barrier.wait(timeout=30); return execute(eligible[0] if i%2 else histories[0],'contention')
@@ -125,7 +132,7 @@ def main():
         reversals=[]
         def undo(pair):
             i,e=pair
-            with work.metrics.stage('reverse','economic'),SessionLocal() as db:
+            with work.metrics.stage('reverse','economic'),economic_admission,SessionLocal() as db:
                 value=reverse(db,work.actors[int(e['companyId'].split('-')[-1])],e['id'],{'reasonCode':'SOURCE_REVERTED'})
                 db.commit(); return value
         subset=[(i,e) for i,e in enumerate(issued) if i%10==0]

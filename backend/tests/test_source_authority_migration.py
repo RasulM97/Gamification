@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from alembic import command
 from app.models import User
 from app.source_authority.service import record_trusted_event, authorized
-from app.economic_effects.service import issue
+from tests.legacy_economic_fixture import issue
 from tests.test_n23_migration import mig_url, _alembic
 from tests.test_policy_migration import tenants
 from tests.economic_helpers import economic_chain

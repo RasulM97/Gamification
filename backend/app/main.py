@@ -34,6 +34,7 @@ from .economic_effects.routes import router as economic_router
 from .collaboration.routes import router as collaboration_router
 from .github_connector.routes import router as github_router
 from .shadow.routes import router as shadow_router
+from .incentive_safety.routes import router as safety_router
 
 STATIC_DIR = os.environ.get('CVE_STATIC_DIR') or str(
     Path(__file__).resolve().parents[2] / 'dist')
@@ -63,6 +64,7 @@ _ERROR_STATUS.update(ECONOMIC_EFFECT_NOT_ELIGIBLE=409, ECONOMIC_EFFECT_ALREADY_E
                      ECONOMIC_ENGINE_UNAVAILABLE=503)
 _ERROR_STATUS.update(COLLABORATION_UNAVAILABLE=503)
 _ERROR_STATUS.update(SHADOW_UNAVAILABLE=503)
+_ERROR_STATUS.update(SAFETY_UNAVAILABLE=503, VALIDATION_ERROR=422)
 
 
 @asynccontextmanager
@@ -103,6 +105,7 @@ app.include_router(economic_router)
 app.include_router(collaboration_router)
 app.include_router(github_router)
 app.include_router(shadow_router)
+app.include_router(safety_router)
 
 
 @app.get('/api/health')

@@ -17,7 +17,7 @@ from tests.migration_values import historical_row
 def snapshot(conn):
     metadata = sa.MetaData(); metadata.reflect(conn)
     return {name: sorted(historical_row(row) for row in conn.execute(sa.select(table)).mappings())
-            for name,table in metadata.tables.items() if name not in ('shadow_evaluations','github_sources','github_identities','github_deliveries','trusted_producers','source_receipts','peer_thanks','manager_recognitions','help_requests','economic_effects','economic_reversals','alembic_version','approval_requests','approval_decisions','webhook_sources','rules','rule_candidates','policies','policy_decisions')}
+            for name,table in metadata.tables.items() if name not in ('incentive_safety_evaluations','incentive_safety_heads','incentive_safety_settings','incentive_safety_shadow','shadow_evaluations','github_sources','github_identities','github_deliveries','trusted_producers','source_receipts','peer_thanks','manager_recognitions','help_requests','economic_effects','economic_reversals','alembic_version','approval_requests','approval_decisions','webhook_sources','rules','rule_candidates','policies','policy_decisions')}
 
 
 @pytest.mark.parametrize('existing', [False,True])
@@ -34,7 +34,7 @@ def test_source_migration_preserves_all_existing_rows(mig_url, existing):
         command.upgrade(cfg, 'head'); command.upgrade(cfg, 'head')
         with eng.connect() as conn:
             assert snapshot(conn) == before
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'ea01c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'eb01c9e2601'
             assert conn.scalar(sa.text('SELECT count(*) FROM webhook_sources')) == 0
             assert {c['name'] for c in sa.inspect(conn).get_columns('webhook_sources')} == set(WebhookSource.__table__.columns.keys())
         with Session(eng) as db:

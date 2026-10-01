@@ -49,6 +49,7 @@ def issue(db, actor, policy_decision_id):
         row = EconomicEffect(id=new_id('ee'), company_id=value.company_id,
             candidate_id=value.candidate_id, policy_decision_id=value.policy_decision_id,
             approval_decision_id=value.approval_decision_id, amount=value.amount,
+            safety_evaluation_id=value.safety_evaluation_id,
             beneficiary_user_id=value.beneficiary_user_id, ledger_transaction_id=new_id('l'))
         db.add(row)
         db.flush()

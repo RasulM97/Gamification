@@ -9,34 +9,50 @@ from .model import ApprovalRequest, ApprovalDecision
 from .contracts import required_authority, AUTHORITIES, STATUSES
 from .authorization import management_actor, require_authority
 from .validation import command
+from ..incentive_safety.authority import require_review, lock as lock_safety
 
 
 def view(request, decision=None):
-    return dict(id=request.id, companyId=request.company_id, type='GOVERNANCE',
+    result = dict(id=request.id, companyId=request.company_id, type='GOVERNANCE',
                 policyDecisionId=request.policy_decision_id, candidateId=request.candidate_id,
                 requiredAuthority=request.required_authority, requestedBy=request.requested_by,
                 requestedAt=request.requested_at, status=decision.decision if decision else 'PENDING',
                 finalDecision=None if decision is None else dict(id=decision.id, decision=decision.decision,
                     decidedBy=decision.decided_by, decidedAt=decision.decided_at,
                     reasonCode=decision.reason_code, note=decision.note))
+    if request.safety_evaluation_id:
+        result.update(trigger=request.trigger,safetyEvaluationId=request.safety_evaluation_id)
+    return result
 
 
-def create_request(db, actor, policy_decision_id):
-    actor = management_actor(db, actor, admin=True)
+def create_request(db, actor, policy_decision_id, *, safety_evaluation_id=None):
+    actor = management_actor(db, actor, admin=True, lock=False)
     source = db.scalar(select(PolicyDecision).where(PolicyDecision.company_id==actor.company_id,
                                                   PolicyDecision.id==policy_decision_id))
     if source is None:
         raise DomainError('NOT_FOUND', 'Policy decision not found')
-    if source.effective_decision != 'REQUIRE_APPROVAL':
+    # Match issuance: safety authority before any account row lock. Revalidate
+    # role/lifecycle under lock after waiting, never authorize from the first read.
+    lock_safety(db,actor.company_id,source.candidate_id)
+    actor = management_actor(db, actor, admin=True)
+    if safety_evaluation_id is not None:
+        if source.effective_decision != 'ALLOW':
+            raise DomainError('APPROVAL_NOT_REQUIRED','Safety approval requires Policy ALLOW')
+        require_review(db,actor.company_id,source.candidate_id,safety_evaluation_id)
+    elif source.effective_decision != 'REQUIRE_APPROVAL':
         raise DomainError('APPROVAL_NOT_REQUIRED', 'Policy decision does not require approval')
     candidate = db.scalar(select(RuleCandidate).where(RuleCandidate.company_id==actor.company_id,
                                                      RuleCandidate.id==source.candidate_id))
-    db.execute(insert(ApprovalRequest).values(company_id=actor.company_id, policy_decision_id=source.id,
-        candidate_id=candidate.id, required_authority=required_authority(candidate.data), requested_by=actor.id)
-        .on_conflict_do_nothing(constraint='uq_approval_request_policy'))
+    statement=insert(ApprovalRequest).values(company_id=actor.company_id, policy_decision_id=source.id,
+        candidate_id=candidate.id, required_authority=required_authority(candidate.data), requested_by=actor.id,
+        trigger='INCENTIVE_SAFETY' if safety_evaluation_id else 'POLICY',safety_evaluation_id=safety_evaluation_id)
+    statement=(statement.on_conflict_do_nothing(constraint='uq_approval_request_safety') if safety_evaluation_id
+        else statement.on_conflict_do_nothing(index_elements=['policy_decision_id'],index_where=ApprovalRequest.safety_evaluation_id.is_(None)))
+    db.execute(statement)
     row = db.execute(select(ApprovalRequest,ApprovalDecision).outerjoin(ApprovalDecision,
         ApprovalDecision.approval_request_id==ApprovalRequest.id).where(
-            ApprovalRequest.company_id==actor.company_id, ApprovalRequest.policy_decision_id==source.id)).one()
+            ApprovalRequest.company_id==actor.company_id, ApprovalRequest.policy_decision_id==source.id,
+            ApprovalRequest.safety_evaluation_id==safety_evaluation_id)).one()
     return view(*row)
 
 

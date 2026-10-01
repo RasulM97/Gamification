@@ -43,6 +43,11 @@ def listing(status: str='PENDING', requiredAuthority: str|None=None, offset: int
     return transaction(db,actor,'list',lambda:list_requests(db,actor,status=status,authority=requiredAuthority,offset=offset))
 
 
+@router.post('/from-policy/{policy_decision_id}/safety/{evaluation_id}')
+def safety_create(policy_decision_id: str,evaluation_id: str,actor: User=Depends(current_user),db: Session=Depends(get_db)):
+    return transaction(db,actor,'safety_create',lambda:create_request(db,actor,policy_decision_id,safety_evaluation_id=evaluation_id))
+
+
 @router.get('/{request_id}')
 def approval_detail(request_id: str, actor: User=Depends(current_user), db: Session=Depends(get_db)):
     return transaction(db,actor,'get',lambda:get_request(db,actor,request_id))

@@ -13,6 +13,8 @@ class EconomicEffect(Base):
         UniqueConstraint('company_id', 'id', name='uq_economic_company_id'),
         UniqueConstraint('ledger_transaction_id', name='uq_economic_ledger'),
         ForeignKeyConstraint(['company_id', 'candidate_id'], ['rule_candidates.company_id', 'rule_candidates.id'], name='fk_economic_candidate'),
+        ForeignKeyConstraint(['company_id','safety_evaluation_id','candidate_id'],
+            ['incentive_safety_evaluations.company_id','incentive_safety_evaluations.id','incentive_safety_evaluations.candidate_id'],name='fk_economic_safety'),
         ForeignKeyConstraint(['company_id', 'policy_decision_id', 'candidate_id'],
             ['policy_decisions.company_id', 'policy_decisions.id', 'policy_decisions.candidate_id'], name='fk_economic_policy'),
         ForeignKeyConstraint(['company_id', 'beneficiary_user_id'], ['users.company_id', 'users.id'], name='fk_economic_beneficiary'),
@@ -26,6 +28,7 @@ class EconomicEffect(Base):
     candidate_id: Mapped[str] = mapped_column(String(40))
     policy_decision_id: Mapped[str] = mapped_column(String(40))
     approval_decision_id: Mapped[str | None] = mapped_column(ForeignKey('approval_decisions.id'), nullable=True)
+    safety_evaluation_id: Mapped[str | None] = mapped_column(String(40),nullable=True)
     effect_type: Mapped[str] = mapped_column(String(32), default='INCENTIVE_CREDIT')
     amount: Mapped[Decimal] = mapped_column(Numeric())
     beneficiary_user_id: Mapped[str] = mapped_column(String(40))
@@ -68,3 +71,9 @@ from ..source_authority.schema import INSTALL_SQL as SOURCE_SQL, UNINSTALL_SQL a
 SourceReceipt.__table__.add_is_dependent_on(EconomicReversal.__table__)
 event.listen(SourceReceipt.__table__, 'after_create', DDL(SOURCE_SQL).execute_if(dialect='postgresql'))
 event.listen(SourceReceipt.__table__, 'before_drop', DDL(DROP_SOURCE_SQL).execute_if(dialect='postgresql'))
+
+from ..incentive_safety.model import SafetyEvaluation, SafetyHead
+from ..incentive_safety.schema import INSTALL_SQL as SAFETY_SQL, UNINSTALL_SQL as DROP_SAFETY_SQL
+SafetyHead.__table__.add_is_dependent_on(SourceReceipt.__table__)
+event.listen(SafetyHead.__table__,'after_create',DDL(SAFETY_SQL).execute_if(dialect='postgresql'))
+event.listen(SafetyHead.__table__,'before_drop',DDL(DROP_SAFETY_SQL).execute_if(dialect='postgresql'))

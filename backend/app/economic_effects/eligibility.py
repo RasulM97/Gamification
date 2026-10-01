@@ -10,6 +10,7 @@ from ..models import User
 from ..policies.model import PolicyDecision
 from ..rules.model import RuleCandidate
 from .contracts import candidate_amount
+from ..incentive_safety.service import assess as assess_safety
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class Eligibility:
     beneficiary_user_id: str
     amount: Decimal
     source_type: str
+    safety_evaluation_id: str | None = None
 
 
 def economic_admin(db, actor, *, lock=True):
@@ -63,14 +65,19 @@ def is_candidate_economically_processable(db, company_id, policy_decision_id):
     candidate, source, serialized_data = row
     # The service and deferred DB guard use the same source-provenance predicate.
     require_authorized(db,company_id,source.id)
+    safety=assess_safety(db,company_id,candidate.id)
+    if safety is not None and safety.outcome=='SUPPRESS_INCENTIVE':
+        raise DomainError('ECONOMIC_EFFECT_NOT_ELIGIBLE','Incentive suppressed by safety evaluation')
     approval_id = None
-    if pd.effective_decision == 'REQUIRE_APPROVAL':
+    safety_review=pd.effective_decision=='ALLOW' and safety is not None and safety.outcome=='REQUIRE_REVIEW'
+    if pd.effective_decision == 'REQUIRE_APPROVAL' or safety_review:
         approval_id = db.scalar(select(ApprovalDecision.id).join(ApprovalRequest,
             (ApprovalRequest.id == ApprovalDecision.approval_request_id)
             & (ApprovalRequest.company_id == ApprovalDecision.company_id)).where(
                 ApprovalRequest.company_id == company_id,
                 ApprovalRequest.policy_decision_id == pd.id,
                 ApprovalRequest.candidate_id == candidate.id,
+                ApprovalRequest.safety_evaluation_id == (safety.id if safety_review else None),
                 ApprovalDecision.decision == 'APPROVED'))
         if approval_id is None:
             raise DomainError('ECONOMIC_EFFECT_NOT_ELIGIBLE', 'Approved governance is required')
@@ -78,7 +85,7 @@ def is_candidate_economically_processable(db, company_id, policy_decision_id):
         raise DomainError('ECONOMIC_EFFECT_NOT_ELIGIBLE', 'Governance does not authorize issuance')
     beneficiary_id = participant_subject(db, company_id, source.subject_id)
     return Eligibility(company_id, candidate.id, pd.id, approval_id, beneficiary_id,
-                       candidate_amount(serialized_data), source.type)
+                       candidate_amount(serialized_data), source.type, safety.id if safety else None)
 
 
 def participant_subject(db, company_id, subject_id):

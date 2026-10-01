@@ -1,0 +1,338 @@
+{
+  "status": "PASS",
+  "baseline": "b8de26c19d7a5dc3970916a6db67481e55129d45",
+  "migration": "eb01c9e2601",
+  "schema": "Final E11 Alembic schema; both history indexes and configured-company guard verified",
+  "graphBefore": {
+    "nodes": 2720,
+    "edges": 11442
+  },
+  "graphAfter": {
+    "nodes": 2863,
+    "edges": 12264
+  },
+  "approvalContractGate": {
+    "status": "PASS",
+    "approvalGolden": 24,
+    "economicGolden": 36,
+    "ordinaryAllowIneligible": true,
+    "staleApprovalBlocked": true,
+    "crossTenantBlocked": true,
+    "suppressOverrideBlocked": true,
+    "shadowRequests": 0,
+    "beforeApprovalEffects": 0,
+    "afterApprovalEffectsPerCandidate": 1,
+    "duplicateRequests": 0,
+    "duplicateEffects": 0
+  },
+  "workloadRuns": [
+    {
+      "status": "PASS",
+      "run": 1,
+      "companies": 8,
+      "users": 400,
+      "workers": 20,
+      "events": 5280,
+      "candidates": 5280,
+      "githubEvents": 480,
+      "internalEvents": 4800,
+      "sourceRetries": 5280,
+      "evaluationAttempts": 5808,
+      "outcomes": {
+        "CLEAR": 5232,
+        "REQUIRE_REVIEW": 32,
+        "SUPPRESS_INCENTIVE": 8,
+        "OBSERVE": 8
+      },
+      "findings": {
+        "RECIPROCAL_PAIR_BURST": 8,
+        "REPEAT_PAIR_CONCENTRATION": 24,
+        "ACTOR_VELOCITY": 8,
+        "RECIPIENT_VELOCITY": 8
+      },
+      "expectedUnsafeMissed": 0,
+      "expectedSafeFlagged": 0,
+      "shadowEvaluations": 5280,
+      "pureShadowApprovals": 0,
+      "pureShadowEffects": 0,
+      "liveAttempts": 64,
+      "realEffects": 28,
+      "reviewGatedPayouts": 22,
+      "preventedPayouts": 36,
+      "duplicateEvaluations": 0,
+      "duplicateEffects": 0,
+      "ledgerTotal": "280",
+      "ledgerMismatches": 0,
+      "walletMismatches": 0,
+      "crossTenantLeakage": 0,
+      "deadlocks": 0,
+      "httpRequests": 0,
+      "unexpectedExceptions": 0,
+      "logicalHash": "8dd4a45197eaf32955406130788bf9705656a8cb8b5eae041963583f5a1130dd",
+      "evaluationSeconds": 107.28,
+      "evaluationsPerSecond": 54.14,
+      "totalSeconds": 245.35
+    },
+    {
+      "status": "PASS",
+      "run": 2,
+      "companies": 8,
+      "users": 400,
+      "workers": 20,
+      "events": 5280,
+      "candidates": 5280,
+      "githubEvents": 480,
+      "internalEvents": 4800,
+      "sourceRetries": 5280,
+      "evaluationAttempts": 5808,
+      "outcomes": {
+        "CLEAR": 5232,
+        "REQUIRE_REVIEW": 32,
+        "SUPPRESS_INCENTIVE": 8,
+        "OBSERVE": 8
+      },
+      "findings": {
+        "RECIPROCAL_PAIR_BURST": 8,
+        "REPEAT_PAIR_CONCENTRATION": 24,
+        "ACTOR_VELOCITY": 8,
+        "RECIPIENT_VELOCITY": 8
+      },
+      "expectedUnsafeMissed": 0,
+      "expectedSafeFlagged": 0,
+      "shadowEvaluations": 5280,
+      "pureShadowApprovals": 0,
+      "pureShadowEffects": 0,
+      "liveAttempts": 64,
+      "realEffects": 28,
+      "reviewGatedPayouts": 22,
+      "preventedPayouts": 36,
+      "duplicateEvaluations": 0,
+      "duplicateEffects": 0,
+      "ledgerTotal": "280",
+      "ledgerMismatches": 0,
+      "walletMismatches": 0,
+      "crossTenantLeakage": 0,
+      "deadlocks": 0,
+      "httpRequests": 0,
+      "unexpectedExceptions": 0,
+      "logicalHash": "8dd4a45197eaf32955406130788bf9705656a8cb8b5eae041963583f5a1130dd",
+      "evaluationSeconds": 104.93,
+      "evaluationsPerSecond": 55.35,
+      "totalSeconds": 245.02
+    },
+    {
+      "status": "PASS",
+      "run": 3,
+      "companies": 8,
+      "users": 400,
+      "workers": 20,
+      "events": 5280,
+      "candidates": 5280,
+      "githubEvents": 480,
+      "internalEvents": 4800,
+      "sourceRetries": 5280,
+      "evaluationAttempts": 5808,
+      "outcomes": {
+        "CLEAR": 5232,
+        "REQUIRE_REVIEW": 32,
+        "SUPPRESS_INCENTIVE": 8,
+        "OBSERVE": 8
+      },
+      "findings": {
+        "RECIPROCAL_PAIR_BURST": 8,
+        "REPEAT_PAIR_CONCENTRATION": 24,
+        "ACTOR_VELOCITY": 8,
+        "RECIPIENT_VELOCITY": 8
+      },
+      "expectedUnsafeMissed": 0,
+      "expectedSafeFlagged": 0,
+      "shadowEvaluations": 5280,
+      "pureShadowApprovals": 0,
+      "pureShadowEffects": 0,
+      "liveAttempts": 64,
+      "realEffects": 28,
+      "reviewGatedPayouts": 22,
+      "preventedPayouts": 36,
+      "duplicateEvaluations": 0,
+      "duplicateEffects": 0,
+      "ledgerTotal": "280",
+      "ledgerMismatches": 0,
+      "walletMismatches": 0,
+      "crossTenantLeakage": 0,
+      "deadlocks": 0,
+      "httpRequests": 0,
+      "unexpectedExceptions": 0,
+      "logicalHash": "8dd4a45197eaf32955406130788bf9705656a8cb8b5eae041963583f5a1130dd",
+      "evaluationSeconds": 104.53,
+      "evaluationsPerSecond": 55.56,
+      "totalSeconds": 258.2
+    }
+  ],
+  "junit": {
+    "backend": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "982",
+        "time": "664.037",
+        "timestamp": "2026-10-01T06:11:03.741870+00:00",
+        "hostname": "0bca9dbfdf2e"
+      }
+    ],
+    "focused": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "128",
+        "time": "26.764",
+        "timestamp": "2026-09-30T23:05:03.313843+00:00",
+        "hostname": "24d4d369f5ab"
+      }
+    ],
+    "final-migrations": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "2",
+        "time": "17.069",
+        "timestamp": "2026-09-30T23:08:37.139332+00:00",
+        "hostname": "9eea3609a5b0"
+      }
+    ],
+    "workload": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "3",
+        "time": "750.422",
+        "timestamp": "2026-10-01T06:11:03.751689+00:00",
+        "hostname": "e2cd8d335b9d"
+      }
+    ]
+  },
+  "backendUniqueTests": 985,
+  "frontendTests": 542,
+  "browserTests": 345,
+  "localVerifiedProductionSourceSha256": "4f3dbabeda0086fa05cbd4796d1839a0c9347ebb560363b304367f15584b2052",
+  "typecheck": "PASS",
+  "builds": [
+    "demo PASS",
+    "server PASS"
+  ],
+  "golden": {
+    "rule": 49,
+    "policy": 24,
+    "approval": 24,
+    "economic": 36,
+    "safety": 16
+  },
+  "e7": {
+    "status": "PASS",
+    "events": 10000,
+    "workers": 20,
+    "connectionAdmissionLimit": 15,
+    "reconciliation": {
+      "effects": 1695,
+      "credits": 1695,
+      "reversals": 170,
+      "debits": 170,
+      "issued_amount": "46225",
+      "reversed_amount": "-4690",
+      "ledger_credit_amount": "46225",
+      "ledger_debit_amount": "-4690",
+      "orphan_effects": 0,
+      "orphan_credits": 0,
+      "orphan_reversals": 0,
+      "orphan_debits": 0,
+      "cross_tenant": 0,
+      "reversal_mismatch": 0,
+      "duplicate_candidates": 0,
+      "duplicate_reversals": 0,
+      "activity_rows": 0,
+      "notification_rows": 0,
+      "task_rows": 0,
+      "redemption_rows": 0,
+      "amount_variance": "0",
+      "net_e7_amount": "41535",
+      "balance_users": 305,
+      "balance_mismatches": 0
+    },
+    "throughput": {
+      "issue": 41.43232627156898,
+      "reverse": 135.52385828247944
+    },
+    "runtimeSeconds": 346.8425836910001
+  },
+  "e71": {
+    "status": "PASS",
+    "economic": {
+      "eligible": 267,
+      "issued": 200,
+      "reversals": 20,
+      "blocked": {
+        "LEGACY_ECONOMIC_SOURCE": 1300,
+        "ECONOMIC_BENEFICIARY_MISSING": 267,
+        "ECONOMIC_EFFECT_NOT_ELIGIBLE": 148
+      },
+      "duplicate_collapses": 79
+    },
+    "errors": {
+      "expected_auth": 3,
+      "expected_validation": 6,
+      "unexpected_4xx": 0,
+      "unexpected_5xx": 0,
+      "db_errors": 0,
+      "deadlocks": 0,
+      "timeouts": 0
+    }
+  },
+  "e8": {
+    "status": "PASS",
+    "tests": 48,
+    "events": 900,
+    "effects": 90,
+    "reversals": 9
+  },
+  "e9": {
+    "status": "PASS",
+    "tests": 48,
+    "deliveries": 1600,
+    "events": 800,
+    "effects": 80,
+    "reversals": 8
+  },
+  "e10": {
+    "status": "PASS",
+    "tests": 26,
+    "workloadRuns": 3,
+    "observationsPerRun": 2000
+  },
+  "performance": {
+    "historyQueryExecutionMs": 0.3,
+    "historyQueryRows": 12,
+    "indexes": [
+      "ix_safety_history_subject",
+      "uq_rule_candidate_identity"
+    ],
+    "assessmentProfileCount": 100,
+    "assessmentProfileSeconds": 2.288,
+    "productionSLA": false
+  },
+  "productionToTestDependencies": 0,
+  "providerSpecificSafetyConditions": 0,
+  "validationNotes": [
+    "Interrupted runs were rerun to completion.",
+    "Initial E7 batch pool starvation reproduced twice; test-only admission now matches unchanged 15-connection pool.",
+    "Initial E11 create-all database lacked new indexes; final three runs use a fresh Alembic-created schema.",
+    "A forced cross-phase deadlock reproduction was fixed with consistent safety-before-account locking and authority revalidation.",
+    "The E11 workload calls production services, not HTTP; HTTP behavior is covered separately."
+  ]
+}

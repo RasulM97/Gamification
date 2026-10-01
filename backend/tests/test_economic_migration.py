@@ -35,7 +35,7 @@ def test_economic_migration_preserves_amounts(mig_url,populated):
             assert tuple(old[:4])==tuple(new[:4]) and tuple(old[5:])==tuple(new[5:])
             assert Decimal(old[4])==Decimal(new[4])
         with eng.connect() as conn:
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='ea01c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='eb01c9e2601'
             for model in (EconomicEffect,EconomicReversal):
                 assert {c['name'] for c in sa.inspect(conn).get_columns(model.__tablename__)}==set(model.__table__.columns.keys())
             assert str(next(c for c in sa.inspect(conn).get_columns('ledger') if c['name']=='amount')['type'])=='NUMERIC'
@@ -63,11 +63,11 @@ def test_migrated_issuance_and_history_preserving_downgrade_barrier(mig_url):
             effect=issue(db,actor,chain['decision']['decisionId']); db.commit()
             reverse(db,actor,effect['id'],{'reasonCode':'SOURCE_REVERTED'}); db.commit()
             assert db.scalar(sa.select(sa.func.sum(LedgerTransaction.amount)))==Decimal(0)
-        with pytest.raises(RuntimeError,match='Cannot downgrade issued economic history'):
+        with pytest.raises(RuntimeError,match='Cannot discard incentive safety history'):
             command.downgrade(cfg,'e60a1c9e2601')
         with eng.connect() as conn:
             assert conn.scalar(sa.text('SELECT count(*) FROM ledger'))==2
             assert conn.scalar(sa.text('SELECT count(*) FROM economic_effects'))==1
             assert conn.scalar(sa.text('SELECT count(*) FROM economic_reversals'))==1
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='ea01c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='eb01c9e2601'
     finally: eng.dispose()
