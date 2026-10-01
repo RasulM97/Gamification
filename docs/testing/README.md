@@ -1,13 +1,36 @@
 # Testing and verified evidence
 
-Latest executed implementation acceptance: E11 at
+Latest executed acceptance: **Module Flags / Capability Controls, 2026-10-02**.
+[Acceptance](../capabilities/ACCEPTANCE.md) and [measured evidence](../capabilities/EVIDENCE.json)
+record the new runs; historical phase reports are preserved.
+
+| Current gate | Verified result |
+| --- | --- |
+| Backend | 1,032 full-suite + 3 separately executed E11 workload tests = **1,035 unique PASS**, zero failures/errors/skips |
+| Capability checks | 48 focused + 1 migration + 1 deterministic workload, included in full suite |
+| Golden | Rule 49, Policy 24, Approval 24, Economic 36, Safety 16; unchanged/PASS |
+| Frontend / browser | 547 frontend checks across 25 files; 348 browser cases, four workers; PASS |
+| TypeScript / builds | PASS; demo and server builds PASS |
+| E7 / E7.1 | 10,000-event economic runner and 1,100 raw + 1,100 canonical public replay; PASS |
+| E8 / E9 / E10 | 48 / 48 / 26 regression checks including their workloads; PASS |
+| E11 | 54 focused checks and three clean 5,280-event repetitions; same baseline logical hash; PASS |
+| Capability workload | 20 companies, 1,280 HTTP calls, 200 audit transitions; zero bypass, leakage, duplicate audit, unexpected 5xx, economic mismatch or deadlock |
+
+The first long runs were interrupted by disposable database shutdown. Fresh full
+runs passed. One legacy browser scenario now fixes its clock before its fixed
+October reward window; assertions and production reward behavior are unchanged.
+The new workload supports `CVE_CAPABILITY_REPORT` for a local JSON export.
+
+## Historical E11 acceptance
+
+Historical implementation acceptance: E11 at
 `f310c0ed12d2e3bf912ed7c34c9112689c9a97ba`.
 [Measured E11 evidence](../incentive_safety/E11_EVIDENCE.json) and its
 [acceptance report](../incentive_safety/E11_ACCEPTANCE.md) are the committed
 sources for the results below. These are recorded runs, not new test runs made
 by the documentation audit. Old phase counts remain historical.
 
-| Gate | Latest verified result |
+| Gate | Historical E11 verified result |
 | --- | --- |
 | Backend | 982 full-suite tests + 3 separately run E11 workloads = **985 unique PASS**, zero failures/errors/skips |
 | E11 focused | 54 PASS: 18 approval, 16 Safety Golden, 12 API, 6 concurrency/authority, 2 migration; included in 982 |

@@ -1,4 +1,5 @@
 """Verified source → durable minimized delivery → canonical event → generic receipt, atomically."""
+from ..capabilities.service import require
 import hashlib
 import re
 from uuid import UUID
@@ -36,6 +37,8 @@ def result(db,raw,duplicate=False):
 
 def receive(db,source_key,delivery_id,event_name,signature,body):
     source=None
+    company=db.scalar(select(GithubSource.company_id).where(GithubSource.source_key==source_key))
+    if company is not None:require(db,company,'GITHUB_CONNECTOR')
     if re.fullmatch('[A-Za-z0-9_-]{32}',source_key):
         source=db.scalar(select(GithubSource).where(GithubSource.source_key==source_key)
                          .with_for_update(read=True).execution_options(populate_existing=True))

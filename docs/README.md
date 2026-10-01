@@ -1,6 +1,6 @@
 # Documentation index
 
-The current implemented baseline is [E11 CLOSED / PASS](STATUS.md). Read
+The current implemented baseline includes [Module Flags / Capability Controls](STATUS.md). Read
 [architecture](ARCHITECTURE.md), [roadmap](ROADMAP.md), and
 [testing evidence](testing/README.md) together. Code, migrations and tests are
 authoritative; Graphify is navigation, not a specification.
@@ -9,6 +9,7 @@ authoritative; Graphify is navigation, not a specification.
 
 | Area | Documentation |
 | --- | --- |
+| Company availability | [Capability controls](capabilities/CAPABILITY_CONTROLS_V1.md), [acceptance](capabilities/ACCEPTANCE.md) |
 | Deployment and operation | [One core, three modes](adr/ADR-CORE-DEPLOYMENT-MODEL.md), [runtime](RUNTIME.md), [local backend](EXTERNAL_POSTGRESQL_RUN.md), [pilot runbook](PILOT_RUNBOOK.md) |
 | Event foundation | [Canonical Events](events/CANONICAL_EVENT_CONTRACT.md), [internal observation](events/INTERNAL_EVENT_CATALOG.md), [ingestion](events/INGESTION_CONTRACT.md) |
 | Decisions | [Rules](rules/RULE_ENGINE_V1.md), [Policy](policies/POLICY_ENGINE_V1.md), [Governance Approval](approvals/GOVERNANCE_APPROVAL_V1.md) |

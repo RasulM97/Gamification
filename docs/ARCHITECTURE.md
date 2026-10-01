@@ -1,6 +1,7 @@
-# Current architecture through E11
+# Current architecture through Module Flags / Capability Controls
 
-Baseline: `f310c0ed12d2e3bf912ed7c34c9112689c9a97ba`.
+E11 baseline: `f310c0ed12d2e3bf912ed7c34c9112689c9a97ba`; extended by
+[company capability controls](capabilities/CAPABILITY_CONTROLS_V1.md).
 All hosting models use [one domain core](adr/ADR-CORE-DEPLOYMENT-MODEL.md):
 managed cloud, self-hosted/on-premise and API/headless access do not change
 permissions, tenant boundaries or economic meaning.
@@ -22,6 +23,7 @@ again by observing their events.
 
 | Boundary | Source of truth / responsibility |
 | --- | --- |
+| Availability | `backend/app/capabilities/`: fixed company flags, Admin audit, transaction-scoped module admission; mandatory Safety cannot be disabled |
 | Canonical facts | `backend/app/canonical_events/`: immutable tenant-scoped events and deduplication |
 | Ingress and producers | `backend/app/ingestion/`, `collaboration/`, `github_connector/`: source authentication, domain validation, normalization |
 | Source authority | `backend/app/source_authority/`: generic trusted producer receipts plus the closed legacy E7 contract; a type name is not payment authority |
@@ -34,6 +36,10 @@ again by observing their events.
 | Observation | `backend/app/shadow/` plus E11 Safety sidecar: hypothetical evidence only |
 
 ## Invariants
+
+- **Availability is separate from economic authority.** Optional module gates
+  affect future module use, not Rule/Policy/Safety decisions or recorded facts.
+  All default enabled; disable preserves history and prior economics.
 
 - **Safety remains separate from Policy.** Safety precedence is
   SUPPRESS_INCENTIVE > REQUIRE_REVIEW > OBSERVE > CLEAR. Policy enums and
@@ -75,7 +81,7 @@ again by observing their events.
 
 Alembic owns production schema. The chain adds E7 `e70a1c9e2601`, E8 source
 receipts `e80a1c9e2602` and collaboration `e80b2d9e2603`, E9 `e90a1c9e2601`,
-E10 `ea01c9e2601`, then E11 head `eb01c9e2601`. E7.1 is a test-only replay
+E10 `ea01c9e2601`, E11 `eb01c9e2601`, then capability head `ec01c9e2601`. E7.1 is a test-only replay
 foundation and has no new migration. History-preserving downgrade barriers are
 intentional; an empty-history rollback test is not permission to delete history.
 

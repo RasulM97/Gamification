@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .capabilities.service import requires
 
 import math
 from datetime import date
@@ -32,6 +33,7 @@ from .service_common import (
     active_count,
 )
 
+@requires("TASK_LITE")
 def create_task(db: Session, actor: User, *, title: str, description: str,
                 priority: str, deadline: Optional[str], reward: float,
                 audience: str, assign_mode: str, assignee_id: Optional[str],
@@ -72,6 +74,7 @@ def create_task(db: Session, actor: User, *, title: str, description: str,
     return t
 
 
+@requires("TASK_LITE")
 def claim_task(db: Session, actor: User, task_id: str) -> Task:
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
@@ -92,6 +95,7 @@ def claim_task(db: Session, actor: User, task_id: str) -> Task:
     return t
 
 
+@requires("TASK_LITE")
 def decline_assignment(db: Session, actor: User, task_id: str, reason: str) -> Task:
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
@@ -115,6 +119,7 @@ def decline_assignment(db: Session, actor: User, task_id: str, reason: str) -> T
     return t
 
 
+@requires("TASK_LITE")
 def return_claim(db: Session, actor: User, task_id: str, reason: str) -> Task:
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
@@ -138,6 +143,7 @@ def return_claim(db: Session, actor: User, task_id: str, reason: str) -> Task:
     return t
 
 
+@requires("TASK_LITE")
 def edit_task(db: Session, actor: User, task_id: str, *, title=None, description=None,
               priority=None, deadline=..., reward=None) -> Task:
     if not _is_mgmt(actor):
@@ -182,6 +188,7 @@ def edit_task(db: Session, actor: User, task_id: str, *, title=None, description
     return t
 
 
+@requires("TASK_LITE")
 def reassign(db: Session, actor: User, task_id: str, assignee_id: Optional[str], *,
              audience: Optional[str] = None, sensitivity_confirmed: bool = False) -> Task:
     if not _is_mgmt(actor):
@@ -210,6 +217,7 @@ def reassign(db: Session, actor: User, task_id: str, assignee_id: Optional[str],
     return t
 
 
+@requires("TASK_LITE")
 def report_progress(db: Session, actor: User, task_id: str, pct: float) -> Task:
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
@@ -223,6 +231,7 @@ def report_progress(db: Session, actor: User, task_id: str, pct: float) -> Task:
     return t
 
 
+@requires("TASK_LITE")
 def submit_work(db: Session, actor: User, task_id: str, *, note_text: str,
                 files: Sequence[StoredFile] = (), pct: Optional[float] = None) -> Task:
     t = get_task(db, actor.company_id, task_id)
@@ -249,6 +258,7 @@ def submit_work(db: Session, actor: User, task_id: str, *, note_text: str,
     return t
 
 
+@requires("TASK_LITE")
 def resume_work(db: Session, actor: User, task_id: str) -> Task:
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
@@ -264,6 +274,7 @@ def resume_work(db: Session, actor: User, task_id: str) -> Task:
 # ── review decisions ────────────────────────────────────────────────────────
 
 
+@requires("TASK_LITE")
 def approve_work(db: Session, actor: User, task_id: str) -> Task:
     if not _is_mgmt(actor):
         raise DomainError('FORBIDDEN', 'Review decisions are management acts')
@@ -301,6 +312,7 @@ def approve_work(db: Session, actor: User, task_id: str) -> Task:
     return t
 
 
+@requires("TASK_LITE")
 def reject_work(db: Session, actor: User, task_id: str, reason: str) -> Task:
     if not _is_mgmt(actor):
         raise DomainError('FORBIDDEN', 'Review decisions are management acts')
@@ -321,6 +333,7 @@ def reject_work(db: Session, actor: User, task_id: str, reason: str) -> Task:
     return t
 
 
+@requires("TASK_LITE")
 def handoff(db: Session, actor: User, task_id: str, *, accepted_pct: float,
             reason: str, next_kind: str, next_id: Optional[str] = None,
             audience: Optional[str] = None, priority: Optional[str] = None,

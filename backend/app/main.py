@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, text
 
+from .capabilities.routes import router as capabilities_router
 from .config import settings
 from .db import engine, session_scope
 from .domain import DomainError
@@ -64,7 +65,8 @@ _ERROR_STATUS.update(ECONOMIC_EFFECT_NOT_ELIGIBLE=409, ECONOMIC_EFFECT_ALREADY_E
                      ECONOMIC_ENGINE_UNAVAILABLE=503)
 _ERROR_STATUS.update(COLLABORATION_UNAVAILABLE=503)
 _ERROR_STATUS.update(SHADOW_UNAVAILABLE=503)
-_ERROR_STATUS.update(SAFETY_UNAVAILABLE=503, VALIDATION_ERROR=422)
+_ERROR_STATUS.update(SAFETY_UNAVAILABLE=503, VALIDATION_ERROR=422, CAPABILITY_DISABLED=409,
+                     CAPABILITY_REQUIRED=409, CAPABILITIES_UNAVAILABLE=503)
 
 
 @asynccontextmanager
@@ -79,6 +81,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title='CVE API', version='1.0.0', lifespan=lifespan)
+app.include_router(capabilities_router)
 
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list,
                    allow_methods=['*'], allow_headers=['*'])

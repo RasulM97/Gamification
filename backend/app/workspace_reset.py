@@ -10,6 +10,7 @@ from .models import (Activity, Attachment, Company, Contribution, LedgerTransact
 from .serializers import bootstrap
 from .storage import storage
 from .workspace_files import WorkspaceFiles
+from .capabilities.service import require
 from .collaboration.model import PeerThanks, ManagerRecognition, HelpRequest
 
 # Dependency order. All deletion predicates use the authenticated actor's company.
@@ -25,6 +26,7 @@ def clear_workspace(db: Session, actor: User) -> dict:
     # CVE_DEV_MODE (or Settings(dev_mode=...)) to have been explicitly supplied.
     if not settings.dev_mode or 'dev_mode' not in settings.model_fields_set:
         raise DomainError('FORBIDDEN', 'Destructive test tools are disabled')
+    require(db, actor.company_id, 'TASK_LITE')
     company_id = actor.company_id
     files = WorkspaceFiles(storage.root, company_id)
     try:

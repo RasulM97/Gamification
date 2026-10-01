@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .capabilities.service import requires
 
 import math
 from datetime import date
@@ -75,6 +76,7 @@ def _new_cycle_reset(db: Session, actor: User, t: Task, *, description=None,
     return brief_changes, nu
 
 
+@requires("TASK_LITE")
 def reopen_task(db: Session, actor: User, task_id: str, *, description=None,
                 audience: Optional[str] = None, assignee_id: Optional[str] = None,
                 sensitivity_confirmed: bool = False, files: Sequence[StoredFile] = ()) -> Task:
@@ -96,6 +98,7 @@ def reopen_task(db: Session, actor: User, task_id: str, *, description=None,
     return t
 
 
+@requires("TASK_LITE")
 def cancel_task(db: Session, actor: User, task_id: str, *, reason: str,
                 accepted_pct: Optional[float] = None) -> Task:
     if not _is_mgmt(actor):
@@ -140,6 +143,7 @@ def cancel_task(db: Session, actor: User, task_id: str, *, reason: str,
     return t
 
 
+@requires("TASK_LITE")
 def reactivate_task(db: Session, actor: User, task_id: str, *, reason: str,
                     description=None, audience: Optional[str] = None,
                     assignee_id: Optional[str] = None,

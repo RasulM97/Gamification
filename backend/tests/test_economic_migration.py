@@ -35,7 +35,7 @@ def test_economic_migration_preserves_amounts(mig_url,populated):
             assert tuple(old[:4])==tuple(new[:4]) and tuple(old[5:])==tuple(new[5:])
             assert Decimal(old[4])==Decimal(new[4])
         with eng.connect() as conn:
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='eb01c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='ec01c9e2601'
             for model in (EconomicEffect,EconomicReversal):
                 assert {c['name'] for c in sa.inspect(conn).get_columns(model.__tablename__)}==set(model.__table__.columns.keys())
             assert str(next(c for c in sa.inspect(conn).get_columns('ledger') if c['name']=='amount')['type'])=='NUMERIC'
@@ -69,5 +69,5 @@ def test_migrated_issuance_and_history_preserving_downgrade_barrier(mig_url):
             assert conn.scalar(sa.text('SELECT count(*) FROM ledger'))==2
             assert conn.scalar(sa.text('SELECT count(*) FROM economic_effects'))==1
             assert conn.scalar(sa.text('SELECT count(*) FROM economic_reversals'))==1
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='eb01c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='ec01c9e2601'
     finally: eng.dispose()

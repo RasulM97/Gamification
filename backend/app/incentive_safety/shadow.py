@@ -1,4 +1,5 @@
 """Safety sidecar to E10's unchanged immutable policy-only observation."""
+from ..capabilities.service import requires
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from ..domain import DomainError
@@ -10,6 +11,7 @@ from .model import SafetyShadow
 from .authority import lock
 
 
+@requires("SHADOW_MODE")
 def observe(db, actor, decision_id):
     actor = admin(db, actor, lock=False)
     pd = db.scalar(select(PolicyDecision).where(PolicyDecision.company_id == actor.company_id,

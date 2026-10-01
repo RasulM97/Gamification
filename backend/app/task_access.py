@@ -1,4 +1,5 @@
 """Task-scoped visibility and review authority; no organization assumptions."""
+from .capabilities.service import requires
 from .domain import DomainError
 from .models import User
 
@@ -40,6 +41,7 @@ def require_review(db, task, actor):
         raise DomainError('REVIEW_AUTHORITY_REQUIRED', 'Review authority required')
 
 
+@requires("TASK_LITE")
 def set_access(db, actor, task_id, viewer_ids, reviewer_ids):
     from .service_common import get_task, get_user, act, snap
     if actor.role != 'ADMIN':

@@ -1,4 +1,5 @@
 """Small, row-locked Help lifecycle. Only requester confirmation emits an event."""
+from ..capabilities.service import requires
 from sqlalchemy import select
 from ..domain import DomainError
 from ..models import now_ms
@@ -13,6 +14,7 @@ def view(row):
         finishedAt=row.finished_at,confirmedAt=row.confirmed_at)
 
 
+@requires("HELP")
 def create(db,actor,body):
     data=command(body,{'title':200,'description':1000,'submissionId':100})
     retry_lock(db,actor.company_id,actor.id,'help',data['submissionId'])
@@ -30,6 +32,7 @@ def create(db,actor,body):
     return view(row)
 
 
+@requires("HELP")
 def transition(db,actor,identity,action):
     row=db.scalar(select(HelpRequest).where(HelpRequest.company_id==actor.company_id,HelpRequest.id==identity)
                   .with_for_update().execution_options(populate_existing=True))

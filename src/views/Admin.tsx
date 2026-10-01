@@ -1,3 +1,4 @@
+import { CapabilitiesPanel } from '../features/capabilities/CapabilitiesPanel'
 import { Debt } from '../presentation/Debt'
 import { EditUserButton } from '../features/onboarding/EditUser'
 import { UploadPolicyForm } from '../components/UploadPolicyForm'
@@ -83,6 +84,7 @@ export function AdminView({ onRewards }: { onRewards?: () => void }) {
   return (
     <div className="wrap">
       <OnboardingView onRewards={onRewards} />
+      <CapabilitiesPanel />
       <Panel pad={false} title={t('admin.peopleWallets')} right={<span className="eyebrow" dir="auto">{state.company}</span>}>
         <div className="table-wrap">
           <table className="people-table">

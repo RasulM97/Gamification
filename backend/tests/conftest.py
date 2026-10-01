@@ -37,6 +37,7 @@ else:
     os.environ.setdefault('CVE_UPLOAD_DIR', '/tmp/cve-test-uploads')
 
 from app.db import SessionLocal, engine  # noqa: E402
+from app.capabilities.model import CompanyCapability, CapabilityChange  # noqa: F401
 from app.models import Base  # noqa: E402
 from app.canonical_events.model import CanonicalEvent  # noqa: E402,F401
 from app.ingestion.model import WebhookSource  # noqa: E402,F401

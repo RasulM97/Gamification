@@ -1,14 +1,14 @@
-# Roadmap after E11
+# Roadmap after Module Flags / Capability Controls
 
-Verified implementation baseline: E11 CLOSED / PASS at
-`f310c0ed12d2e3bf912ed7c34c9112689c9a97ba`. This document records sequencing;
+E11 CLOSED / PASS at `f310c0ed12d2e3bf912ed7c34c9112689c9a97ba` is extended by
+[Module Flags / Capability Controls](capabilities/ACCEPTANCE.md). This document records sequencing;
 it does not authorize implementation of the next phase.
 
 1. **E11 — complete.** Economic Effects, public replay, collaboration, GitHub,
    Shadow and deterministic Incentive Safety are implemented and regression-tested.
-2. **Module Flags / Capability Controls — NEXT.** Establish coherent capability
-   controls across the existing backend/headless surfaces. No implementation is
-   included in this documentation update.
+2. **Module Flags / Capability Controls — complete (CLOSED / PASS).** Six optional company
+   controls, default-enabled behavior, mandatory Safety, immutable change audit,
+   server admission, minimal Admin UI and independent read-only demo settings.
 3. **Organization / Projects — only if validated.** Confirm a concrete product
    need and compatible scope before starting; this is conditional, not an
    automatically approved expansion.

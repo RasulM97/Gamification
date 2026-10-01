@@ -269,6 +269,8 @@ export interface Act extends EventRecord {
   taskId?: string; reason?: string; econ?: string; cycle?: number
 }
 export interface State {
+  /** Server availability projection; demo has fixed enabled data, no toggle engine. */
+  capabilities?: Record<string, boolean>
   workload?: Record<string, number>
   companyId?: string
   onboarding?: { status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED'; completedAt: number | null }

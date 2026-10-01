@@ -1,4 +1,5 @@
 """Thanks and manager recognition; no economic authority or orchestration."""
+from ..capabilities.service import require
 from sqlalchemy import select
 from ..domain import DomainError
 from .model import PeerThanks,ManagerRecognition
@@ -15,6 +16,7 @@ def view(row):
 
 
 def create(db,actor,kind,body):
+    require(db,actor.company_id,{'thanks':'THANKS','recognition':'RECOGNITION'}[kind])
     data=command(body,{'recipientUserId':40,'message':1000,'submissionId':100})
     model,event_type,code=KINDS[kind]
     retry_lock(db,actor.company_id,actor.id,kind,data['submissionId'])

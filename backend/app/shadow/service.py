@@ -1,4 +1,5 @@
 """Bounded explicit orchestration. Caller owns one atomic transaction."""
+from ..capabilities.service import requires, enabled
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 from ..domain import DomainError
@@ -10,6 +11,7 @@ from .model import ShadowEvaluation
 from .projection import project
 
 
+@requires("SHADOW_MODE")
 def observe_decision(db, actor, decision_id):
     actor = economic_admin(db, actor)
     identity = dict(company_id=actor.company_id, policy_decision_id=decision_id)
@@ -29,6 +31,7 @@ def observe_decision(db, actor, decision_id):
                                                     **value).returning(ShadowEvaluation.id))
 
 
+@requires("SHADOW_MODE")
 def observe_event(db, actor, event_id):
     """Existing rule/policy paths, then observations of every resulting decision."""
     actor = economic_admin(db, actor)
@@ -46,7 +49,8 @@ def evaluate_governance(db, actor, candidate_id):
     The underlying policy service remains governance-only for headless callers
     and Golden contracts. Other HTTP decisions retain their existing behavior.
     """
+    available = enabled(db,actor.company_id,'SHADOW_MODE')
     result = evaluate_candidate(db, actor, candidate_id)
-    if result['effectiveDecision'] == 'SHADOW_ONLY':
+    if available and result['effectiveDecision'] == 'SHADOW_ONLY':
         observe_decision(db, actor, result['decisionId'])
     return result

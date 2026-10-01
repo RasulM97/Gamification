@@ -1,9 +1,9 @@
 # CVE / Gamification
 
 CVE is a corporate virtual economy with a React/TypeScript demo and an
-authoritative FastAPI/PostgreSQL backend. **E11 — Anti-Gaming / Incentive Safety
-is CLOSED / PASS**, verified at `f310c0ed12d2e3bf912ed7c34c9112689c9a97ba`.
-This documentation update does not start a development phase.
+authoritative FastAPI/PostgreSQL backend. The implemented baseline now includes
+**Module Flags / Capability Controls — CLOSED / PASS** on top of E11. See the
+[acceptance report](docs/capabilities/ACCEPTANCE.md) for executed verification.
 
 ## Start here
 
@@ -26,6 +26,6 @@ where required → Economic Effect → Ledger. Stages are explicitly invoked;
 webhook receipt does not automatically issue a reward. Shadow creates no real
 economics. Wallet values are derived from the append-only signed ledger.
 
-**Next:** Module Flags / Capability Controls, followed by Organization / Projects
-only if validated, then System Integration / Maturity Gate. WSE and AI maturity
+**Next boundary:** Organization / Projects only if validated, then System
+Integration / Maturity Gate. No later phase is authorized by this completion. WSE and AI maturity
 remain deferred. See the roadmap before starting work.

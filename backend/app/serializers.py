@@ -11,6 +11,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .capabilities.service import snapshot as capability_snapshot
 from .models import (
     Activity, Attachment, Company, CompanySettings, Contribution,
     LedgerTransaction, Notification, Redemption, Reward, RewardCategory,
@@ -164,6 +165,7 @@ def bootstrap(db: Session, company: Company, viewer: User | None = None) -> dict
 
     return {
         'workload': {u.id: sum(1 for t in tasks if t.owner_id == u.id and t.status in ACTIVE_TASK_STATUSES) for u in users},
+        'capabilities': capability_snapshot(db,cid),
         'company': company.name,
         'companyId': company.id,
         'onboarding': {'status': company.onboarding_status, 'completedAt': company.onboarding_completed_at},

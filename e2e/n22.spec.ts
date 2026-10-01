@@ -28,6 +28,8 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('N2.2-1 · category manager + reward creation with limit, window and executors', async ({ page }) => {
+  // Keep the fixed October availability window in the future on every run.
+  await page.clock.setFixedTime(new Date('2026-09-01T12:00:00Z'))
   await viewAs(page, 'Dana Cole')
   await rewardsNav(page).click()
   // category administration (§1): create, rename, archive

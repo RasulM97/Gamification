@@ -18,6 +18,7 @@ from pydantic import BaseModel, StrictInt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .capabilities.service import require as require_capability
 from . import services as svc
 from .config import settings
 from .db import get_db, log_action
@@ -65,6 +66,7 @@ async def stage_files(db: Session, actor: User,
                       uploads: list[UploadFile]) -> list[StoredFile]:
     """Validate against company §18 policy, then stage bytes in storage.
     Validation happens BEFORE anything touches disk."""
+    require_capability(db,actor.company_id,'TASK_LITE')
     if not uploads:
         return []
     s = svc.settings_of(db, actor.company_id)

@@ -58,6 +58,8 @@ function Shell() {
   const { t, direction } = useI18n()
   const isMgr = me.role !== 'EMPLOYEE'
   const isAdmin = me.role === 'ADMIN'
+  const tasksEnabled = IS_DEMO || state.capabilities?.TASK_LITE === true
+  const taskViews: View[] = ['tasks', 'mywork', 'available', 'reviews', 'attention']
 
   const [view, setView] = useState<View>('overview')
   useEffect(() => {
@@ -215,7 +217,7 @@ function Shell() {
             <div key={g.groupKey}>
               <div className="group">{t(g.groupKey)}</div>
               {g.items.map(it => (
-                <button key={it.v} className={view === it.v ? 'on' : ''} onClick={() => go(it.v)}>
+                <button key={it.v} disabled={!tasksEnabled && taskViews.includes(it.v)} className={view === it.v ? 'on' : ''} onClick={() => go(it.v)}>
                   <span className="ic">{it.icon}</span>{t(it.labelKey)}
                   {!!it.badge && <span className="ct">{fmtInt(it.badge)}</span>}
                   {!it.badge && !!it.soft && <span className="ct soft">{fmtInt(it.soft)}</span>}
@@ -283,7 +285,7 @@ function Shell() {
             <div className="crumb">{t(subKey)}</div>
           </div>
           <div className="spacer" style={{ flex: 1 }} />
-          {isMgr && <button className="btn primary" onClick={() => setCreateOpen(true)}>+ {t('task.action.create')}</button>}
+          {isMgr && tasksEnabled && <button className="btn primary" onClick={() => setCreateOpen(true)}>+ {t('task.action.create')}</button>}
           {/* Admin/founder runs the economy but doesn't hold a wallet — no
               personal balance chip. */}
           {!isAdmin && <span className="balance-chip"><span className="lbl">{t('common.balance')}</span><Coin n={bal} /></span>}
@@ -340,12 +342,13 @@ function Shell() {
           <NotificationAudio key={me.id} />
           <SystemToast message={persistError} onClose={dismissError} />
           {view === 'overview' && <Overview onGo={go} />}
-          {view === 'tasks' && <TasksView scope="all" onOpen={setTaskId} onCreate={() => setCreateOpen(true)} />}
+          {!tasksEnabled && taskViews.includes(view) && <p role="status">{t('capabilities.taskDisabled')}</p>}
+          {tasksEnabled && view === 'tasks' && <TasksView scope="all" onOpen={setTaskId} onCreate={() => setCreateOpen(true)} />}
           {/* Admin never gets the worker surface (M1-D D3) — even on a stale view. */}
-          {view === 'mywork' && !isAdmin && <TasksView scope="mine" onOpen={setTaskId} onCreate={() => setCreateOpen(true)} />}
-          {view === 'available' && <TasksView scope="available" onOpen={setTaskId} onCreate={() => setCreateOpen(true)} />}
-          {view === 'reviews' && <ReviewsView openId={reviewId} onOpen={setReviewId} onClose={() => setReviewId(null)} />}
-          {view === 'attention' && <AttentionView onOpen={setTaskId} />}
+          {tasksEnabled && view === 'mywork' && !isAdmin && <TasksView scope="mine" onOpen={setTaskId} onCreate={() => setCreateOpen(true)} />}
+          {tasksEnabled && view === 'available' && <TasksView scope="available" onOpen={setTaskId} onCreate={() => setCreateOpen(true)} />}
+          {tasksEnabled && view === 'reviews' && <ReviewsView openId={reviewId} onOpen={setReviewId} onClose={() => setReviewId(null)} />}
+          {tasksEnabled && view === 'attention' && <AttentionView onOpen={setTaskId} />}
           {view === 'rewards' && <RewardsView />}
           {view === 'redemptions' && <RedemptionsView />}
           {view === 'wallet' && <WalletView />}
@@ -360,7 +363,7 @@ function Shell() {
         setTaskId(null)
         if (v === 'reviews') { setView('reviews'); if (tid) setReviewId(tid) }
       }} />
-      <CreateTaskModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      <CreateTaskModal open={createOpen && tasksEnabled} onClose={() => setCreateOpen(false)} />
     </div>
   )
 }
