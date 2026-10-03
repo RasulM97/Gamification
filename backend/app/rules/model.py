@@ -1,3 +1,4 @@
+from ..organization.columns import ScopeColumns, constraints as scope_constraints
 """Tenant-bound current rules and immutable, self-contained decision snapshots."""
 from sqlalchemy import (Boolean, CheckConstraint, DDL, Float, ForeignKey, ForeignKeyConstraint,
                         Index, Integer, String, UniqueConstraint, event)
@@ -6,9 +7,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ..models import Base, new_id, now_ms
 
 
-class Rule(Base):
+class Rule(ScopeColumns, Base):
     __tablename__ = 'rules'
-    __table_args__ = (
+    __table_args__ = scope_constraints('rule') + (
         UniqueConstraint('company_id', 'id', name='uq_rules_company_id_id'),
         ForeignKeyConstraint(['company_id','created_by'], ['users.company_id','users.id'], name='fk_rules_creator'),
         CheckConstraint('version > 0', name='ck_rules_version'),

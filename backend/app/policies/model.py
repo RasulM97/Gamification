@@ -1,3 +1,4 @@
+from ..organization.columns import ScopeColumns, constraints as scope_constraints
 """Current tenant policies and append-only governance decisions."""
 from sqlalchemy import (Boolean, CheckConstraint, DDL, Float, ForeignKey, ForeignKeyConstraint,
                         Index, Integer, String, UniqueConstraint, event)
@@ -6,9 +7,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ..models import Base, new_id, now_ms
 
 
-class Policy(Base):
+class Policy(ScopeColumns, Base):
     __tablename__ = 'policies'
-    __table_args__ = (
+    __table_args__ = scope_constraints('policy') + (
         ForeignKeyConstraint(['company_id', 'created_by'], ['users.company_id', 'users.id'], name='fk_policies_creator'),
         CheckConstraint('version > 0', name='ck_policies_version'),
         CheckConstraint('priority BETWEEN -1000 AND 1000', name='ck_policies_priority'),

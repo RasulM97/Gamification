@@ -1,3 +1,6 @@
+from sqlalchemy.orm import object_session
+from .organization import service as organization
+from .organization.columns import scope
 """Task-scoped visibility and review authority; no organization assumptions."""
 from .capabilities.service import requires
 from .domain import DomainError
@@ -7,6 +10,12 @@ from .models import User
 def can_view(task, actor):
     if task.company_id != actor.company_id or actor.active is False:
         return False
+    context=scope(task)
+    if context['kind']!='COMPANY':
+        db=object_session(task)
+        if db is None:return False
+        organization.lock(db,actor.company_id)
+        if not organization.allowed(db,actor,context,manager=actor.role=='MANAGER'):return False
     if actor.role == 'ADMIN':
         return True
     if task.audience == 'PRIVATE':
@@ -41,6 +50,7 @@ def require_review(db, task, actor):
         raise DomainError('REVIEW_AUTHORITY_REQUIRED', 'Review authority required')
 
 
+@organization.guarded
 @requires("TASK_LITE")
 def set_access(db, actor, task_id, viewer_ids, reviewer_ids):
     from .service_common import get_task, get_user, act, snap

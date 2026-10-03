@@ -53,6 +53,12 @@ def outcome(value):
 
 
 def definition(value):
+    from ..organization.service import parse
+    if type(value) is dict and "scope" in value:
+        value=dict(value)
+        context=parse(value.pop("scope"))
+        result=definition(value)
+        return result if context["kind"]=="COMPANY" else dict(result,scope=context)
     if type(value) is not dict or value.keys() != {'name','description','active','eventType','conditions','outcome','priority'}:
         fail('INVALID_RULE')
     for key, limit in [('name',120), ('description',1000)]:

@@ -1,3 +1,4 @@
+from ..organization.service import event_scope
 """Read-only economic terms and existing pure governance, never execution."""
 from decimal import Decimal
 from sqlalchemy import Text, cast, select
@@ -18,11 +19,13 @@ def project(db, pd):
     governance = pd.effective_decision
     provenance = dict(mode='EXPLICIT_SHADOW', execution='PREVENTED',
                       governanceBasis='RECORDED_POLICY_DECISION')
+    context=event_scope(db,pd.company_id,source.id)
+    if context['kind']!='COMPANY':provenance['scope']=context
     if governance == 'SHADOW_ONLY':
         # Counterfactual configuration, not a new precedence/default algorithm.
         # Use only immutable snapshots, never today's mutable Policy rows.
         retained = [p for p in pd.evaluated_policies if p['definition']['decision'] != 'SHADOW_ONLY']
-        result = evaluate(retained, PolicyContext(candidate, source))
+        result = evaluate(retained, PolicyContext(candidate, source), scope_context=event_scope(db,pd.company_id,source.id))
         governance = result['effectiveDecision']
         provenance.update(mode='POLICY_SHADOW_ONLY', governanceBasis='SNAPSHOT_WITHOUT_SHADOW_POLICIES',
             hypotheticalPolicyFingerprint=result['policySetFingerprint'],

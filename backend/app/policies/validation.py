@@ -35,6 +35,12 @@ def conditions(value):
 
 
 def definition(value):
+    from ..organization.service import parse
+    if type(value) is dict and "scope" in value:
+        value=dict(value)
+        context=parse(value.pop("scope"))
+        result=definition(value)
+        return result if context["kind"]=="COMPANY" else dict(result,scope=context)
     keys = {'name', 'description', 'active', 'candidateKind', 'eventType', 'conditions', 'decision', 'priority'}
     if type(value) is not dict or value.keys() != keys:
         fail('INVALID_POLICY')

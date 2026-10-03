@@ -91,3 +91,17 @@ async def webhook(source_key:str,request:Request,db:Session=Depends(get_db)):
     # Invalid untrusted identifiers must not create log injection or huge log entries.
     safe_delivery=delivery if all(c in '0123456789abcdefABCDEF-' for c in delivery) else '-'
     return await run_in_threadpool(transaction,db,lambda:receive(db,source_key,delivery,kind,signature,body),'-',safe_delivery)
+
+
+@router.put('/integrations/github/{source_id}/resources/{kind}/{resource_id}/project')
+async def assign_project(source_id:str,kind:str,resource_id:str,request:Request,
+                         actor:User=Depends(current_user),db:Session=Depends(get_db)):
+    from .attribution import assign
+    body=parse_object(await bounded_body(request))
+    return await run_in_threadpool(transaction,db,lambda:assign(db,actor,source_id,kind,resource_id,body),source_id)
+
+
+@router.get('/integrations/github/{source_id}/project-attributions')
+def project_attributions(source_id:str,actor:User=Depends(current_user),db:Session=Depends(get_db)):
+    from .attribution import history
+    return transaction(db,lambda:history(db,actor,source_id),source_id)

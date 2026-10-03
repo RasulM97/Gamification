@@ -1,3 +1,4 @@
+from ..organization.service import guarded
 """Explicit caller-owned transactions; one immutable decision, first valid actor wins."""
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -25,6 +26,7 @@ def view(request, decision=None):
     return result
 
 
+@guarded
 def create_request(db, actor, policy_decision_id, *, safety_evaluation_id=None):
     actor = management_actor(db, actor, admin=True, lock=False)
     source = db.scalar(select(PolicyDecision).where(PolicyDecision.company_id==actor.company_id,
@@ -56,16 +58,18 @@ def create_request(db, actor, policy_decision_id, *, safety_evaluation_id=None):
     return view(*row)
 
 
+@guarded
 def get_request(db, actor, request_id):
     actor = management_actor(db, actor)
     row = db.execute(select(ApprovalRequest,ApprovalDecision).outerjoin(ApprovalDecision,
         ApprovalDecision.approval_request_id==ApprovalRequest.id).where(
             ApprovalRequest.company_id==actor.company_id, ApprovalRequest.id==request_id)).first()
     if row is None: raise DomainError('APPROVAL_NOT_FOUND', 'Approval request not found')
-    require_authority(actor,row[0])
+    require_authority(db,actor,row[0])
     return view(*row)
 
 
+@guarded
 def list_requests(db, actor, *, status='PENDING', authority=None, offset=0):
     actor = management_actor(db, actor)
     if status not in STATUSES or authority not in (None,*AUTHORITIES) or type(offset) is not int or not 0<=offset<=100000:
@@ -76,16 +80,24 @@ def list_requests(db, actor, *, status='PENDING', authority=None, offset=0):
     if actor.role=='MANAGER': query=query.where(ApprovalRequest.required_authority=='MANAGER_OR_ADMIN')
     if authority: query=query.where(ApprovalRequest.required_authority==authority)
     rows = db.execute(query.order_by(ApprovalRequest.requested_at.desc(), ApprovalRequest.id.desc()).offset(offset).limit(100))
-    return dict(approvals=[view(*row) for row in rows], offset=offset, limit=100)
+    visible=[]
+    for row in rows:
+        try: require_authority(db,actor,row[0])
+        except DomainError as exc:
+            if exc.code=='APPROVAL_FORBIDDEN':continue
+            raise
+        visible.append(view(*row))
+    return dict(approvals=visible,offset=offset,limit=100)
 
 
+@guarded
 def decide(db, actor, request_id, body):
     value = command(body)
     actor = management_actor(db, actor)
     request = db.scalar(select(ApprovalRequest).where(ApprovalRequest.company_id==actor.company_id,
         ApprovalRequest.id==request_id).with_for_update())
     if request is None: raise DomainError('APPROVAL_NOT_FOUND', 'Approval request not found')
-    require_authority(actor,request)
+    require_authority(db,actor,request)
     event = db.execute(select(CanonicalEvent.subject_id,CanonicalEvent.actor_id).join(RuleCandidate,
         (RuleCandidate.canonical_event_id==CanonicalEvent.id)&(RuleCandidate.company_id==CanonicalEvent.company_id))
         .where(RuleCandidate.company_id==actor.company_id,RuleCandidate.id==request.candidate_id)).one()

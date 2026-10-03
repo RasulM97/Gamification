@@ -1,7 +1,8 @@
-# Roadmap after Module Flags / Capability Controls
+# Roadmap after Minimal Organization + Project Context
 
 E11 CLOSED / PASS at `f310c0ed12d2e3bf912ed7c34c9112689c9a97ba` is extended by
-[Module Flags / Capability Controls](capabilities/ACCEPTANCE.md). This document records sequencing;
+[Module Flags / Capability Controls](capabilities/ACCEPTANCE.md) and
+[Minimal Organization + Project Context](organization/IMPLEMENTATION_ACCEPTANCE.md). This document records sequencing;
 it does not authorize implementation of the next phase.
 
 1. **E11 — complete.** Economic Effects, public replay, collaboration, GitHub,
@@ -9,11 +10,11 @@ it does not authorize implementation of the next phase.
 2. **Module Flags / Capability Controls — complete (CLOSED / PASS).** Six optional company
    controls, default-enabled behavior, mandatory Safety, immutable change audit,
    server admission, minimal Admin UI and independent read-only demo settings.
-3. **Organization / Projects — validation complete; implementation awaiting approval.**
-   [Evidence-only validation](organization/VALIDATION.md) recommends minimal Team +
-   Project context for the supplied B–D scope requirements. Flat/repository-only
-   shapes do not need it. This recommendation is not implementation authorization.
-4. **System Integration / Maturity Gate.** Prove the existing parallel
+3. **Minimal Organization + Project Context — complete (CLOSED / PASS).**
+   Explicit Team/Project membership, work scope, current scoped authority,
+   immutable history and Admin-controlled GitHub resource attribution close the
+   validated scope gaps. [Contract](organization/CONTEXT_V1.md).
+4. **System Integration / Maturity Gate — NEXT, not started.** Prove the existing parallel
    capabilities together end-to-end, including controls, tenant/role boundaries,
    source identity, real domain activity, event/rule/policy/Safety/approval
    provenance, Shadow isolation, retries/concurrency, economic effects,
@@ -26,6 +27,6 @@ it does not authorize implementation of the next phase.
 6. **AI maturity — later.** Reconsider only after deterministic behavior and
    integration maturity are demonstrated and a separate scope is approved.
 
-No new connector, architectural refactor, Organization module, WSE or AI work is
+No new connector, architectural refactor, expanded organization platform, WSE or AI work is
 implicitly authorized here. [UAT backlog](BACKLOG.md) is a separate historical
 product-input list, not an alternative phase sequence.

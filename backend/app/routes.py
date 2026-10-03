@@ -112,6 +112,7 @@ async def create_task(
     reward: float = Form(...), audience: str = Form('EMPLOYEES'),
     assignMode: str = Form('ALL_EMPLOYEES'),
     assigneeId: Optional[str] = Form(None),
+    scopeKind: str = Form('COMPANY'), scopeId: Optional[str] = Form(None),
     files: list[UploadFile] = File(default=[]),
     actor: User = Depends(current_user), db: Session = Depends(get_db),
 ):
@@ -119,7 +120,8 @@ async def create_task(
     return mutate(db, actor, 'create_task', title, lambda: svc.create_task(
         db, actor, title=title, description=description, priority=priority,
         deadline=deadline, reward=reward, audience=audience,
-        assign_mode=assignMode, assignee_id=assigneeId or None, files=staged),
+        assign_mode=assignMode, assignee_id=assigneeId or None, files=staged,
+        context={"kind":scopeKind, **({"id":scopeId} if scopeId is not None else {})}),
         staged=staged)
 
 

@@ -1,6 +1,26 @@
 # Testing and verified evidence
 
-Latest executed acceptance: **Module Flags / Capability Controls, 2026-10-02**.
+Latest executed acceptance: **Minimal Organization + Project Context, 2026-10-03**.
+[Acceptance](../organization/IMPLEMENTATION_ACCEPTANCE.md) and
+[measured evidence](../organization/IMPLEMENTATION_EVIDENCE.json) record:
+
+- 1,079 full backend checks + 3 separately executed E11 workloads = **1,082 unique PASS**; no failures/errors/skips.
+- Organization: 38 focused/adversarial + 2 migration checks; 14/14 validated gaps closed. Preserved validation: 7 PASS.
+- Three clean organization workloads: 10 companies, 600 users, 20 workers, 3,000 evaluated events each; matching logical hash and zero measured mismatches.
+- Golden 149, E8 48, E9 48, E10 26, E11 focused 54 and Capability Controls 50: PASS.
+- E7 10,000-event economic runner and E7.1 1,100 raw + 1,100 canonical public replay: PASS.
+- E11: three 5,280-event runs with the unchanged baseline hash.
+- Frontend 551 across 26 files; browser 349 with four workers; typecheck and both builds PASS.
+
+The organization runner is `python -m tests.organization_integration.runner --output <local-report.json>`
+from `backend/`, with `CVE_ORG_INTEGRATION_DATABASE_URL` pointing to the explicitly
+disposable `cve_org_integration_test` database. It truncates that test dataset.
+The initial full backend attempt was interrupted by a runtime restart; the final
+complete rerun is the result counted above. Historical reports remain unchanged.
+
+## Historical Capability Controls acceptance
+
+Executed acceptance: **Module Flags / Capability Controls, 2026-10-02**.
 [Acceptance](../capabilities/ACCEPTANCE.md) and [measured evidence](../capabilities/EVIDENCE.json)
 record the new runs; historical phase reports are preserved.
 

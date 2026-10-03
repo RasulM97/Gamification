@@ -1,3 +1,5 @@
+from ..organization import service as organization
+from ..organization.columns import scope, fields
 """Explicit evaluation; no ingestion hook, business mutation or automatic replay."""
 import time
 import json
@@ -17,9 +19,11 @@ from .validation import definition
 
 
 def rule_definition(rule):
-    return dict(name=rule.name, description=rule.description, active=rule.active,
+    result = dict(name=rule.name, description=rule.description, active=rule.active,
                 eventType=rule.event_type, conditions=rule.conditions, outcome=rule.outcome,
                 priority=rule.priority)
+    if scope(rule)["kind"] != "COMPANY": result["scope"]=scope(rule)
+    return result
 
 
 def rule_view(rule):
@@ -27,15 +31,18 @@ def rule_view(rule):
                 createdAt=rule.created_at, updatedAt=rule.updated_at)
 
 
+@organization.guarded
 def create_rule(db: Session, actor: User, body: dict):
     require_admin(actor)
     value = definition(dict(description='', active=False, priority=0) | body)
-    rule = Rule(company_id=actor.company_id, created_by=actor.id,
+    context=organization.parse(value.pop("scope",None)); organization.unit(db,actor.company_id,context,active=True)
+    rule = Rule(**fields(context), company_id=actor.company_id, created_by=actor.id,
                 event_type=value.pop('eventType'), **value)
     db.add(rule); db.flush()
     return rule_view(rule)
 
 
+@organization.guarded
 def update_rule(db: Session, actor: User, rule_id: str, body: dict):
     require_admin(actor)
     rule = db.scalar(select(Rule).where(Rule.company_id == actor.company_id, Rule.id == rule_id)
@@ -47,6 +54,8 @@ def update_rule(db: Session, actor: User, rule_id: str, body: dict):
     if json.dumps(value, sort_keys=True) != json.dumps(rule_definition(rule), sort_keys=True):
         if rule.version == 2147483647:
             raise DomainError('INVALID_RULE', 'Rule version limit reached')
+        context=organization.parse(value.pop('scope',None)); organization.unit(db,actor.company_id,context,active=True)
+        rule.team_id=fields(context)['team_id']; rule.project_id=fields(context)['project_id']
         rule.event_type = value.pop('eventType')
         for key, val in value.items():
             setattr(rule, key, val)  # Only the fixed, validated definition keys.
@@ -86,10 +95,11 @@ def evaluate_event(db: Session, actor: User, event_id: str):
         .with_for_update(read=True).execution_options(populate_existing=True)))
     if len(rules) > MAX_RULES_PER_EVENT:
         raise DomainError('RULE_EVALUATION_LIMIT', 'Too many active rules for this event type')
+    context=organization.event_scope(db,actor.company_id,event.id) if any(r.team_id or r.project_id for r in rules) else None
     results, proposed = [], []
     for rule in rules:
         snapshot = rule_definition(rule)
-        evaluation = evaluate(snapshot, event)
+        evaluation = evaluate(snapshot, event, scope_context=context)
         results.append(dict(ruleId=rule.id, ruleVersion=rule.version, status=evaluation.status))
         if evaluation.status == 'MATCHED':
             proposed.append(dict(id=new_id('rc'), company_id=actor.company_id,

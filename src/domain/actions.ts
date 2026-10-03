@@ -5,7 +5,7 @@ export type Action =
   | { type: 'UPDATE_USER'; by: string; userId: string; name: string; position: string; role: import('./model').Role; active: boolean }
   | { type: 'CLEAR_TEST_WORKSPACE'; by: string }
   | { type: 'UPDATE_CAPACITY'; by: string; userId: string; maxActiveTasks: number }
-  | { type: 'CREATE_TASK'; by: string; title: string; description: string; priority: Priority; deadline: string | null; reward: number; audience: Audience; assignMode: AssignMode; assigneeId: string | null; attachments?: Attachment[] }
+  | { type: 'CREATE_TASK'; scope?: { kind: 'COMPANY' } | { kind: 'TEAM' | 'PROJECT'; id: string }; by: string; title: string; description: string; priority: Priority; deadline: string | null; reward: number; audience: Audience; assignMode: AssignMode; assigneeId: string | null; attachments?: Attachment[] }
   | { type: 'CLAIM_TASK'; taskId: string; userId: string }
   | { type: 'DECLINE_ASSIGNMENT'; taskId: string; userId: string; reason: string }
   | { type: 'RETURN_CLAIM'; taskId: string; userId: string; reason: string }

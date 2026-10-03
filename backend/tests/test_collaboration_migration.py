@@ -19,7 +19,9 @@ def test_collaboration_migration_roundtrip_and_history_barrier(mig_url):
             assert {c['name'] for c in inspector.get_columns(model.__tablename__)}==set(model.__table__.columns.keys())
             assert {c['name'] for c in inspector.get_check_constraints(model.__tablename__)}=={
                 c.name for c in model.__table__.constraints if isinstance(c,sa.CheckConstraint)}
-            assert len(inspector.get_foreign_keys(model.__tablename__))==2
+            foreign=inspector.get_foreign_keys(model.__tablename__)
+            assert sum(f['referred_table']=='users' for f in foreign)==2
+            assert {f['referred_table'] for f in foreign if f['referred_table']!='users'}=={'teams','projects'}
         with Session(eng) as db:
             tenants(db)
             db.add(User(id='participant',company_id='gold-a',name='Participant',role='EMPLOYEE',

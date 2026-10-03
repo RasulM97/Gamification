@@ -24,4 +24,8 @@ def record_task_review(db: Session, actor: User, task: Task, audit: Activity,
                           actor_id=actor.id, subject_id=task.owner_id,
                           occurred_at=task.updated_at, payload=payload,
                           correlation_id=f'task:{task.id}:cycle:{task.cycle}')
-    return record_internal_event(db, actor.company_id, build)
+    from .organization.service import capture
+    from .organization.columns import scope
+    stored=record_internal_event(db,actor.company_id,build)
+    capture(db,actor.company_id,stored.id,scope(task))
+    return stored

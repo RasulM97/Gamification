@@ -1012,5 +1012,17 @@
   "capabilities.SHADOW_MODE.description": "実際の支払いなしで仮定の結果を観察。",
   "capabilities.INCENTIVE_SAFETY": "インセンティブ安全性",
   "capabilities.INCENTIVE_SAFETY.description": "インセンティブ実行前の必須保護。",
-  "integrity.error.CAPABILITY_DISABLED": "機能設定を利用できません。"
+  "integrity.error.CAPABILITY_DISABLED": "機能設定を利用できません。",
+  "organization.title": "チームとプロジェクト",
+  "organization.error": "組織設定を読み込みまたは更新できません。",
+  "organization.manage": "チームとプロジェクトを管理",
+  "organization.kind": "種類",
+  "organization.TEAM": "チーム",
+  "organization.PROJECT": "プロジェクト",
+  "organization.COMPANY": "会社",
+  "organization.create": "作成",
+  "organization.closed": "終了済み",
+  "organization.close": "終了",
+  "organization.manager": "範囲の管理者",
+  "organization.scope": "業務の所属"
 }

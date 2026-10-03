@@ -1,10 +1,11 @@
+from ..organization.columns import ScopeColumns, constraints as scope_constraints
 """Explicit collaboration facts with tenant-bound participants and retry identity."""
 from sqlalchemy import CheckConstraint, Float, ForeignKeyConstraint, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from ..models import Base, new_id, now_ms
 
 
-class AppreciationColumns:
+class AppreciationColumns(ScopeColumns):
     id: Mapped[str] = mapped_column(String(40),primary_key=True,default=lambda:new_id('app'))
     company_id: Mapped[str] = mapped_column(String(40),index=True)
     sender_user_id: Mapped[str] = mapped_column(String(40))
@@ -15,7 +16,7 @@ class AppreciationColumns:
 
 
 def appreciation_constraints(name):
-    return (ForeignKeyConstraint(['company_id','sender_user_id'],['users.company_id','users.id']),
+    return scope_constraints(name)+(ForeignKeyConstraint(['company_id','sender_user_id'],['users.company_id','users.id']),
             ForeignKeyConstraint(['company_id','recipient_user_id'],['users.company_id','users.id']),
             UniqueConstraint('company_id','sender_user_id','submission_id',name='uq_'+name+'_submission'),
             CheckConstraint('sender_user_id <> recipient_user_id',name='ck_'+name+'_self'))
@@ -31,9 +32,9 @@ class ManagerRecognition(AppreciationColumns,Base):
     __table_args__=appreciation_constraints('recognition')
 
 
-class HelpRequest(Base):
+class HelpRequest(ScopeColumns, Base):
     __tablename__='help_requests'
-    __table_args__=(
+    __table_args__=scope_constraints('help')+(
         ForeignKeyConstraint(['company_id','requester_user_id'],['users.company_id','users.id']),
         ForeignKeyConstraint(['company_id','accepted_by_user_id'],['users.company_id','users.id']),
         UniqueConstraint('company_id','requester_user_id','submission_id',name='uq_help_submission'),

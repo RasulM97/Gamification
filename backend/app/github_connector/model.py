@@ -53,6 +53,25 @@ class GithubDelivery(Base):
     received_at:Mapped[float]=mapped_column(Float,default=now_ms)
 
 
+class GithubProjectAttribution(Base):
+    """Admin-authored resource intervals; no provider text inference."""
+    __tablename__='github_project_attributions'
+    id:Mapped[str]=mapped_column(String(40),primary_key=True,default=lambda:new_id('ghscope'))
+    company_id:Mapped[str]=mapped_column(String(40))
+    source_id:Mapped[str]=mapped_column(String(40))
+    resource_kind:Mapped[str]=mapped_column(String(20))
+    resource_id:Mapped[str]=mapped_column(String(20))
+    project_id:Mapped[str]=mapped_column(String(40))
+    joined_at:Mapped[float]=mapped_column(Float,default=now_ms)
+    left_at:Mapped[float|None]=mapped_column(Float,nullable=True)
+    __table_args__=(
+        ForeignKeyConstraint(['company_id','source_id'],['github_sources.company_id','github_sources.id']),
+        ForeignKeyConstraint(['company_id','project_id'],['projects.company_id','projects.id']),
+        CheckConstraint("resource_kind IN ('issue','pull_request')",name='ck_github_attribution_kind'),
+        CheckConstraint("resource_id ~ '^[1-9][0-9]{0,19}$'",name='ck_github_attribution_resource'),
+        CheckConstraint('left_at IS NULL OR left_at >= joined_at',name='ck_github_attribution_time'))
+
+
 INSTALL_SQL="""
 CREATE FUNCTION reject_github_delivery_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN RAISE EXCEPTION 'GitHub delivery history is immutable' USING ERRCODE='23514'; END; $$;

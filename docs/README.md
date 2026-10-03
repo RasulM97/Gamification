@@ -1,6 +1,6 @@
 # Documentation index
 
-The current implemented baseline includes [Module Flags / Capability Controls](STATUS.md). Read
+The current implemented baseline includes [Minimal Organization + Project Context](STATUS.md). Read
 [architecture](ARCHITECTURE.md), [roadmap](ROADMAP.md), and
 [testing evidence](testing/README.md) together. Code, migrations and tests are
 authoritative; Graphify is navigation, not a specification.
@@ -19,11 +19,12 @@ authoritative; Graphify is navigation, not a specification.
 | Notifications and work | [Notifications](NOTIFICATION_ARCHITECTURE.md), [capacity](N4-USER-CAPACITY.md), [workspace attention](N6.1-WORKSPACE-ATTENTION.md) |
 | Engineering | [Repository intelligence](REPOSITORY_INTELLIGENCE.md), [localization](localization/README.md), [UAT backlog](BACKLOG.md) |
 
-## Validation awaiting approval
+## Organization context
 
-[Organization / Projects validation](organization/VALIDATION.md) records synthetic
-structural evidence and recommends decision C for the supplied scoped workflows.
-No Organization / Projects production model has been implemented.
+[Minimal Team/Project context](organization/CONTEXT_V1.md) is CLOSED / PASS, with
+[executed acceptance evidence](organization/IMPLEMENTATION_ACCEPTANCE.md).
+The separately published [validation](organization/VALIDATION.md) and its
+14-gap inventory remain historical evidence, not the implementation specification.
 
 ## Historical evidence
 

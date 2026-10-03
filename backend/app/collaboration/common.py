@@ -47,7 +47,18 @@ def history(db,actor,code,params,recipient=None,level='INFORMATIONAL'):
             actor.company_id,recipient,level,'Collaboration',code,params,now_ms()))
 
 
-def emit(db,company,producer,kind,identity,actor,subject,at,payload):
-    return record_trusted_event(db,company,producer,EventInput(type=kind,schema_version=1,
+def emit(db,company,producer,kind,identity,actor,subject,at,payload,context=None):
+    stored=record_trusted_event(db,company,producer,EventInput(type=kind,schema_version=1,
         source_kind='TRUSTED_INTERNAL',source_event_id=identity,actor_id=actor,subject_id=subject,
         occurred_at=at,payload=payload))
+
+    from ..organization.service import capture
+    capture(db,company,stored.id,context)
+    return stored
+
+
+def scoped_command(body,fields):
+    from ..organization.service import parse
+    if type(body) is not dict:raise DomainError('VALIDATION','Invalid collaboration command')
+    value=dict(body);context=parse(value.pop('scope',None))
+    return command(value,fields),context

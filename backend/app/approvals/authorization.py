@@ -19,6 +19,12 @@ def management_actor(db, actor, *, admin=False, lock=True):
     return current
 
 
-def require_authority(actor, request):
+def require_authority(db, actor, request):
     if actor.role != 'ADMIN' and request.required_authority != 'MANAGER_OR_ADMIN':
         raise DomainError('APPROVAL_FORBIDDEN', 'Required approval authority not held')
+
+    from ..organization.service import allowed, event_scope
+    from ..rules.model import RuleCandidate
+    candidate=db.scalar(select(RuleCandidate).where(RuleCandidate.company_id==actor.company_id,RuleCandidate.id==request.candidate_id))
+    if candidate is None or not allowed(db,actor,event_scope(db,actor.company_id,candidate.canonical_event_id),manager=True):
+        raise DomainError('APPROVAL_FORBIDDEN','Required organization approval authority not held')

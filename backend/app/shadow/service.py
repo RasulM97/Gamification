@@ -1,3 +1,4 @@
+from ..organization.service import guarded
 """Bounded explicit orchestration. Caller owns one atomic transaction."""
 from ..capabilities.service import requires, enabled
 from sqlalchemy import select, text
@@ -11,6 +12,7 @@ from .model import ShadowEvaluation
 from .projection import project
 
 
+@guarded
 @requires("SHADOW_MODE")
 def observe_decision(db, actor, decision_id):
     actor = economic_admin(db, actor)
@@ -31,6 +33,7 @@ def observe_decision(db, actor, decision_id):
                                                     **value).returning(ShadowEvaluation.id))
 
 
+@guarded
 @requires("SHADOW_MODE")
 def observe_event(db, actor, event_id):
     """Existing rule/policy paths, then observations of every resulting decision."""
@@ -43,6 +46,7 @@ def observe_event(db, actor, event_id):
     return {'evaluationIds': ids, 'candidateIds': candidates}
 
 
+@guarded
 def evaluate_governance(db, actor, candidate_id):
     """Policy HTTP boundary: SHADOW_ONLY is observed in the same transaction.
 

@@ -19,6 +19,7 @@ export async function send(a: Action): Promise<State | null> {
     case 'CLEAR_TEST_WORKSPACE': return api.post('/admin/test-workspace/clear', { confirmation: 'CLEAR' })
     case 'CREATE_TASK':
       return api.postForm('/tasks', withFiles({
+        ...(a.scope && a.scope.kind !== 'COMPANY' ? { scopeKind: a.scope.kind, scopeId: a.scope.id } : {}),
         title: a.title, description: a.description, priority: a.priority,
         reward: String(a.reward), audience: a.audience, assignMode: a.assignMode,
         ...(a.deadline ? { deadline: a.deadline } : {}),

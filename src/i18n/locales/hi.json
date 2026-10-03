@@ -1012,5 +1012,17 @@
   "capabilities.SHADOW_MODE.description": "वास्तविक भुगतान के बिना संभावित परिणाम देखें।",
   "capabilities.INCENTIVE_SAFETY": "प्रोत्साहन सुरक्षा",
   "capabilities.INCENTIVE_SAFETY.description": "प्रोत्साहन जारी करने से पहले अनिवार्य सुरक्षा।",
-  "integrity.error.CAPABILITY_DISABLED": "क्षमता सेटिंग उपलब्ध नहीं हैं।"
+  "integrity.error.CAPABILITY_DISABLED": "क्षमता सेटिंग उपलब्ध नहीं हैं।",
+  "organization.title": "टीम और प्रोजेक्ट",
+  "organization.error": "संगठन की सेटिंग लोड या अपडेट नहीं हो सकीं।",
+  "organization.manage": "टीम और प्रोजेक्ट प्रबंधित करें",
+  "organization.kind": "प्रकार",
+  "organization.TEAM": "टीम",
+  "organization.PROJECT": "प्रोजेक्ट",
+  "organization.COMPANY": "कंपनी",
+  "organization.create": "बनाएँ",
+  "organization.closed": "बंद",
+  "organization.close": "बंद करें",
+  "organization.manager": "दायरे का प्रबंधक",
+  "organization.scope": "कार्य का संदर्भ"
 }

@@ -82,6 +82,7 @@ export interface MeUser { id: string; name: string; role: string; position: stri
 export interface DevPersona { id: string; name: string; role: string; position: string; email: string }
 
 export const api = {
+  get: <T>(path: string) => req<T>(path),
   passwordPolicy: () => req<{minimum: number; weakDevAllowed: boolean}>('/auth/password-policy'),
   login: (email: string, password: string) =>
     req<{ token: string; user: MeUser }>('/auth/login', { method: 'POST', json: { email, password } }),

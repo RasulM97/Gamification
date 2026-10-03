@@ -1,3 +1,5 @@
+from ..organization import service as organization
+from ..organization.columns import scope, fields
 """Explicit governance transactions; no business effects or history replay."""
 import json
 import time
@@ -24,9 +26,11 @@ def lock_policy_set(db, company_id, *, shared):
 
 
 def policy_definition(row):
-    return dict(name=row.name, description=row.description, active=row.active,
+    result = dict(name=row.name, description=row.description, active=row.active,
                 candidateKind=row.candidate_kind, eventType=row.event_type, conditions=row.conditions,
                 decision=row.decision, priority=row.priority)
+    if scope(row)["kind"] != "COMPANY": result["scope"]=scope(row)
+    return result
 
 
 def policy_view(row):
@@ -34,16 +38,19 @@ def policy_view(row):
                 createdAt=row.created_at, updatedAt=row.updated_at)
 
 
+@organization.guarded
 def create_policy(db, actor, body):
     require_admin(actor)
     value = definition(dict(description='', active=False, candidateKind=None, eventType=None, priority=0) | body)
     lock_policy_set(db, actor.company_id, shared=False)
-    row = Policy(company_id=actor.company_id, created_by=actor.id,
+    context=organization.parse(value.pop("scope",None)); organization.unit(db,actor.company_id,context,active=True)
+    row = Policy(**fields(context), company_id=actor.company_id, created_by=actor.id,
                  candidate_kind=value.pop('candidateKind'), event_type=value.pop('eventType'), **value)
     db.add(row); db.flush()
     return policy_view(row)
 
 
+@organization.guarded
 def update_policy(db, actor, policy_id, body):
     require_admin(actor)
     lock_policy_set(db, actor.company_id, shared=False)
@@ -55,6 +62,8 @@ def update_policy(db, actor, policy_id, body):
     if json.dumps(value, sort_keys=True) != json.dumps(policy_definition(row), sort_keys=True):
         if row.version == 2147483647:
             raise DomainError('INVALID_POLICY', 'Policy version limit reached')
+        context=organization.parse(value.pop('scope',None)); organization.unit(db,actor.company_id,context,active=True)
+        row.team_id=fields(context)['team_id']; row.project_id=fields(context)['project_id']
         row.candidate_kind = value.pop('candidateKind'); row.event_type = value.pop('eventType')
         for key, val in value.items(): setattr(row, key, val)
         flag_modified(row, 'conditions')  # True -> 1 must not disappear in JSONB dirty checking.
@@ -91,8 +100,9 @@ def evaluate_candidate(db, actor, candidate_id):
         .with_for_update(read=True).execution_options(populate_existing=True)))
     if len(policies) > MAX_ACTIVE_POLICIES:
         raise DomainError('POLICY_EVALUATION_LIMIT', 'Too many applicable active policies')
+    context=organization.event_scope(db,actor.company_id,event.id) if any(p.team_id or p.project_id for p in policies) else None
     result = evaluate([dict(id=p.id, version=p.version, definition=policy_definition(p)) for p in policies],
-                      PolicyContext(candidate, event))
+                      PolicyContext(candidate, event), scope_context=context)
     identity = dict(company_id=actor.company_id, candidate_id=candidate.id,
                     policy_set_fingerprint=result['policySetFingerprint'])
     db.execute(insert(PolicyDecision).values(**identity, effective_decision=result['effectiveDecision'],

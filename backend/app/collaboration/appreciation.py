@@ -1,3 +1,6 @@
+from ..organization import service as organization
+from ..organization.columns import scope, fields
+from .common import scoped_command
 """Thanks and manager recognition; no economic authority or orchestration."""
 from ..capabilities.service import require
 from sqlalchemy import select
@@ -11,13 +14,14 @@ KINDS={'thanks':(PeerThanks,'internal.peer.thanks','PEER_THANKS'),
 
 def view(row):
     sender='issuerUserId' if isinstance(row,ManagerRecognition) else 'senderUserId'
-    return dict(id=row.id,companyId=row.company_id,**{sender:row.sender_user_id},
+    return dict(**({'scope':scope(row)} if row.team_id or row.project_id else {}),id=row.id,companyId=row.company_id,**{sender:row.sender_user_id},
                 recipientUserId=row.recipient_user_id,message=row.message,createdAt=row.created_at)
 
 
+@organization.guarded
 def create(db,actor,kind,body):
     require(db,actor.company_id,{'thanks':'THANKS','recognition':'RECOGNITION'}[kind])
-    data=command(body,{'recipientUserId':40,'message':1000,'submissionId':100})
+    data,context=scoped_command(body,{'recipientUserId':40,'message':1000,'submissionId':100})
     model,event_type,code=KINDS[kind]
     retry_lock(db,actor.company_id,actor.id,kind,data['submissionId'])
     people=members(db,actor.company_id,{actor.id,data['recipientUserId']})
@@ -28,14 +32,15 @@ def create(db,actor,kind,body):
     row=db.scalar(select(model).where(model.company_id==actor.company_id,
         model.sender_user_id==actor.id,model.submission_id==data['submissionId']))
     if row:
-        if row.recipient_user_id!=target.id or row.message!=data['message']:
+        if row.recipient_user_id!=target.id or row.message!=data['message'] or scope(row)!=context:
             raise DomainError('BAD_STATE','Submission identity already used with different content')
         return view(row)
-    row=model(company_id=actor.company_id,sender_user_id=actor.id,recipient_user_id=target.id,
+    organization.admit(db,actor,context,manager=kind=='recognition',participants=[target.id])
+    row=model(**fields(context),company_id=actor.company_id,sender_user_id=actor.id,recipient_user_id=target.id,
               message=data['message'],submission_id=data['submissionId'])
     db.add(row); db.flush()
     emit(db,actor.company_id,'collaboration.'+kind,event_type,row.id,actor.id,target.id,row.created_at,
-         {'recordId':row.id,'messageLength':len(row.message)})
+         {'recordId':row.id,'messageLength':len(row.message)},context=context)
     history(db,actor,code,{'targetUserId':target.id,'target':target.name,'recordId':row.id,'reason':row.message},target.id)
     return view(row)
 

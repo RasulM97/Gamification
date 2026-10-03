@@ -1,3 +1,4 @@
+from ..organization import service as organization
 """Verified source → durable minimized delivery → canonical event → generic receipt, atomically."""
 from ..capabilities.service import require
 import hashlib
@@ -38,7 +39,9 @@ def result(db,raw,duplicate=False):
 def receive(db,source_key,delivery_id,event_name,signature,body):
     source=None
     company=db.scalar(select(GithubSource.company_id).where(GithubSource.source_key==source_key))
-    if company is not None:require(db,company,'GITHUB_CONNECTOR')
+    if company is not None:
+        organization.lock(db,company)
+        require(db,company,'GITHUB_CONNECTOR')
     if re.fullmatch('[A-Za-z0-9_-]{32}',source_key):
         source=db.scalar(select(GithubSource).where(GithubSource.source_key==source_key)
                          .with_for_update(read=True).execution_options(populate_existing=True))
@@ -76,7 +79,10 @@ def receive(db,source_key,delivery_id,event_name,signature,body):
             CanonicalEvent.source_kind==event.source_kind,CanonicalEvent.source_id==source.id,
             CanonicalEvent.source_event_id==event.source_event_id))
         if existing is not None:raise DomainError('DELIVERY_CONFLICT','Canonical delivery identity already consumed')
+        from .attribution import resolve
+        context,basis=resolve(db,source,event)
         stored=PostgresEventStore(db).append(source.company_id,event)
+        organization.capture(db,source.company_id,stored.id,context,basis=basis)
         receipt=db.get(SourceReceipt,(source.company_id,stored.id))
         if receipt is not None:raise DomainError('DELIVERY_CONFLICT','Canonical delivery identity already consumed')
         if stored.type!=event.type or stored.payload!=event.payload or stored.evidence!=event.evidence:

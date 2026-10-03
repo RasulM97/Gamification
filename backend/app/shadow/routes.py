@@ -42,9 +42,12 @@ def evaluations(actor: User = Depends(current_user), db: Session = Depends(get_d
         offset: int = Query(0, ge=0, le=100000), event_id: str | None = None,
         candidate_id: str | None = None, rule_id: str | None = None,
         decision_id: str | None = None, recipient_id: str | None = None,
-        outcome: str | None = None, since: int | None = None, until: int | None = None):
+        outcome: str | None = None, since: int | None = None, until: int | None = None,
+        scope_kind: str | None = None, scope_id: str | None = None):
+    scope = None if scope_kind is None and scope_id is None else dict(kind=scope_kind)
+    if scope_id is not None: scope['id'] = scope_id
     return response(listing(db, actor, offset=offset, event_id=event_id, candidate_id=candidate_id,
-        rule_id=rule_id, decision_id=decision_id, recipient_id=recipient_id, outcome=outcome, since=since, until=until))
+        rule_id=rule_id, decision_id=decision_id, recipient_id=recipient_id, outcome=outcome, since=since, until=until, scope=scope))
 
 
 @router.get('/{evaluation_id}')

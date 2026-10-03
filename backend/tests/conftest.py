@@ -38,6 +38,7 @@ else:
 
 from app.db import SessionLocal, engine  # noqa: E402
 from app.capabilities.model import CompanyCapability, CapabilityChange  # noqa: F401
+from app.organization import model as organization_models
 from app.models import Base  # noqa: E402
 from app.canonical_events.model import CanonicalEvent  # noqa: E402,F401
 from app.ingestion.model import WebhookSource  # noqa: E402,F401
@@ -87,3 +88,10 @@ def login(client, email):
 def auth(client):
     return {n: login(client, f'{n}@aster.demo')
             for n in ('dana', 'marcus', 'priya', 'jonas', 'aisha')}
+
+
+@pytest.fixture(autouse=True)
+def historical_organization_data_writers(request,monkeypatch):
+    if request.node.path.name.endswith('_migration.py'):
+        from tests.historical_org_baseline.fixtures import install
+        install(monkeypatch)

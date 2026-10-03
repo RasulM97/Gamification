@@ -1,9 +1,10 @@
 # Current verified system status
 
-As of 2026-10-02, **Module Flags / Capability Controls is CLOSED / PASS**, extending the E11
-baseline `f310c0ed12d2e3bf912ed7c34c9112689c9a97ba` and documentation baseline
-`00b794c6d05d817eb2bce74e6a93354c6681fb11`. See [acceptance](capabilities/ACCEPTANCE.md).
-The repository migration head is `ec01c9e2601`; this is not a claim that any
+As of 2026-10-03, **Minimal Organization + Project Context is CLOSED / PASS**.
+It extends Module Flags / Capability Controls and the separately published
+validation baseline `fef99143d08a2870e31a7f100a45987ae0ab1252`.
+See [acceptance](organization/IMPLEMENTATION_ACCEPTANCE.md).
+The repository migration head is `ed01c9e2601`; this is not a claim that any
 particular live or customer database has been upgraded.
 
 The system includes an authenticated, tenant-scoped FastAPI/PostgreSQL backend,
@@ -23,6 +24,7 @@ the whole project browser-only, unauthenticated, or a dormant backend.
 | E10 Shadow Mode | Immutable hypothetical observations; no actual approval, credit, ledger or wallet mutation | [Acceptance](shadow/E10_ACCEPTANCE.md) |
 | E11 Incentive Safety | Six bounded deterministic detectors, immutable findings, Safety outcomes, exact review provenance, Shadow sidecars and live economic gating | [Acceptance](incentive_safety/E11_ACCEPTANCE.md), [measured evidence](incentive_safety/E11_EVIDENCE.json) |
 | Module Flags / Capability Controls | Six default-enabled optional company flags, mandatory Safety, immutable audit and transactional admission | [Contract](capabilities/CAPABILITY_CONTROLS_V1.md), [acceptance](capabilities/ACCEPTANCE.md) |
+| Minimal Organization + Project Context | Optional Team/Project scope, temporal memberships, scoped governance, explicit GitHub resource attribution and frozen context | [Acceptance](organization/IMPLEMENTATION_ACCEPTANCE.md), [contract](organization/CONTEXT_V1.md) |
 
 E9 was published as `fd29d1ab284c206a9cb91aa7897deb42cbcdaaaf` and used as E10's
 verified baseline. Its original acceptance document still says PENDING because
@@ -40,16 +42,22 @@ documentation audit, and no historical tunnel URL is a current service promise.
 - Six optional company capabilities now default enabled and are enforced at
   service boundaries. Safety is system-required. Admin controls use server
   state; demo settings are fixed/read-only. [Contract](capabilities/CAPABILITY_CONTROLS_V1.md).
-- Organization / Projects, WSE and AI maturity are not completed phases.
+- Minimal Organization + Project Context is complete: explicit optional scope,
+  current authority and immutable historical attribution.
+  WSE and AI maturity remain deferred.
 - The validated test workloads do not establish production throughput or a
   production deployment certification.
 
 [Roadmap](ROADMAP.md) defines the next authorized planning boundary;
 [architecture](ARCHITECTURE.md) defines the invariants that must survive it.
 
-## Evidence-only follow-up
+## Organization context follow-up
 
-[Organization / Projects validation](organization/VALIDATION.md) completed on
-2026-10-02. Recommendation C awaits explicit approval and confirmation of the
-supplied scoped workflow requirements. Production remains the Module Flags
-baseline; no Organization / Projects schema or behavior has been implemented.
+Validation was separately committed and pushed as
+`fef99143d08a2870e31a7f100a45987ae0ab1252`. The authorized minimal Team/Project
+implementation adds explicit work scope, temporal membership, scoped governance,
+Admin-controlled GitHub resource attribution and immutable event context without
+changing Core, Safety, capability scope or economic identity.
+See the [contract](organization/CONTEXT_V1.md) and
+[current measured evidence](organization/IMPLEMENTATION_EVIDENCE.json).
+[Final acceptance](organization/IMPLEMENTATION_ACCEPTANCE.md) is PASS; no later roadmap phase has started.

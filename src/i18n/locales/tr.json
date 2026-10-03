@@ -1012,5 +1012,17 @@
   "capabilities.SHADOW_MODE.description": "Gerçek ödeme olmadan varsayımsal sonuçları izleme.",
   "capabilities.INCENTIVE_SAFETY": "Teşvik güvenliği",
   "capabilities.INCENTIVE_SAFETY.description": "Teşvik uygulanmadan önce zorunlu koruma.",
-  "integrity.error.CAPABILITY_DISABLED": "Yetenek ayarları kullanılamıyor."
+  "integrity.error.CAPABILITY_DISABLED": "Yetenek ayarları kullanılamıyor.",
+  "organization.title": "Ekipler ve Projeler",
+  "organization.error": "Organizasyon ayarları yüklenemedi veya güncellenemedi.",
+  "organization.manage": "Ekipleri ve Projeleri yönet",
+  "organization.kind": "Tür",
+  "organization.TEAM": "Ekip",
+  "organization.PROJECT": "Proje",
+  "organization.COMPANY": "Şirket",
+  "organization.create": "Oluştur",
+  "organization.closed": "Kapalı",
+  "organization.close": "Kapat",
+  "organization.manager": "Kapsam yöneticisi",
+  "organization.scope": "İş bağlamı"
 }

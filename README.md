@@ -2,8 +2,9 @@
 
 CVE is a corporate virtual economy with a React/TypeScript demo and an
 authoritative FastAPI/PostgreSQL backend. The implemented baseline now includes
-**Module Flags / Capability Controls — CLOSED / PASS** on top of E11. See the
-[acceptance report](docs/capabilities/ACCEPTANCE.md) for executed verification.
+**Minimal Organization + Project Context — CLOSED / PASS** on top of E11 and
+company capability controls. See the
+[acceptance report](docs/organization/IMPLEMENTATION_ACCEPTANCE.md) for executed verification.
 
 ## Start here
 
@@ -26,6 +27,5 @@ where required → Economic Effect → Ledger. Stages are explicitly invoked;
 webhook receipt does not automatically issue a reward. Shadow creates no real
 economics. Wallet values are derived from the append-only signed ledger.
 
-**Next boundary:** Organization / Projects only if validated, then System
-Integration / Maturity Gate. No later phase is authorized by this completion. WSE and AI maturity
+**Next boundary:** System Integration / Maturity Gate, not started. No later phase is authorized by this completion. WSE and AI maturity
 remain deferred. See the roadmap before starting work.

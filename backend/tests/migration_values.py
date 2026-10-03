@@ -8,6 +8,8 @@ def historical_row(row):
     values = dict(row)
     # E11's additive provenance columns have exact legacy defaults; assert the
     # defaults before comparing historical rows from schemas without them.
+    for key in ('team_id','project_id'):
+        if key in values:assert values.pop(key) is None
     if 'safety_evaluation_id' in values:
         assert values.pop('safety_evaluation_id') is None
     if 'trigger' in values:

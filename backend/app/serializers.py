@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .capabilities.service import snapshot as capability_snapshot
+from .organization.columns import scope as work_scope
 from .models import (
     Activity, Attachment, Company, CompanySettings, Contribution,
     LedgerTransaction, Notification, Redemption, Reward, RewardCategory,
@@ -44,6 +45,7 @@ def _task(db: Session, t: Task) -> dict:
     return {
         'viewerIds': t.viewer_ids or [], 'reviewerIds': t.reviewer_ids or [],
         'restrictedAudiences': t.restricted_audiences or [], 'privateWorkerRole': t.private_worker_role,
+        **({'scope': work_scope(t)} if t.team_id or t.project_id else {}),
         'id': t.id, 'title': t.title, 'description': t.description,
         'priority': t.priority,
         'deadline': t.deadline.isoformat() if t.deadline else None,

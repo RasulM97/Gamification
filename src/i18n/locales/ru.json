@@ -1012,5 +1012,17 @@
   "capabilities.SHADOW_MODE.description": "Наблюдение гипотетических результатов без выплат.",
   "capabilities.INCENTIVE_SAFETY": "Безопасность стимулов",
   "capabilities.INCENTIVE_SAFETY.description": "Обязательная защита перед выдачей стимулов.",
-  "integrity.error.CAPABILITY_DISABLED": "Настройки возможностей недоступны."
+  "integrity.error.CAPABILITY_DISABLED": "Настройки возможностей недоступны.",
+  "organization.title": "Команды и проекты",
+  "organization.error": "Не удалось загрузить или обновить настройки.",
+  "organization.manage": "Управление командами и проектами",
+  "organization.kind": "Тип",
+  "organization.TEAM": "Команда",
+  "organization.PROJECT": "Проект",
+  "organization.COMPANY": "Компания",
+  "organization.create": "Создать",
+  "organization.closed": "Закрыто",
+  "organization.close": "Закрыть",
+  "organization.manager": "Руководитель области",
+  "organization.scope": "Контекст работы"
 }

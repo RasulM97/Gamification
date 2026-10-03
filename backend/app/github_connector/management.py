@@ -1,5 +1,6 @@
 """Admin-owned source and explicit numeric identity management; never expose stored secrets."""
 from ..capabilities.service import requires
+from ..organization.service import guarded
 import re
 import secrets
 from sqlalchemy import select
@@ -34,6 +35,7 @@ def view(source):
         createdAt=source.created_at,updatedAt=source.updated_at)
 
 
+@guarded
 @requires("GITHUB_CONNECTOR")
 def create(db,actor,body):
     actor=admin(db,actor); exact(body,('name','repositoryId'))
@@ -59,6 +61,7 @@ def owned(db,actor,identity):
     return source
 
 
+@guarded
 @requires("GITHUB_CONNECTOR")
 def change(db,actor,identity,body,rotate=False):
     source=owned(db,actor,identity)
@@ -73,6 +76,7 @@ def change(db,actor,identity,body,rotate=False):
     return view(source)|({'secret':signing} if rotate else {})
 
 
+@guarded
 @requires("GITHUB_CONNECTOR")
 def mapping(db,actor,identity,external,body,remove=False):
     source=owned(db,actor,identity);external=external_id(external)

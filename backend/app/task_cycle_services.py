@@ -1,5 +1,7 @@
 from __future__ import annotations
 from .capabilities.service import requires
+from .organization.service import guarded, admit
+from .organization.columns import scope, fields
 
 import math
 from datetime import date
@@ -50,6 +52,7 @@ def _new_cycle_reset(db: Session, actor: User, t: Task, *, description=None,
         if not role_fits(eff_audience, nu.role):
             raise DomainError('FORBIDDEN', 'The chosen person is not eligible for this audience')
     if nu is not None:
+        admit(db,actor,scope(t),participants=[nu.id],manager=actor.role=='MANAGER')
         require_capacity(db, actor.company_id, nu.id, eff_audience)
     route(db, actor, t, eff_audience, nu, sensitivity_confirmed)
     t.cycle += 1
@@ -76,6 +79,7 @@ def _new_cycle_reset(db: Session, actor: User, t: Task, *, description=None,
     return brief_changes, nu
 
 
+@guarded
 @requires("TASK_LITE")
 def reopen_task(db: Session, actor: User, task_id: str, *, description=None,
                 audience: Optional[str] = None, assignee_id: Optional[str] = None,
@@ -84,6 +88,7 @@ def reopen_task(db: Session, actor: User, task_id: str, *, description=None,
         raise DomainError('FORBIDDEN', 'Reopening work is a management act')
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
+    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
     if t.status != 'APPROVED':
         raise DomainError('BAD_STATE', 'Only an approved task can be reopened')
     brief_changes, nu = _new_cycle_reset(db, actor, t, description=description,
@@ -98,6 +103,7 @@ def reopen_task(db: Session, actor: User, task_id: str, *, description=None,
     return t
 
 
+@guarded
 @requires("TASK_LITE")
 def cancel_task(db: Session, actor: User, task_id: str, *, reason: str,
                 accepted_pct: Optional[float] = None) -> Task:
@@ -105,6 +111,7 @@ def cancel_task(db: Session, actor: User, task_id: str, *, reason: str,
         raise DomainError('FORBIDDEN', 'Cancelling work is a management act')
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
+    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
     # N2.1-A1: canonical-ownership protection — creator or admin only. A
     # manager must NOT cancel an admin-created task as management owner.
     if actor.role != 'ADMIN' and t.created_by != actor.id:
@@ -143,6 +150,7 @@ def cancel_task(db: Session, actor: User, task_id: str, *, reason: str,
     return t
 
 
+@guarded
 @requires("TASK_LITE")
 def reactivate_task(db: Session, actor: User, task_id: str, *, reason: str,
                     description=None, audience: Optional[str] = None,
@@ -152,6 +160,7 @@ def reactivate_task(db: Session, actor: User, task_id: str, *, reason: str,
         raise DomainError('FORBIDDEN', 'Reactivating work is a management act')
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
+    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
     if t.status != 'CANCELLED':
         raise DomainError('BAD_STATE', 'Only a cancelled task can be reactivated')
     brief_changes, nu = _new_cycle_reset(db, actor, t, description=description,

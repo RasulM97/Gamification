@@ -16,7 +16,7 @@ def snapshot(eng):
     with eng.connect() as conn:
         metadata = sa.MetaData(); metadata.reflect(conn)
         return {name:sorted(historical_row(row) for row in conn.execute(sa.select(table)).mappings())
-                for name, table in metadata.tables.items() if name not in ('incentive_safety_evaluations','incentive_safety_heads','incentive_safety_settings','incentive_safety_shadow', 'company_capabilities', 'capability_changes','alembic_version','shadow_evaluations')}
+                for name, table in metadata.tables.items() if name not in ('teams','projects','team_memberships','project_memberships','organization_event_scopes','organization_changes','github_project_attributions','incentive_safety_evaluations','incentive_safety_heads','incentive_safety_settings','incentive_safety_shadow', 'company_capabilities', 'capability_changes','alembic_version','shadow_evaluations')}
 
 
 def test_shadow_migration(mig_url):
@@ -42,6 +42,6 @@ def test_shadow_migration(mig_url):
             command.downgrade(cfg,'e90a1c9e2601')
         with eng.connect() as conn:
             assert conn.scalar(sa.select(ShadowEvaluation.id)) == sid
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'ec01c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'ed01c9e2601'
         assert snapshot(eng) == before
     finally: eng.dispose()

@@ -13,11 +13,13 @@ def read_field(event: StoredEvent, path: str):
     return read_value(fields, path)
 
 
-def evaluate(rule: dict, event: StoredEvent) -> Evaluation:
+def evaluate(rule: dict, event: StoredEvent, *, scope_context=None) -> Evaluation:
     try:
         rule = definition(rule)
     except DomainError:
         return Evaluation('INVALID')
+    from ..organization.service import matches
+    if not matches(rule.get('scope'),scope_context):return Evaluation('NOT_MATCHED')
     if not rule['active'] or rule['eventType'] != event.type:
         return Evaluation('NOT_MATCHED')
     matched = 0

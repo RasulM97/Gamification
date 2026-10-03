@@ -1012,5 +1012,17 @@
   "capabilities.SHADOW_MODE.description": "Observe hypothetical outcomes without real payments.",
   "capabilities.INCENTIVE_SAFETY": "Incentive Safety",
   "capabilities.INCENTIVE_SAFETY.description": "Mandatory protection before incentive execution.",
-  "integrity.error.CAPABILITY_DISABLED": "Capability settings are unavailable."
+  "integrity.error.CAPABILITY_DISABLED": "Capability settings are unavailable.",
+  "organization.title": "Teams and Projects",
+  "organization.error": "Unable to load or update organization settings.",
+  "organization.manage": "Manage Teams and Projects",
+  "organization.kind": "Type",
+  "organization.TEAM": "Team",
+  "organization.PROJECT": "Project",
+  "organization.COMPANY": "Company",
+  "organization.create": "Create",
+  "organization.closed": "Closed",
+  "organization.close": "Close",
+  "organization.manager": "Scope manager",
+  "organization.scope": "Work context"
 }

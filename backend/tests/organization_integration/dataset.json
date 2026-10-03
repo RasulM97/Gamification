@@ -1,0 +1,29 @@
+{
+  "seed": 20261003,
+  "companies": 10,
+  "usersPerCompany": 60,
+  "workers": 20,
+  "eventsPerWorker": 150,
+  "shapes": ["FLAT", "TEAM", "PROJECT", "MATRIX", "GITHUB"],
+  "activityCycle": ["THANKS", "RECOGNITION", "HELP", "GITHUB_PR_MERGED", "THANKS"],
+  "membershipChangeAt": 75,
+  "economicEventIndices": [0, 1, 3, 5, 6, 8],
+  "expected": {
+    "workloadEvents": 3000,
+    "candidates": 3000,
+    "shadowEvaluations": 3000,
+    "economicEffects": 120,
+    "ledgerTotal": "120",
+    "scopeMismatches": 0,
+    "unauthorizedApprovals": 0,
+    "incorrectRuleMatches": 0,
+    "incorrectPolicyMatches": 0,
+    "historicalProvenanceChanges": 0,
+    "duplicateEffects": 0,
+    "ledgerMismatches": 0,
+    "walletMismatches": 0,
+    "crossTenantLeakage": 0,
+    "deadlocks": 0,
+    "unexpected5xx": 0
+  }
+}

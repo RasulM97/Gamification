@@ -7,7 +7,7 @@ from .contracts import DEFAULT_DECISION, GOVERNANCE_VERSION, SEVERITY, PolicyCon
 from .validation import definition
 
 
-def evaluate(policies: list[dict], context: PolicyContext) -> dict:
+def evaluate(policies: list[dict], context: PolicyContext, *, scope_context=None) -> dict:
     candidate, event = context.candidate, context.event
     if candidate.company_id != event.company_id or candidate.canonical_event_id != event.id:
         raise DomainError('POLICY_EVALUATION_CONFLICT', 'Invalid policy context')
@@ -21,6 +21,8 @@ def evaluate(policies: list[dict], context: PolicyContext) -> dict:
         spec = definition(policy['definition'])  # Corrupt persisted governance fails closed.
         if not spec['active'] or spec['candidateKind'] not in (None, candidate.kind) or spec['eventType'] not in (None, event.type):
             continue
+        from ..organization.service import matches
+        if not matches(spec.get('scope'),scope_context):continue
         matched = 0
         for condition in spec['conditions']:
             if not compare(read_field(fields, condition['field']), condition['op'], condition['value']):

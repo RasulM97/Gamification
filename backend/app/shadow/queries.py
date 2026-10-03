@@ -4,6 +4,8 @@ from ..domain import DomainError
 from ..economic_effects.eligibility import economic_admin
 from ..policies.model import PolicyDecision
 from ..rules.model import RuleCandidate
+from ..organization.model import EventScope
+from ..organization.service import parse, unit
 from .model import ShadowEvaluation
 
 
@@ -35,12 +37,21 @@ def detail(db, actor, evaluation_id):
 
 
 def listing(db, actor, *, offset=0, event_id=None, candidate_id=None, rule_id=None,
-            decision_id=None, recipient_id=None, outcome=None, since=None, until=None):
+            decision_id=None, recipient_id=None, outcome=None, since=None, until=None, scope=None):
     actor = economic_admin(db, actor)
     if not 0 <= offset <= 100000 or (outcome is not None and outcome not in
             ('AUTHORIZED', 'BLOCKED', 'PENDING_APPROVAL', 'INELIGIBLE')):
         raise DomainError('VALIDATION', 'Invalid shadow filter')
     q = query(actor.company_id)
+    if scope is not None:
+        context = parse(scope)
+        unit(db, actor.company_id, context)
+        associated = select(EventScope.event_id).where(EventScope.company_id == actor.company_id)
+        if context['kind'] == 'COMPANY':
+            q = q.where(RuleCandidate.canonical_event_id.not_in(associated))
+        else:
+            column = EventScope.team_id if context['kind'] == 'TEAM' else EventScope.project_id
+            q = q.where(RuleCandidate.canonical_event_id.in_(associated.where(column == context['id'])))
     for column, value in ((RuleCandidate.canonical_event_id, event_id), (RuleCandidate.id, candidate_id),
             (RuleCandidate.rule_id, rule_id), (PolicyDecision.id, decision_id),
             (ShadowEvaluation.recipient_user_id, recipient_id), (ShadowEvaluation.outcome, outcome)):

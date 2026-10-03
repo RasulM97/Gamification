@@ -1,3 +1,5 @@
+import { ScopeSelect } from '../features/organization/ScopeSelect'
+import type { WorkScope } from '../features/organization/OrganizationPanel'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { PRIORITIES, capacityLimit, activeCount } from '../domain/engine'
@@ -11,6 +13,7 @@ export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () 
   const { t: tr } = useI18n()
   const { state, dispatch } = useStore()
   const me = useMe()
+  const [scope, setScope] = useState<WorkScope>({ kind: 'COMPANY' })
   const [title, setTitle] = useState('')
   const [desc, setDesc] = useState('')
   const [audience, setAudience] = useState<Audience>('EMPLOYEES')
@@ -37,7 +40,7 @@ export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () 
 
   const create = () => {
     dispatch({
-      type: 'CREATE_TASK', by: me.id,
+      type: 'CREATE_TASK', by: me.id, ...(scope.kind !== 'COMPANY' ? { scope } : {}),
       title: title.trim(), description: desc.trim(),
       priority, deadline: deadline || null, reward: +reward, audience,
       assignMode: mode === 'all' && audience !== 'PRIVATE' ? 'ALL_EMPLOYEES' : 'SPECIFIC_EMPLOYEE',
@@ -45,7 +48,7 @@ export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () 
       attachments: files,
     })
     setTitle(''); setDesc(''); setAudience('EMPLOYEES'); setMode('all'); setAssignee(''); setPriority('NORMAL'); setDeadline(''); setReward('20')
-    setFiles([]); setConfirming(false)
+    setFiles([]); setConfirming(false); setScope({ kind: 'COMPANY' })
     onClose()
   }
 
@@ -87,6 +90,7 @@ export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () 
         </div>
       ) : (
       <>
+      <ScopeSelect open={open} value={scope} onChange={setScope} />
       <div className="form-sec">
         <span className="eyebrow">{tr('task.field.whatNeedsDone')}</span>
         <Field label={tr('common.title')}>

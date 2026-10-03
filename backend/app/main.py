@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, text
 
 from .capabilities.routes import router as capabilities_router
+from .organization.routes import router as organization_router
 from .config import settings
 from .db import engine, session_scope
 from .domain import DomainError
@@ -82,6 +83,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title='CVE API', version='1.0.0', lifespan=lifespan)
 app.include_router(capabilities_router)
+app.include_router(organization_router)
 
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list,
                    allow_methods=['*'], allow_headers=['*'])

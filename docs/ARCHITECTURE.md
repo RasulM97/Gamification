@@ -1,7 +1,8 @@
 # Current architecture through Module Flags / Capability Controls
 
 E11 baseline: `f310c0ed12d2e3bf912ed7c34c9112689c9a97ba`; extended by
-[company capability controls](capabilities/CAPABILITY_CONTROLS_V1.md).
+[company capability controls](capabilities/CAPABILITY_CONTROLS_V1.md) and
+[optional organizational context](organization/CONTEXT_V1.md).
 All hosting models use [one domain core](adr/ADR-CORE-DEPLOYMENT-MODEL.md):
 managed cloud, self-hosted/on-premise and API/headless access do not change
 permissions, tenant boundaries or economic meaning.
@@ -81,7 +82,7 @@ again by observing their events.
 
 Alembic owns production schema. The chain adds E7 `e70a1c9e2601`, E8 source
 receipts `e80a1c9e2602` and collaboration `e80b2d9e2603`, E9 `e90a1c9e2601`,
-E10 `ea01c9e2601`, E11 `eb01c9e2601`, then capability head `ec01c9e2601`. E7.1 is a test-only replay
+E10 `ea01c9e2601`, E11 `eb01c9e2601`, capabilities `ec01c9e2601`, then organization head `ed01c9e2601`. E7.1 is a test-only replay
 foundation and has no new migration. History-preserving downgrade barriers are
 intentional; an empty-history rollback test is not permission to delete history.
 
@@ -90,3 +91,18 @@ second production authority. Server mode uses authenticated APIs; backend
 capabilities do not require the SPA. See [runtime](RUNTIME.md) and the detailed
 [contract index](README.md). Integration maturity beyond the existing validated
 workloads remains a separate [roadmap gate](ROADMAP.md).
+
+## Optional organizational context
+
+[Team/Project context](organization/CONTEXT_V1.md) filters eligibility and current
+management authority. Company remains the tenant; capabilities and Safety remain
+company-scoped. Exact Team/Project scope does not override a more severe Company
+Policy. Immutable organization-owned event associations preserve occurrence
+context without changing the Canonical Event envelope. Current membership never
+relabels completed economics or Shadow history.
+
+GitHub resource attribution belongs to the connector: Admin explicitly assigns
+numeric Issue/PR resource IDs within the source tenant. Shared repository binding,
+participants, text and branches cannot confer Project scope. Unassigned resources
+remain COMPANY and cannot match Project Rules/Policies. Attribution intervals and
+accepted event associations preserve historical meaning across later changes.

@@ -72,8 +72,12 @@ class CompanySettings(Base):
     max_submission_total_mb: Mapped[int] = mapped_column(Integer, default=25)
 
 
-class Task(Base):
+from .organization.columns import ScopeColumns, constraints as scope_constraints
+
+
+class Task(ScopeColumns, Base):
     __tablename__ = 'tasks'
+    __table_args__ = scope_constraints('task')
     viewer_ids: Mapped[list] = mapped_column(JSONB, default=list, server_default='[]')
     reviewer_ids: Mapped[list] = mapped_column(JSONB, default=list, server_default='[]')
     restricted_audiences: Mapped[list] = mapped_column(JSONB, default=list, server_default='[]')

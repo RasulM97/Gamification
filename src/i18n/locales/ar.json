@@ -1012,5 +1012,17 @@
   "capabilities.SHADOW_MODE.description": "مراقبة نتائج افتراضية دون مدفوعات حقيقية.",
   "capabilities.INCENTIVE_SAFETY": "سلامة الحوافز",
   "capabilities.INCENTIVE_SAFETY.description": "حماية إلزامية قبل تنفيذ الحوافز.",
-  "integrity.error.CAPABILITY_DISABLED": "إعدادات الإمكانات غير متاحة."
+  "integrity.error.CAPABILITY_DISABLED": "إعدادات الإمكانات غير متاحة.",
+  "organization.title": "الفرق والمشاريع",
+  "organization.error": "تعذر تحميل إعدادات المؤسسة أو تحديثها.",
+  "organization.manage": "إدارة الفرق والمشاريع",
+  "organization.kind": "النوع",
+  "organization.TEAM": "فريق",
+  "organization.PROJECT": "مشروع",
+  "organization.COMPANY": "الشركة",
+  "organization.create": "إنشاء",
+  "organization.closed": "مغلق",
+  "organization.close": "إغلاق",
+  "organization.manager": "مدير النطاق",
+  "organization.scope": "سياق العمل"
 }

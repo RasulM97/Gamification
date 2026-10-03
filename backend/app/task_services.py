@@ -1,5 +1,7 @@
 from __future__ import annotations
 from .capabilities.service import requires
+from .organization.service import guarded, admit
+from .organization.columns import scope, fields
 
 import math
 from datetime import date
@@ -33,15 +35,17 @@ from .service_common import (
     active_count,
 )
 
+@guarded
 @requires("TASK_LITE")
 def create_task(db: Session, actor: User, *, title: str, description: str,
                 priority: str, deadline: Optional[str], reward: float,
                 audience: str, assign_mode: str, assignee_id: Optional[str],
-                files: Sequence[StoredFile] = ()) -> Task:
+                files: Sequence[StoredFile] = (), context=None) -> Task:
     if not _is_mgmt(actor):
         raise DomainError('FORBIDDEN', 'Creating work is a management act')
     if audience == 'PRIVATE' and not assignee_id:
         raise DomainError('VALIDATION', 'A private task needs a specific assignee')
+    context=admit(db,actor,context,manager=True,participants=[assignee_id] if assignee_id else [])
     cid = actor.company_id
     now = now_ms()
     eff_mode = 'SPECIFIC_EMPLOYEE' if audience == 'PRIVATE' else assign_mode
@@ -52,7 +56,7 @@ def create_task(db: Session, actor: User, *, title: str, description: str,
             raise DomainError('FORBIDDEN', 'The chosen person is not eligible for this audience')
     if eff_assignee:
         require_capacity(db, cid, eff_assignee, audience)
-    t = Task(company_id=cid, title=title, description=description,
+    t = Task(**fields(context),company_id=cid, title=title, description=description,
              priority=priority, deadline=_dl(deadline), reward=reward,
              audience=audience, assign_mode=eff_mode, assignee_id=eff_assignee,
              status='OPEN', owner_id=None, cycle=1, verified=0, reported=0, paid=0,
@@ -74,10 +78,12 @@ def create_task(db: Session, actor: User, *, title: str, description: str,
     return t
 
 
+@guarded
 @requires("TASK_LITE")
 def claim_task(db: Session, actor: User, task_id: str) -> Task:
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
+    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
     if t.status != 'OPEN':
         raise DomainError('BAD_STATE', 'This task is not open for claims')
     if not role_fits(t.audience, actor.role):
@@ -95,10 +101,12 @@ def claim_task(db: Session, actor: User, task_id: str) -> Task:
     return t
 
 
+@guarded
 @requires("TASK_LITE")
 def decline_assignment(db: Session, actor: User, task_id: str, reason: str) -> Task:
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
+    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
     pending = t.status == 'OPEN' and t.assignee_id == actor.id
     owned = (t.owner_id == actor.id and t.status in ('IN_PROGRESS', 'REJECTED')
              and t.assign_mode == 'SPECIFIC_EMPLOYEE')
@@ -119,10 +127,12 @@ def decline_assignment(db: Session, actor: User, task_id: str, reason: str) -> T
     return t
 
 
+@guarded
 @requires("TASK_LITE")
 def return_claim(db: Session, actor: User, task_id: str, reason: str) -> Task:
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
+    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
     if (t.owner_id != actor.id or t.status not in ('IN_PROGRESS', 'REJECTED')
             or t.assign_mode != 'ALL_EMPLOYEES'):
         raise DomainError('BAD_STATE', 'Only a self-claimed task in progress (or rework) can be returned')
@@ -143,6 +153,7 @@ def return_claim(db: Session, actor: User, task_id: str, reason: str) -> Task:
     return t
 
 
+@guarded
 @requires("TASK_LITE")
 def edit_task(db: Session, actor: User, task_id: str, *, title=None, description=None,
               priority=None, deadline=..., reward=None) -> Task:
@@ -150,6 +161,7 @@ def edit_task(db: Session, actor: User, task_id: str, *, title=None, description
         raise DomainError('FORBIDDEN', 'Editing work is a management act')
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
+    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
     # N2.1-A1: canonical-ownership protection — the task's creator and any
     # admin may edit the canonical definition. A manager must NOT edit an
     # admin-created task (mirrors the demo reducer's frozen rule).
@@ -188,6 +200,7 @@ def edit_task(db: Session, actor: User, task_id: str, *, title=None, description
     return t
 
 
+@guarded
 @requires("TASK_LITE")
 def reassign(db: Session, actor: User, task_id: str, assignee_id: Optional[str], *,
              audience: Optional[str] = None, sensitivity_confirmed: bool = False) -> Task:
@@ -195,6 +208,7 @@ def reassign(db: Session, actor: User, task_id: str, assignee_id: Optional[str],
         raise DomainError('FORBIDDEN', 'Reassigning work is a management act')
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
+    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
     if t.status != 'OPEN':
         raise DomainError('BAD_STATE', 'Only open tasks can be reassigned')
     target = lock_capacity_user(db, actor.company_id, assignee_id) if assignee_id else None
@@ -206,6 +220,7 @@ def reassign(db: Session, actor: User, task_id: str, assignee_id: Optional[str],
         if not role_fits(effective, target.role):
             raise DomainError('FORBIDDEN', 'The chosen person is not eligible for this audience')
     if assignee_id:
+        admit(db,actor,scope(t),manager=True,participants=[assignee_id])
         require_capacity(db, actor.company_id, assignee_id, effective)
     t.audience = effective
     t.assign_mode = 'SPECIFIC_EMPLOYEE' if assignee_id else 'ALL_EMPLOYEES'
@@ -217,10 +232,12 @@ def reassign(db: Session, actor: User, task_id: str, assignee_id: Optional[str],
     return t
 
 
+@guarded
 @requires("TASK_LITE")
 def report_progress(db: Session, actor: User, task_id: str, pct: float) -> Task:
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
+    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
     if t.owner_id != actor.id:
         raise DomainError('FORBIDDEN', 'Only the current owner reports progress')
     if t.status not in ('IN_PROGRESS', 'REJECTED'):
@@ -231,11 +248,13 @@ def report_progress(db: Session, actor: User, task_id: str, pct: float) -> Task:
     return t
 
 
+@guarded
 @requires("TASK_LITE")
 def submit_work(db: Session, actor: User, task_id: str, *, note_text: str,
                 files: Sequence[StoredFile] = (), pct: Optional[float] = None) -> Task:
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
+    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
     if t.owner_id != actor.id or t.status != 'IN_PROGRESS':
         raise DomainError('BAD_STATE', 'Only the owner of an in-progress task can submit')
     now = now_ms()
@@ -258,10 +277,12 @@ def submit_work(db: Session, actor: User, task_id: str, *, note_text: str,
     return t
 
 
+@guarded
 @requires("TASK_LITE")
 def resume_work(db: Session, actor: User, task_id: str) -> Task:
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
+    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
     if t.owner_id != actor.id or t.status != 'REJECTED':
         raise DomainError('BAD_STATE', 'Only your own rejected task can be resumed')
     require_capacity(db, actor.company_id, actor.id)
@@ -274,12 +295,14 @@ def resume_work(db: Session, actor: User, task_id: str) -> Task:
 # ── review decisions ────────────────────────────────────────────────────────
 
 
+@guarded
 @requires("TASK_LITE")
 def approve_work(db: Session, actor: User, task_id: str) -> Task:
     if not _is_mgmt(actor):
         raise DomainError('FORBIDDEN', 'Review decisions are management acts')
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
+    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
     if t.status != 'SUBMITTED':
         raise DomainError('BAD_STATE', 'Only a submitted task can be approved')
     require_review(db, t, actor)
@@ -312,12 +335,14 @@ def approve_work(db: Session, actor: User, task_id: str) -> Task:
     return t
 
 
+@guarded
 @requires("TASK_LITE")
 def reject_work(db: Session, actor: User, task_id: str, reason: str) -> Task:
     if not _is_mgmt(actor):
         raise DomainError('FORBIDDEN', 'Review decisions are management acts')
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
+    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
     if t.status != 'SUBMITTED':
         raise DomainError('BAD_STATE', 'Only a submitted task can be rejected')
     require_review(db, t, actor)
@@ -333,6 +358,7 @@ def reject_work(db: Session, actor: User, task_id: str, reason: str) -> Task:
     return t
 
 
+@guarded
 @requires("TASK_LITE")
 def handoff(db: Session, actor: User, task_id: str, *, accepted_pct: float,
             reason: str, next_kind: str, next_id: Optional[str] = None,
@@ -344,6 +370,7 @@ def handoff(db: Session, actor: User, task_id: str, *, accepted_pct: float,
         raise DomainError('FORBIDDEN', 'Review decisions are management acts')
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
+    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
     if t.status not in ('IN_PROGRESS', 'SUBMITTED'):
         raise DomainError('BAD_STATE', 'Only work in progress or under review can be handed off')
     require_review(db, t, actor)

@@ -1012,5 +1012,17 @@
   "capabilities.SHADOW_MODE.description": "观察假设结果，不产生实际支付。",
   "capabilities.INCENTIVE_SAFETY": "激励安全",
   "capabilities.INCENTIVE_SAFETY.description": "执行激励前的强制保护。",
-  "integrity.error.CAPABILITY_DISABLED": "功能设置不可用。"
+  "integrity.error.CAPABILITY_DISABLED": "功能设置不可用。",
+  "organization.title": "团队与项目",
+  "organization.error": "无法加载或更新组织设置。",
+  "organization.manage": "管理团队与项目",
+  "organization.kind": "类型",
+  "organization.TEAM": "团队",
+  "organization.PROJECT": "项目",
+  "organization.COMPANY": "公司",
+  "organization.create": "创建",
+  "organization.closed": "已关闭",
+  "organization.close": "关闭",
+  "organization.manager": "范围负责人",
+  "organization.scope": "工作归属"
 }

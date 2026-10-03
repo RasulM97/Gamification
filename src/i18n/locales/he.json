@@ -1012,5 +1012,17 @@
   "capabilities.SHADOW_MODE.description": "צפייה בתוצאות משוערות ללא תשלומים בפועל.",
   "capabilities.INCENTIVE_SAFETY": "בטיחות תמריצים",
   "capabilities.INCENTIVE_SAFETY.description": "הגנה חובה לפני ביצוע תמריצים.",
-  "integrity.error.CAPABILITY_DISABLED": "הגדרות היכולות אינן זמינות."
+  "integrity.error.CAPABILITY_DISABLED": "הגדרות היכולות אינן זמינות.",
+  "organization.title": "צוותים ופרויקטים",
+  "organization.error": "לא ניתן לטעון או לעדכן את הגדרות הארגון.",
+  "organization.manage": "ניהול צוותים ופרויקטים",
+  "organization.kind": "סוג",
+  "organization.TEAM": "צוות",
+  "organization.PROJECT": "פרויקט",
+  "organization.COMPANY": "חברה",
+  "organization.create": "יצירה",
+  "organization.closed": "סגור",
+  "organization.close": "סגירה",
+  "organization.manager": "מנהל תחום",
+  "organization.scope": "הקשר העבודה"
 }

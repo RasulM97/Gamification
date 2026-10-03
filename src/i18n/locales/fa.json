@@ -1012,5 +1012,17 @@
   "capabilities.SHADOW_MODE.description": "مشاهده نتایج فرضی بدون پرداخت واقعی.",
   "capabilities.INCENTIVE_SAFETY": "ایمنی مشوق‌ها",
   "capabilities.INCENTIVE_SAFETY.description": "حفاظت الزامی پیش از اجرای مشوق.",
-  "integrity.error.CAPABILITY_DISABLED": "تنظیمات قابلیت‌ها در دسترس نیست."
+  "integrity.error.CAPABILITY_DISABLED": "تنظیمات قابلیت‌ها در دسترس نیست.",
+  "organization.title": "تیم‌ها و پروژه‌ها",
+  "organization.error": "بارگیری یا به‌روزرسانی تنظیمات سازمان ممکن نیست.",
+  "organization.manage": "مدیریت تیم‌ها و پروژه‌ها",
+  "organization.kind": "نوع",
+  "organization.TEAM": "تیم",
+  "organization.PROJECT": "پروژه",
+  "organization.COMPANY": "شرکت",
+  "organization.create": "ایجاد",
+  "organization.closed": "بسته شده",
+  "organization.close": "بستن",
+  "organization.manager": "مدیر محدوده",
+  "organization.scope": "زمینهٔ کار"
 }
