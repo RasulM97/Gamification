@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "phase": "UAT / Real User Testing",
+  "baselineCommit": "f9ff8ef38898908e22c95b07be9badad86ddb5b9",
+  "status": "NO_SESSIONS_RUN",
+  "note": "Skeleton only. No participant sessions have been run. All participant/task data must come from moderated sessions recorded in OBSERVATIONS.md. The moderator dry-run (2026-10-05) is kit pre-flight and is excluded from every metric below.",
+  "participants": [],
+  "tasks": {
+    "E1": { "role": "Employee", "attempts": 0, "completedWithoutHelp": 0, "completedWithHelp": 0, "failed": 0, "assistanceCount": 0, "wrongTurns": 0, "extraClicks": 0, "docLookups": 0, "timeToFirstSuccessSec": [], "resultUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "nextActionUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "confidence": [], "termsNotUnderstood": {} },
+    "E2": { "role": "Employee", "attempts": 0, "completedWithoutHelp": 0, "completedWithHelp": 0, "failed": 0, "assistanceCount": 0, "wrongTurns": 0, "extraClicks": 0, "docLookups": 0, "timeToFirstSuccessSec": [], "resultUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "nextActionUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "confidence": [], "termsNotUnderstood": {} },
+    "E3": { "role": "Employee", "attempts": 0, "completedWithoutHelp": 0, "completedWithHelp": 0, "failed": 0, "assistanceCount": 0, "wrongTurns": 0, "extraClicks": 0, "docLookups": 0, "timeToFirstSuccessSec": [], "resultUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "nextActionUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "confidence": [], "termsNotUnderstood": {} },
+    "E4": { "role": "Employee", "attempts": 0, "completedWithoutHelp": 0, "completedWithHelp": 0, "failed": 0, "assistanceCount": 0, "wrongTurns": 0, "extraClicks": 0, "docLookups": 0, "timeToFirstSuccessSec": [], "resultUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "nextActionUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "confidence": [], "termsNotUnderstood": {} },
+    "M1": { "role": "Manager", "attempts": 0, "completedWithoutHelp": 0, "completedWithHelp": 0, "failed": 0, "assistanceCount": 0, "wrongTurns": 0, "extraClicks": 0, "docLookups": 0, "timeToFirstSuccessSec": [], "resultUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "nextActionUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "confidence": [], "termsNotUnderstood": {} },
+    "M2": { "role": "Manager", "attempts": 0, "completedWithoutHelp": 0, "completedWithHelp": 0, "failed": 0, "assistanceCount": 0, "wrongTurns": 0, "extraClicks": 0, "docLookups": 0, "timeToFirstSuccessSec": [], "resultUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "nextActionUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "confidence": [], "termsNotUnderstood": {} },
+    "M3": { "role": "Manager", "attempts": 0, "completedWithoutHelp": 0, "completedWithHelp": 0, "failed": 0, "assistanceCount": 0, "wrongTurns": 0, "extraClicks": 0, "docLookups": 0, "timeToFirstSuccessSec": [], "resultUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "nextActionUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "confidence": [], "termsNotUnderstood": {}, "serverSpotCheck": true },
+    "M4": { "role": "Manager", "attempts": 0, "completedWithoutHelp": 0, "completedWithHelp": 0, "failed": 0, "assistanceCount": 0, "wrongTurns": 0, "extraClicks": 0, "docLookups": 0, "timeToFirstSuccessSec": [], "resultUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "nextActionUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "confidence": [], "termsNotUnderstood": {} },
+    "A1": { "role": "Admin", "attempts": 0, "completedWithoutHelp": 0, "completedWithHelp": 0, "failed": 0, "assistanceCount": 0, "wrongTurns": 0, "extraClicks": 0, "docLookups": 0, "timeToFirstSuccessSec": [], "resultUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "nextActionUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "confidence": [], "termsNotUnderstood": {} },
+    "A2": { "role": "Admin", "attempts": 0, "completedWithoutHelp": 0, "completedWithHelp": 0, "failed": 0, "assistanceCount": 0, "wrongTurns": 0, "extraClicks": 0, "docLookups": 0, "timeToFirstSuccessSec": [], "resultUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "nextActionUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "confidence": [], "termsNotUnderstood": {} },
+    "A3": { "role": "Admin", "attempts": 0, "completedWithoutHelp": 0, "completedWithHelp": 0, "failed": 0, "assistanceCount": 0, "wrongTurns": 0, "extraClicks": 0, "docLookups": 0, "timeToFirstSuccessSec": [], "resultUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "nextActionUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "confidence": [], "termsNotUnderstood": {} },
+    "A4": { "role": "Admin", "attempts": 0, "completedWithoutHelp": 0, "completedWithHelp": 0, "failed": 0, "assistanceCount": 0, "wrongTurns": 0, "extraClicks": 0, "docLookups": 0, "timeToFirstSuccessSec": [], "resultUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "nextActionUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "confidence": [], "termsNotUnderstood": {} },
+    "A5": { "role": "Admin", "attempts": 0, "completedWithoutHelp": 0, "completedWithHelp": 0, "failed": 0, "assistanceCount": 0, "wrongTurns": 0, "extraClicks": 0, "docLookups": 0, "timeToFirstSuccessSec": [], "resultUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "nextActionUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "confidence": [], "termsNotUnderstood": {} },
+    "A6": { "role": "Admin", "attempts": 0, "completedWithoutHelp": 0, "completedWithHelp": 0, "failed": 0, "assistanceCount": 0, "wrongTurns": 0, "extraClicks": 0, "docLookups": 0, "timeToFirstSuccessSec": [], "resultUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "nextActionUnderstood": { "yes": 0, "partial": 0, "no": 0 }, "confidence": [], "termsNotUnderstood": {}, "serverSpotCheck": true }
+  },
+  "crossRole": {
+    "firstTimeUsers": [],
+    "demoDataUnderstoodAsFictional": { "yes": 0, "no": 0 },
+    "emptyStateReadCorrectly": { "yes": 0, "partial": 0, "no": 0 },
+    "confusionPairs": {
+      "thanksVsRecognition": 0,
+      "teamVsProject": 0,
+      "approvalVsSafety": 0,
+      "shadowVsLive": 0,
+      "ruleVsPolicy": 0,
+      "eventVsActivity": 0,
+      "incentiveVsWalletLedger": 0,
+      "capabilityDisabledVsDataDeleted": 0
+    }
+  },
+  "rollup": {
+    "participantsTotal": 0,
+    "employeeRole": 0,
+    "managerRole": 0,
+    "adminRole": 0,
+    "rounds": 0,
+    "taskAttempts": 0,
+    "completedWithoutHelpPct": null,
+    "completedWithHelpPct": null,
+    "failedPct": null,
+    "medianTimeToFirstSuccessSec": null,
+    "moderatorInterventions": 0,
+    "wrongTurnsTotal": 0,
+    "docLookupsTotal": 0,
+    "resultComprehensionPct": null,
+    "nextActionComprehensionPct": null
+  },
+  "issues": { "U0": 0, "U1": 0, "U2": 0, "U3": 0, "U0Fixed": 0, "U1Fixed": 0 },
+  "targets": {
+    "completionWithoutAssistanceCriticalPct": 85,
+    "completionWithoutAssistanceSimpleFlowsPct": 90,
+    "simpleFlows": ["find work", "send Thanks", "submit Help", "give Recognition", "approve incentive"],
+    "employeeTimeToFirstSuccessMaxSec": 180,
+    "resultComprehensionMinPct": 90,
+    "nextActionComprehensionMinPct": 90,
+    "assistanceExpectation": "0 moderator assistance for the large majority of participants on critical flows"
+  }
+}
