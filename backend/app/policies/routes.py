@@ -9,8 +9,8 @@ from ..db import get_db, log_action
 from ..domain import DomainError
 from ..models import User
 from ..security import current_user, require_admin
-from .model import Policy
-from .service import create_policy, update_policy, policy_view, get_decision
+from .model import Policy, PolicyDecision
+from .service import create_policy, update_policy, policy_view, decision_view, get_decision
 from ..shadow.service import evaluate_governance as evaluate_candidate
 
 router = APIRouter(prefix='/api/policies')
@@ -75,6 +75,22 @@ def listing(actor: User = Depends(current_user), db: Session = Depends(get_db), 
 @router.post('/evaluate/{candidate_id}')
 def evaluation(candidate_id: str, actor: User = Depends(current_user), db: Session = Depends(get_db)):
     return transaction(db, actor, 'policy_evaluation', lambda: evaluate_candidate(db, actor, candidate_id))
+
+
+@router.get('/decisions')
+def decisions(candidateId: str | None = None, offset: int = 0,
+              actor: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Read-only decision browse (Cohesion F1); optional provenance filter."""
+    require_admin(actor)
+    if not 0 <= offset <= 100000 or (candidateId is not None and not 1 <= len(candidateId) <= 40):
+        raise DomainError('INVALID_POLICY', 'Invalid decision filter')
+    query = select(PolicyDecision).where(PolicyDecision.company_id == actor.company_id)
+    if candidateId is not None:
+        query = query.where(PolicyDecision.candidate_id == candidateId)
+    rows = db.scalars(query.order_by(PolicyDecision.created_at.desc(), PolicyDecision.id)
+                      .offset(offset).limit(100)).all()
+    return JSONResponse({'decisions': [decision_view(r) for r in rows], 'offset': offset,
+                         'limit': 100}, headers={'Cache-Control': 'no-store'})
 
 
 @router.get('/decisions/{decision_id}')

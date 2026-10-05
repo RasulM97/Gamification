@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.events import EVENT_TYPES
 from app.models import Activity, Notification, LedgerTransaction, User, Reward
 
-CONTRACT = json.loads((Path(__file__).parent / 'fixtures/n32-parity.json').read_text())
+CONTRACT = json.loads((Path(__file__).parent / 'fixtures/n32-parity.json').read_text(encoding='utf-8'))
 
 
 def state(client, auth):

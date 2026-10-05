@@ -10,6 +10,10 @@ import sys
 
 os.environ.setdefault('XDG_RUNTIME_DIR', '/tmp/xdg')
 os.environ.setdefault('CVE_DEV_MODE', 'true')
+# Test isolation (Cohesion): the API contract must not depend on whether a
+# frontend build happens to exist — the SPA catch-all mount (405 on non-GET)
+# is disabled by pointing STATIC_DIR at a guaranteed-missing path.
+os.environ.setdefault('CVE_STATIC_DIR', os.path.join(os.path.dirname(__file__), '.no-spa-mount'))
 os.makedirs(os.environ['XDG_RUNTIME_DIR'], exist_ok=True)
 
 BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -9,8 +9,8 @@ from ..db import get_db, log_action
 from ..domain import DomainError
 from ..models import User
 from ..security import current_user, require_admin
-from .model import Rule
-from .service import create_rule, update_rule, rule_view, evaluate_event, get_candidate
+from .model import Rule, RuleCandidate
+from .service import create_rule, update_rule, rule_view, candidate_view, evaluate_event, get_candidate
 
 router = APIRouter(prefix='/api/rules')
 
@@ -74,6 +74,22 @@ async def update(rule_id: str, request: Request, actor: User = Depends(current_u
 def evaluation(event_id: str, actor: User = Depends(current_user), db: Session = Depends(get_db)):
     require_admin(actor)
     return transaction(db,actor,'rule_evaluation',lambda: evaluate_event(db,actor,event_id))
+
+
+@router.get('/candidates')
+def candidates(eventId: str | None = None, offset: int = 0,
+               actor: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Read-only candidate browse (Cohesion F1); optional provenance filter."""
+    require_admin(actor)
+    if not 0 <= offset <= 100000 or (eventId is not None and not 1 <= len(eventId) <= 40):
+        raise DomainError('INVALID_RULE', 'Invalid candidate filter')
+    query = select(RuleCandidate).where(RuleCandidate.company_id == actor.company_id)
+    if eventId is not None:
+        query = query.where(RuleCandidate.canonical_event_id == eventId)
+    rows = db.scalars(query.order_by(RuleCandidate.created_at.desc(), RuleCandidate.id)
+                      .offset(offset).limit(100)).all()
+    return JSONResponse({'candidates': [candidate_view(r) for r in rows], 'offset': offset,
+                         'limit': 100}, headers={'Cache-Control': 'no-store'})
 
 
 @router.get('/candidates/{candidate_id}')

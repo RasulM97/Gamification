@@ -51,7 +51,7 @@ def test_core_has_no_feature_imports():
                'typing', 'urllib', 'uuid', 'sqlalchemy', 'domain', 'models',
                'contracts', 'model', 'validation'}
     for path in root.glob('*.py'):
-        for node in ast.walk(ast.parse(path.read_text())):
+        for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
             if isinstance(node, ast.ImportFrom):
                 assert (node.module or '').split('.')[0] in allowed, path
             elif isinstance(node, ast.Import):

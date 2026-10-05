@@ -24,12 +24,16 @@ import { NotificationsView } from './views/Notifications'
 import { ActivityView } from './views/Activity'
 import { AdminView } from './views/Admin'
 import { TestLabView } from './views/TestLab'
+import { IncentivesView } from './features/governance/IncentivesView'
+import { IntegrationsView } from './features/integrations/IntegrationsView'
+import { PeopleView } from './features/people/PeopleView'
 import { TaskDrawer } from './components/TaskDrawer'
 import { CreateTaskModal } from './components/CreateTask'
 
 type View =
   | 'overview' | 'tasks' | 'mywork' | 'available' | 'reviews' | 'attention'
   | 'rewards' | 'redemptions' | 'wallet' | 'notifications' | 'activity' | 'admin'
+  | 'people' | 'incentives' | 'integrations'
   | 'testlab'
 
 /* N3: page titles/subtitles are localization keys (page.* / nav.* / common.*). */
@@ -46,6 +50,9 @@ const TITLE_KEYS: Record<View, [string, string]> = {
   notifications: ['common.notifications', 'page.notifications.subtitle'],
   activity: ['common.activity', 'page.activity.subtitle'],
   admin: ['common.admin', 'page.admin.subtitle'],
+  people: ['people.title', 'page.people.subtitle'],
+  incentives: ['incentives.title', 'page.incentives.subtitle'],
+  integrations: ['integrations.title', 'page.integrations.subtitle'],
   testlab: ['nav.testLab', 'page.testLab.subtitle'],
 }
 
@@ -59,6 +66,9 @@ function Shell() {
   const isMgr = me.role !== 'EMPLOYEE'
   const isAdmin = me.role === 'ADMIN'
   const tasksEnabled = IS_DEMO || state.capabilities?.TASK_LITE === true
+  const peopleEnabled = IS_DEMO || state.capabilities === undefined
+    || !!(state.capabilities.THANKS ?? true) || !!(state.capabilities.RECOGNITION ?? true) || !!(state.capabilities.HELP ?? true)
+  const githubEnabled = IS_DEMO || state.capabilities?.GITHUB_CONNECTOR === true
   const taskViews: View[] = ['tasks', 'mywork', 'available', 'reviews', 'attention']
 
   const [view, setView] = useState<View>('overview')
@@ -156,7 +166,16 @@ function Shell() {
           { v: 'reviews', labelKey: 'common.reviews', icon: '▣', badge: reviewCount },
           { v: 'attention', labelKey: 'nav.needsAttention', icon: '▲', badge: attentionCount },
         ],
-      }, {
+      },
+      /* People group follows the collaboration capabilities — a company with
+         all three disabled does not see the section at all (the API blocks
+         the same actions). */
+      ...(peopleEnabled ? [{
+        /* Cohesion F1: E8 collaboration as a product surface, not an API. */
+        groupKey: 'common.people', items: [
+          { v: 'people', labelKey: 'people.title', icon: '♥' } as NavItem,
+        ],
+      }] : []), {
         groupKey: 'common.economy', items: [
           { v: 'rewards', labelKey: 'common.rewards', icon: '◈' },
           { v: 'redemptions', labelKey: 'common.redemptions', icon: '⇄', badge: redemptionCount },
@@ -165,6 +184,20 @@ function Shell() {
           { v: 'wallet', labelKey: isAdmin ? 'common.wallet' : 'nav.walletAndRewards', icon: '◉' },
         ],
       }, {
+        /* Cohesion F1/F5: incentive GOVERNANCE (rules/approvals/safety/shadow)
+           is separate from redemption FULFILLMENT in Economy. Managers see
+           their scoped approval queue only; admins get the full workspace. */
+        groupKey: 'common.incentives', items: [
+          { v: 'incentives', labelKey: isAdmin ? 'incentives.title' : 'nav.incentiveApprovals', icon: '✦' },
+        ],
+      },
+      /* Cohesion F2: integrations admin — hidden when the capability is
+         disabled; the API blocks direct calls the same way. */
+      ...(isAdmin && githubEnabled ? [{
+        groupKey: 'common.integrations', items: [
+          { v: 'integrations', labelKey: 'integrations.title', icon: '⎇' } as NavItem,
+        ],
+      }] : []), {
         groupKey: 'common.system', items: [
           { v: 'notifications', labelKey: 'common.notifications', icon: '♪', soft: unread.length },
           { v: 'activity', labelKey: 'common.activity', icon: '≣' },
@@ -183,7 +216,12 @@ function Shell() {
           { v: 'mywork', labelKey: 'nav.myWork', icon: '▤' },
           { v: 'available', labelKey: 'nav.availableWork', icon: '◫', badge: state.tasks.filter(t => t.status === 'OPEN' && canSeeTask(t, me) && (t.assignMode === 'ALL_EMPLOYEES' || t.assigneeId === me.id)).length },
         ],
-      }, {
+      },
+      ...(peopleEnabled ? [{
+        groupKey: 'common.people', items: [
+          { v: 'people', labelKey: 'people.title', icon: '♥' } as NavItem,
+        ],
+      }] : []), {
         groupKey: 'common.economy', items: [
           { v: 'rewards', labelKey: 'common.rewards', icon: '◈' },
           /* N2.2 §8: an employee with the REWARD_FULFILL capability also sees
@@ -338,6 +376,10 @@ function Shell() {
           </div>
         </div>
 
+        {/* F5: persistent demo-mode banner — the synthetic Aster Dynamics
+            dataset must be unmistakable; demo never masquerades as real data. */}
+        {IS_DEMO && <div className="demo-banner" role="note">◈ {t('app.demoBanner')}</div>}
+
         <div className="content">
           <NotificationAudio key={me.id} />
           <SystemToast message={persistError} onClose={dismissError} />
@@ -355,6 +397,9 @@ function Shell() {
           {view === 'notifications' && <NotificationsView onOpenTask={setTaskId} onOpenRedemption={() => go('redemptions')} />}
           {view === 'activity' && <ActivityView onOpenTask={setTaskId} />}
           {view === 'admin' && isAdmin && <AdminView onRewards={() => go('rewards')} />}
+          {view === 'people' && peopleEnabled && <PeopleView />}
+          {view === 'incentives' && isMgr && <IncentivesView />}
+          {view === 'integrations' && isAdmin && githubEnabled && <IntegrationsView />}
           {view === 'testlab' && isAdmin && WORKSPACE_TOOLS && <TestLabView />}
         </div>
       </div>

@@ -27,12 +27,8 @@ from .service_common import (
     snap, reward_snapshot, act, note, ledger, _attach, _close_pending_submission,
     _current_cycle, _is_mgmt, _reset_live_submission_slots, _own_notice, mark_read,
     mark_all_read, archive_notice, archive_all_read, toggle_notif_mute, update_settings,
-    active_count,
+    active_count, _executor_ids,
 )
-
-def _executor_ids(db: Session, reward_id: str) -> list[str]:
-    return [x for (x,) in db.query(RewardExecutor.user_id)
-            .filter(RewardExecutor.reward_id == reward_id).all()]
 
 
 def _can_fulfill(db: Session, actor: User, r: Reward) -> bool:

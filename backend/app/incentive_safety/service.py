@@ -89,7 +89,7 @@ def get_evaluation(db, actor, evaluation_id):
 def list_evaluations(db, actor, *, offset=0):
     actor = admin(db, actor)
     if type(offset) is not int or not 0 <= offset <= 10000:
-        raise DomainError('VALIDATION_ERROR', 'Offset must be 0 to 10000')
+        raise DomainError('VALIDATION', 'Offset must be 0 to 10000')
     return [view(row) for row in db.scalars(select(SafetyEvaluation).where(
         SafetyEvaluation.company_id == actor.company_id).order_by(
         SafetyEvaluation.created_at.desc(), SafetyEvaluation.id).offset(offset).limit(100))]

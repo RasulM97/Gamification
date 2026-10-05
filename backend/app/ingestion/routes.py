@@ -1,4 +1,7 @@
-"""Headless controlled ingress; never returns CanonicalEvent payloads or bootstrap."""
+"""Headless controlled ingress; the write surface never returns CanonicalEvent
+payloads or bootstrap. The read-only admin browse pair (Cohesion F1) below is
+the deliberate exception: append-only history, tenant-scoped, admin-only,
+offset-paged — reads only, never a trusted write path."""
 import time
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -9,6 +12,7 @@ from ..db import get_db, log_action
 from ..domain import DomainError
 from ..models import User
 from ..security import current_user, require_admin
+from ..canonical_events.model import CanonicalEvent
 from .contracts import bounded_body, parse_object
 from .model import WebhookSource
 from .service import create_source, change_source, source_view, manual_event, webhook_event
@@ -87,3 +91,38 @@ async def webhook(source_key: str, request: Request, db: Session = Depends(get_d
     signed = signature[0] if len(signature) == 1 and len(signature[0]) <= 71 else ''
     return await run_in_threadpool(transaction, db,
         lambda: webhook_event(db, source_key, stamp, signed, body))
+
+
+def event_view(row: CanonicalEvent) -> dict:
+    return dict(id=row.id, type=row.type, schemaVersion=row.schema_version,
+                sourceKind=row.source_kind, sourceId=row.source_id,
+                sourceEventId=row.source_event_id, actorId=row.actor_id,
+                subjectId=row.subject_id, occurredAt=row.occurred_at,
+                receivedAt=row.received_at, payload=row.payload,
+                evidence=row.evidence, correlationId=row.correlation_id,
+                causationId=row.causation_id, createdAt=row.created_at)
+
+
+@router.get('/events')
+def browse_events(actor: User = Depends(current_user), db: Session = Depends(get_db), offset: int = 0):
+    require_admin(actor)
+    if not 0 <= offset <= 100000:
+        raise DomainError('VALIDATION', 'Invalid event offset')
+    rows = db.scalars(select(CanonicalEvent).where(CanonicalEvent.company_id == actor.company_id)
+                      .order_by(CanonicalEvent.occurred_at.desc(), CanonicalEvent.created_at.desc(),
+                                CanonicalEvent.id)
+                      .offset(offset).limit(100)).all()
+    return JSONResponse({'events': [event_view(row) for row in rows], 'offset': offset, 'limit': 100},
+                        headers={'Cache-Control': 'no-store'})
+
+
+@router.get('/events/{event_id}')
+def event_detail(event_id: str, actor: User = Depends(current_user), db: Session = Depends(get_db)):
+    require_admin(actor)
+    if not 1 <= len(event_id) <= 40:
+        raise DomainError('VALIDATION', 'Invalid event identity')
+    row = db.scalar(select(CanonicalEvent).where(CanonicalEvent.company_id == actor.company_id,
+                                                 CanonicalEvent.id == event_id))
+    if row is None:
+        raise DomainError('NOT_FOUND', 'Canonical event not found')
+    return JSONResponse(event_view(row), headers={'Cache-Control': 'no-store'})

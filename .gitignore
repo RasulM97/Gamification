@@ -22,3 +22,6 @@ app_log/e71-*.json
 app_log/e71-*.md
 app_log/e71-*.log
 app_log/e71-*.xml
+.pgtest/
+.vite-dev*.log
+.preview.log

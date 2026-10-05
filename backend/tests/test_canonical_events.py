@@ -157,10 +157,14 @@ def test_tenant_references_and_token_boundary(db):
     assert denied.status_code == absent.status_code == 404
     assert denied.json() == absent.json()
     assert client.get('/probe/' + event.id).status_code == 401
-    # E3 permits only an Admin-controlled raw manual route, not a trusted
-    # CanonicalEvent write/read API. Its RBAC/strict envelope have ingress tests.
+    # E3 permits only an Admin-controlled raw manual WRITE route — no trusted
+    # CanonicalEvent write API. The System Cohesion Sweep (F1) added exactly
+    # two admin-only, tenant-scoped, read-only browse routes (event payloads
+    # were previously unbrowsable from any UI). No other /api/events surface
+    # may appear; RBAC/strict envelope have ingress tests.
     assert not any('canonical' in r.path for r in app.routes)
-    assert {r.path for r in app.routes if r.path.startswith('/api/events')} == {'/api/events/manual'}
+    assert {r.path for r in app.routes if r.path.startswith('/api/events')} == {
+        '/api/events/manual', '/api/events', '/api/events/{event_id}'}
 
 
 def test_database_enforces_tenant_and_immutability(db):

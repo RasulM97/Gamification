@@ -44,14 +44,45 @@ Counts: 5 connected, 10 partially connected, 1 intentionally independent,
 0 unexplained isolated. Recognition/Thanks/Help count separately; Ledger/Wallet
 and Notifications/Audit are combined capabilities in this inventory.
 
+## Resolution status — System Cohesion Sweep (2026-10-05)
+
+Executed per [docs/cohesion/PLAN.md](../cohesion/PLAN.md); backend contracts in
+[docs/cohesion/BACKEND_CONTRACTS.md](../cohesion/BACKEND_CONTRACTS.md).
+
+| ID | Status | Evidence |
+| --- | --- | --- |
+| B1 | RESOLVED (documented) | Resumable per-stage workflow table in BACKEND_CONTRACTS.md §B1 |
+| B2 | RESOLVED (documented + client normalization) | Paging compatibility table §B2; single normalization point `src/features/governance/source.ts` |
+| B3 | RESOLVED (fixed) | `incentive_safety` aligned to `VALIDATION`; dead `VALIDATION_ERROR` mapping dropped from `main.py`; E11 suites green |
+| B4 | RESOLVED (documented) | Lock-order constraints §B4; concurrency suites retained and green |
+| B5 | RESOLVED (partial, deliberate) | `_executor_ids` moved to `service_common`; remaining local imports documented as deliberate cycle breakers §B5 |
+| F1 | RESOLVED (fixed) | Incentives workspace (Approvals/Rules/Policies/Safety/Shadow/Payouts) + provenance drawer; admin browse endpoints `/api/events`, `/api/rules/candidates`, `/api/policies/decisions`, `/api/economic-effects`; `backend/tests/test_governance_browse.py` |
+| F2 | RESOLVED (fixed) | Integrations view: source status, identity mapping, resource→project attribution with history |
+| F3 | RESOLVED (fixed) | OrganizationPanel auto-loads; explicit loading/empty states; demo renders read-only fixtures instead of hiding |
+| F4 | RESOLVED (fixed) | Authority rejection (403/409) is final — no retry; transient failures offer retry; no internals surfaced |
+| F5 | RESOLVED (fixed) | Nav separates Redemptions (fulfillment) from Incentives → Approvals (governance); role-shaped labels |
+| D1 | RESOLVED (fixed) | Deterministic Aster Dynamics fixture story; persistent demo banner; demo makes zero API calls (tested) |
+| D2 | RESOLVED (bounded) | Guided empty states, provenance drill-down, role-shaped navigation |
+| O1 | DEFERRED | Hosting-specific capacity certification; unchanged workload evidence retained |
+| O2 | DEFERRED | Operational correlation conventions — post-UAT hardening |
+| O3 | DEFERRED (partial) | Edge/TLS/rate-limit ownership documented as deployment responsibility |
+
+Two latent test-portability defects found and fixed during the sweep (Windows):
+SPA catch-all mount made API contract tests depend on the presence of `dist/`
+(conftest now points `CVE_STATIC_DIR` at a missing path); three architecture
+tests read source files without `encoding='utf-8'` (cp1252 decode failures).
+Both classes failed identically at the baseline commit in this environment.
+
 ## Demo and deployment boundary
 
 `src/runtime.ts` fixes mode at build time. `src/store.tsx` selects separate
 `useDemoStore` / `useServerStore`; the demo reducer and persistence are local.
-Server authentication/refetch errors do not switch to demo. New organization
-and capability panels return before API actions in demo. The server development
-reseed control is a separate authenticated development operation, not demo-mode
-fallback. The clean 349-case browser regression passed in this gate.
+Server authentication/refetch errors do not switch to demo. The organization
+panel renders the deterministic fixture units read-only in demo (never a
+silent null); capability panels still return before API actions in demo. The
+server development reseed control is a separate authenticated development
+operation, not demo-mode fallback. The clean 354-case browser regression
+(349 baseline + 5 cohesion) passed in this sweep.
 
 Carry forward the requested Kimi demo-coverage finding as D1. No dedicated
 current Kimi report was located in the repository; conclusions here are from

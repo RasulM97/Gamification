@@ -162,8 +162,14 @@ def snap(db, actor, task=None, **extra):
     return data
 
 
+def _executor_ids(db: Session, reward_id: str) -> list[str]:
+    """Canonical executor-seat query. Lives here (not reward_services) so the
+    shared snapshot helper has no import edge back into the reward service."""
+    return [x for (x,) in db.query(RewardExecutor.user_id)
+            .filter(RewardExecutor.reward_id == reward_id).all()]
+
+
 def reward_snapshot(db, actor, reward, user_id=None, redemption=None, **extra):
-    from .reward_services import _executor_ids
     ids = _executor_ids(db,reward.id)
     data = snap(db,actor,reward=reward.name,rewardId=reward.id,category=reward.category,
                 active=reward.active,archived=reward.archived,eligibility=reward.eligibility,

@@ -3,13 +3,16 @@ import json
 import time
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 from ..db import get_db, logger
 from ..domain import DomainError
 from ..models import User
 from ..security import current_user
-from .service import issue, economic_detail
+from .model import EconomicEffect
+from .service import issue, economic_detail, effect_view
+from .eligibility import economic_admin
 from .reversal import reverse
 
 router = APIRouter(prefix='/api/economic-effects')
@@ -63,6 +66,22 @@ async def economic_issue(policy_decision_id: str, request: Request,
                          actor: User=Depends(current_user), db: Session=Depends(get_db)):
     await command_body(request, empty=True)
     return await run_in_threadpool(transaction, db, actor, 'issue', lambda: issue(db, actor, policy_decision_id))
+
+
+@router.get('')
+def economic_list(policyDecisionId: str=None, offset: int=0,
+                  actor: User=Depends(current_user), db: Session=Depends(get_db)):
+    """Read-only effect browse (Cohesion F1); optional provenance filter."""
+    actor = economic_admin(db, actor)
+    if not 0 <= offset <= 100000 or (policyDecisionId is not None and not 1 <= len(policyDecisionId) <= 40):
+        raise DomainError('VALIDATION', 'Invalid economic effect filter')
+    query = select(EconomicEffect).where(EconomicEffect.company_id == actor.company_id)
+    if policyDecisionId is not None:
+        query = query.where(EconomicEffect.policy_decision_id == policyDecisionId)
+    rows = db.scalars(query.order_by(EconomicEffect.created_at.desc(), EconomicEffect.id)
+                      .offset(offset).limit(100)).all()
+    return JSONResponse({'effects': [effect_view(db, row) for row in rows], 'offset': offset,
+                         'limit': 100}, headers={'Cache-Control': 'no-store'})
 
 
 @router.get('/{effect_id}')

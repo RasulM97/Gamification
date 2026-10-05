@@ -108,7 +108,7 @@ def test_architecture_and_single_live_writer():
     allowed = {'collections', 'copy', 'dataclasses', 'json', 'math', 'typing', 'sqlalchemy',
                'domain', 'events', 'models', 'contracts', 'in_app'}
     for path in (root / 'notifications').glob('*.py'):
-        for node in ast.walk(ast.parse(path.read_text())):
+        for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
             if isinstance(node, ast.ImportFrom):
                 assert (node.module or '').split('.')[0] in allowed, path
             elif isinstance(node, ast.Import):
@@ -116,6 +116,6 @@ def test_architecture_and_single_live_writer():
     writers = []
     for path in root.rglob('*.py'):
         if any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and
-               n.func.id == 'Notification' for n in ast.walk(ast.parse(path.read_text()))):
+               n.func.id == 'Notification' for n in ast.walk(ast.parse(path.read_text(encoding='utf-8')))):
             writers.append(path.relative_to(root).as_posix())
     assert sorted(writers) == ['notifications/in_app.py', 'seed.py']
