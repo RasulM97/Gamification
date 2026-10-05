@@ -1,6 +1,6 @@
 from __future__ import annotations
 from .capabilities.service import requires
-from .organization.service import guarded, admit
+from .organization.service import exclusive_guarded as guarded, admit
 from .organization.columns import scope, fields
 
 import math

@@ -1,4 +1,4 @@
-# Current architecture through Module Flags / Capability Controls
+# Current architecture through Minimal Organization + Project Context
 
 E11 baseline: `f310c0ed12d2e3bf912ed7c34c9112689c9a97ba`; extended by
 [company capability controls](capabilities/CAPABILITY_CONTROLS_V1.md) and
@@ -6,6 +6,10 @@ E11 baseline: `f310c0ed12d2e3bf912ed7c34c9112689c9a97ba`; extended by
 All hosting models use [one domain core](adr/ADR-CORE-DEPLOYMENT-MODEL.md):
 managed cloud, self-hosted/on-premise and API/headless access do not change
 permissions, tenant boundaries or economic meaning.
+
+The current maturity audit records [cross-module dependencies and transaction
+ownership](maturity/DEPENDENCIES_AND_TRANSACTIONS.md). This gate does not add an
+automatic orchestrator or change Core contracts.
 
 ## Incentive path
 
@@ -89,8 +93,8 @@ intentional; an empty-history rollback test is not permission to delete history.
 The browser demo's TypeScript reducer is a parity-maintained preview, not a
 second production authority. Server mode uses authenticated APIs; backend
 capabilities do not require the SPA. See [runtime](RUNTIME.md) and the detailed
-[contract index](README.md). Integration maturity beyond the existing validated
-workloads remains a separate [roadmap gate](ROADMAP.md).
+[contract index](README.md). The [integration maturity gate](maturity/ACCEPTANCE.md)
+is PASS; Cohesion and UAT remain separate [roadmap gates](ROADMAP.md).
 
 ## Optional organizational context
 
@@ -106,3 +110,13 @@ numeric Issue/PR resource IDs within the source tenant. Shared repository bindin
 participants, text and branches cannot confer Project scope. Unassigned resources
 remain COMPANY and cannot match Project Rules/Policies. Attribution intervals and
 accepted event associations preserve historical meaning across later changes.
+
+
+## Integrated maturity verification
+
+The [System Integration / Maturity Gate](maturity/ACCEPTANCE.md) is CLOSED / PASS.
+The only production correction serializes task and cycle mutations under the
+existing company organization lock before account/capacity locks. This preserves
+scope and capacity checks while preventing a verified lock-upgrade deadlock;
+see [M1](maturity/DEFECTS.md). Cohesion remains next and unstarted. The gate does
+not imply a complete governance web UI or production capacity certification.

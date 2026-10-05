@@ -1,0 +1,778 @@
+{
+  "status": "PASS",
+  "phase": "System Integration / Maturity Gate",
+  "date": "2026-10-05",
+  "baselineCommit": "258339d3d2f223db1e7ef569dd3369155f4f1041",
+  "productionChanges": true,
+  "graphBefore": {
+    "nodes": 3147,
+    "edges": 14149
+  },
+  "graphAfter": {
+    "nodes": 3206,
+    "edges": 14692
+  },
+  "worktreeTestCodeSha256": {
+    "backend/app/organization/service.py": "40d8f78718530972823baffc1dfe6485d6840fb539c28ec40f15b6addd7f1860",
+    "backend/app/task_cycle_services.py": "8d7743a8a38552740758e5a8f26f3c3ae5ebf50abff97ae76ea8c8db39a68bb1",
+    "backend/app/task_services.py": "c2203735d4c61916c03ea092f1a7999e169cbb7f4f6050d37ed003ea5a1e7ea5",
+    "backend/tests/system_integration/__init__.py": "9e22e9920c28f2f6a0f0a048b685121d08d10e88e27676ac945f9e75ef637dc0",
+    "backend/tests/system_integration/dataset.json": "abd891e7be83fef374db2787ea6d18860bd2113bdb906d1909694997e6a9fefb",
+    "backend/tests/system_integration/runner.py": "da14aa81230f226bd8af2a4c93395d3f31a5b2be1432f0addaf6a310a36b3882",
+    "backend/tests/test_system_integration_authority.py": "b888da2d18e2b851fc8981a326b044efa740fd7b656f31b8d942bbf3d201a248",
+    "backend/tests/test_system_integration_flows.py": "770c7ca85750cb4ddf4669fddff71bd9acca04ed5ab05a454a46e4980f1f74fb",
+    "backend/tests/test_system_integration_lock_order.py": "f202e00f0bfe55aac53179635303b48afb1341598d734464d965b377eb5d19de",
+    "backend/tests/test_system_integration_task_locking.py": "06ad17b8525142f431e7910ad8c6d9ec7c9c824042864e9117725080ae382983"
+  },
+  "workloadRuns": [
+    {
+      "status": "PASS",
+      "config": {
+        "seed": 20261004,
+        "companies": 10,
+        "usersPerCompany": 120,
+        "workers": 20,
+        "eventsPerWorker": 500,
+        "membershipChangeAt": 250,
+        "economicEventIndices": [
+          0,
+          1,
+          3,
+          5,
+          6,
+          8
+        ],
+        "shapes": [
+          "FLAT",
+          "TEAM",
+          "PROJECT",
+          "MATRIX",
+          "SAFETY",
+          "SHADOW",
+          "CAPABILITY",
+          "CONNECTOR",
+          "AUTHORITY",
+          "RECOVERY"
+        ]
+      },
+      "logicalHash": "6087d34ba14ad0189983ed9f22ef1bdb28e7247e05c928552f4718600453af48",
+      "companies": 10,
+      "users": 1200,
+      "workers": 20,
+      "events": 10006,
+      "candidates": 10000,
+      "policyDecisions": 10000,
+      "policyOutcomes": {
+        "ALLOW": 5800,
+        "REQUIRE_APPROVAL": 2000,
+        "SHADOW_ONLY": 2200
+      },
+      "safetyEvaluations": 10000,
+      "safetyOutcomes": {
+        "CLEAR": 8000,
+        "SUPPRESS_INCENTIVE": 1000,
+        "REQUIRE_REVIEW": 1000
+      },
+      "approvals": 44,
+      "effects": 104,
+      "reversals": 18,
+      "ledgerEntries": 122,
+      "ledgerTotal": "86",
+      "shadow": 10000,
+      "safetyShadow": 10000,
+      "capabilityTransitions": 20,
+      "historicalProvenanceChanges": 0,
+      "scopeMismatches": 0,
+      "incorrectRuleMatches": 0,
+      "incorrectPolicyMatches": 0,
+      "duplicateEffects": 0,
+      "ledgerMismatches": 0,
+      "walletMismatches": 0,
+      "deadlocks": 0,
+      "unexpected5xx": 0,
+      "unauthorizedApprovals": 0,
+      "crossTenantLeakage": 0,
+      "expectedTenantRejections": 20,
+      "expectedApprovalRejections": 44,
+      "elapsedSeconds": 1497.359571578,
+      "eventsPerSecond": 6.678422597894405,
+      "performance": {
+        "lockSamples": 1320,
+        "waitingSessionSamples": 2101,
+        "peakWaitingSessions": 6,
+        "queryHotspots": [
+          {
+            "operation": "SELECT:other",
+            "calls": 233102,
+            "totalSeconds": 3900.531738202997,
+            "maxSeconds": 2.377477282999962
+          },
+          {
+            "operation": "SELECT:users",
+            "calls": 251733,
+            "totalSeconds": 1370.050749713028,
+            "maxSeconds": 1.5259303169999612
+          },
+          {
+            "operation": "SELECT:canonical_events",
+            "calls": 81105,
+            "totalSeconds": 486.6406443840295,
+            "maxSeconds": 0.39009510899995803
+          },
+          {
+            "operation": "SELECT:rule_candidates",
+            "calls": 52365,
+            "totalSeconds": 287.98321359501364,
+            "maxSeconds": 0.4157602660000066
+          },
+          {
+            "operation": "SELECT:organization_event_scopes",
+            "calls": 45888,
+            "totalSeconds": 259.6084292590062,
+            "maxSeconds": 0.3746931370000084
+          },
+          {
+            "operation": "SELECT:company_capabilities",
+            "calls": 45276,
+            "totalSeconds": 249.70791547697985,
+            "maxSeconds": 0.29488000399999237
+          },
+          {
+            "operation": "SELECT:incentive_safety_evaluations",
+            "calls": 30249,
+            "totalSeconds": 174.51691262001162,
+            "maxSeconds": 0.20446113299999524
+          },
+          {
+            "operation": "SELECT:teams",
+            "calls": 31768,
+            "totalSeconds": 173.15398689502388,
+            "maxSeconds": 0.4049051279999958
+          },
+          {
+            "operation": "SELECT:policy_decisions",
+            "calls": 31285,
+            "totalSeconds": 172.495534997991,
+            "maxSeconds": 0.3464951320000864
+          },
+          {
+            "operation": "SELECT:tasks",
+            "calls": 22800,
+            "totalSeconds": 123.5331346339932,
+            "maxSeconds": 0.38732626499995604
+          },
+          {
+            "operation": "SELECT:team_memberships",
+            "calls": 22128,
+            "totalSeconds": 119.83057724901039,
+            "maxSeconds": 0.2787717680000128
+          },
+          {
+            "operation": "SELECT:shadow_evaluations",
+            "calls": 20001,
+            "totalSeconds": 105.77695433398105,
+            "maxSeconds": 0.2948503260000166
+          }
+        ]
+      },
+      "lifecycleLatencyMs": {
+        "p50": 2159.6728709998843,
+        "p95": 7329.560988999901,
+        "max": 21139.89465000003
+      },
+      "limits": "Synthetic service/HTTP workload on disposable PostgreSQL; full lifecycle latency includes all commits; not production capacity certification."
+    },
+    {
+      "status": "PASS",
+      "config": {
+        "seed": 20261004,
+        "companies": 10,
+        "usersPerCompany": 120,
+        "workers": 20,
+        "eventsPerWorker": 500,
+        "membershipChangeAt": 250,
+        "economicEventIndices": [
+          0,
+          1,
+          3,
+          5,
+          6,
+          8
+        ],
+        "shapes": [
+          "FLAT",
+          "TEAM",
+          "PROJECT",
+          "MATRIX",
+          "SAFETY",
+          "SHADOW",
+          "CAPABILITY",
+          "CONNECTOR",
+          "AUTHORITY",
+          "RECOVERY"
+        ]
+      },
+      "logicalHash": "6087d34ba14ad0189983ed9f22ef1bdb28e7247e05c928552f4718600453af48",
+      "companies": 10,
+      "users": 1200,
+      "workers": 20,
+      "events": 10006,
+      "candidates": 10000,
+      "policyDecisions": 10000,
+      "policyOutcomes": {
+        "ALLOW": 5800,
+        "REQUIRE_APPROVAL": 2000,
+        "SHADOW_ONLY": 2200
+      },
+      "safetyEvaluations": 10000,
+      "safetyOutcomes": {
+        "CLEAR": 8000,
+        "SUPPRESS_INCENTIVE": 1000,
+        "REQUIRE_REVIEW": 1000
+      },
+      "approvals": 44,
+      "effects": 104,
+      "reversals": 18,
+      "ledgerEntries": 122,
+      "ledgerTotal": "86",
+      "shadow": 10000,
+      "safetyShadow": 10000,
+      "capabilityTransitions": 20,
+      "historicalProvenanceChanges": 0,
+      "scopeMismatches": 0,
+      "incorrectRuleMatches": 0,
+      "incorrectPolicyMatches": 0,
+      "duplicateEffects": 0,
+      "ledgerMismatches": 0,
+      "walletMismatches": 0,
+      "deadlocks": 0,
+      "unexpected5xx": 0,
+      "unauthorizedApprovals": 0,
+      "crossTenantLeakage": 0,
+      "expectedTenantRejections": 20,
+      "expectedApprovalRejections": 44,
+      "elapsedSeconds": 1498.698579761,
+      "eventsPerSecond": 6.672455779330035,
+      "performance": {
+        "lockSamples": 1307,
+        "waitingSessionSamples": 2082,
+        "peakWaitingSessions": 6,
+        "queryHotspots": [
+          {
+            "operation": "SELECT:other",
+            "calls": 233102,
+            "totalSeconds": 3801.3724587270203,
+            "maxSeconds": 2.3541350039999998
+          },
+          {
+            "operation": "SELECT:users",
+            "calls": 251733,
+            "totalSeconds": 1280.2526460359898,
+            "maxSeconds": 0.9407834389999721
+          },
+          {
+            "operation": "SELECT:canonical_events",
+            "calls": 81105,
+            "totalSeconds": 463.40861803998723,
+            "maxSeconds": 0.4765426369999659
+          },
+          {
+            "operation": "SELECT:rule_candidates",
+            "calls": 52365,
+            "totalSeconds": 267.15736364701206,
+            "maxSeconds": 0.4963827939999419
+          },
+          {
+            "operation": "SELECT:organization_event_scopes",
+            "calls": 45888,
+            "totalSeconds": 243.93546060500324,
+            "maxSeconds": 0.4633635799999638
+          },
+          {
+            "operation": "SELECT:company_capabilities",
+            "calls": 45276,
+            "totalSeconds": 233.85493910898015,
+            "maxSeconds": 0.5682120449999957
+          },
+          {
+            "operation": "SELECT:teams",
+            "calls": 31768,
+            "totalSeconds": 163.22742769501264,
+            "maxSeconds": 0.15926247599998078
+          },
+          {
+            "operation": "SELECT:incentive_safety_evaluations",
+            "calls": 30249,
+            "totalSeconds": 162.59896875602283,
+            "maxSeconds": 0.15844231900007344
+          },
+          {
+            "operation": "SELECT:policy_decisions",
+            "calls": 31285,
+            "totalSeconds": 160.57689744800012,
+            "maxSeconds": 0.5691803140000502
+          },
+          {
+            "operation": "SELECT:tasks",
+            "calls": 22800,
+            "totalSeconds": 117.40737978900569,
+            "maxSeconds": 0.559350534000032
+          },
+          {
+            "operation": "SELECT:team_memberships",
+            "calls": 22128,
+            "totalSeconds": 110.7166672879946,
+            "maxSeconds": 0.3337238780000007
+          },
+          {
+            "operation": "SELECT:shadow_evaluations",
+            "calls": 20001,
+            "totalSeconds": 96.7853135329969,
+            "maxSeconds": 0.22628842599999643
+          }
+        ]
+      },
+      "lifecycleLatencyMs": {
+        "p50": 2142.2804620001443,
+        "p95": 7383.753642999977,
+        "max": 21447.01138900007
+      },
+      "limits": "Synthetic service/HTTP workload on disposable PostgreSQL; full lifecycle latency includes all commits; not production capacity certification."
+    },
+    {
+      "status": "PASS",
+      "config": {
+        "seed": 20261004,
+        "companies": 10,
+        "usersPerCompany": 120,
+        "workers": 20,
+        "eventsPerWorker": 500,
+        "membershipChangeAt": 250,
+        "economicEventIndices": [
+          0,
+          1,
+          3,
+          5,
+          6,
+          8
+        ],
+        "shapes": [
+          "FLAT",
+          "TEAM",
+          "PROJECT",
+          "MATRIX",
+          "SAFETY",
+          "SHADOW",
+          "CAPABILITY",
+          "CONNECTOR",
+          "AUTHORITY",
+          "RECOVERY"
+        ]
+      },
+      "logicalHash": "6087d34ba14ad0189983ed9f22ef1bdb28e7247e05c928552f4718600453af48",
+      "companies": 10,
+      "users": 1200,
+      "workers": 20,
+      "events": 10006,
+      "candidates": 10000,
+      "policyDecisions": 10000,
+      "policyOutcomes": {
+        "ALLOW": 5800,
+        "REQUIRE_APPROVAL": 2000,
+        "SHADOW_ONLY": 2200
+      },
+      "safetyEvaluations": 10000,
+      "safetyOutcomes": {
+        "CLEAR": 8000,
+        "SUPPRESS_INCENTIVE": 1000,
+        "REQUIRE_REVIEW": 1000
+      },
+      "approvals": 44,
+      "effects": 104,
+      "reversals": 18,
+      "ledgerEntries": 122,
+      "ledgerTotal": "86",
+      "shadow": 10000,
+      "safetyShadow": 10000,
+      "capabilityTransitions": 20,
+      "historicalProvenanceChanges": 0,
+      "scopeMismatches": 0,
+      "incorrectRuleMatches": 0,
+      "incorrectPolicyMatches": 0,
+      "duplicateEffects": 0,
+      "ledgerMismatches": 0,
+      "walletMismatches": 0,
+      "deadlocks": 0,
+      "unexpected5xx": 0,
+      "unauthorizedApprovals": 0,
+      "crossTenantLeakage": 0,
+      "expectedTenantRejections": 20,
+      "expectedApprovalRejections": 44,
+      "elapsedSeconds": 1494.7557293520001,
+      "eventsPerSecond": 6.690056310628865,
+      "performance": {
+        "lockSamples": 1329,
+        "waitingSessionSamples": 2125,
+        "peakWaitingSessions": 5,
+        "queryHotspots": [
+          {
+            "operation": "SELECT:other",
+            "calls": 233102,
+            "totalSeconds": 3940.729346265023,
+            "maxSeconds": 2.4726732919999677
+          },
+          {
+            "operation": "SELECT:users",
+            "calls": 251733,
+            "totalSeconds": 1396.3383132960046,
+            "maxSeconds": 0.6817726900000025
+          },
+          {
+            "operation": "SELECT:canonical_events",
+            "calls": 81105,
+            "totalSeconds": 498.8887194139991,
+            "maxSeconds": 0.6507988969999587
+          },
+          {
+            "operation": "SELECT:rule_candidates",
+            "calls": 52365,
+            "totalSeconds": 293.57721765102957,
+            "maxSeconds": 0.6722089459999552
+          },
+          {
+            "operation": "SELECT:organization_event_scopes",
+            "calls": 45888,
+            "totalSeconds": 265.7916977740177,
+            "maxSeconds": 0.5685371580000265
+          },
+          {
+            "operation": "SELECT:company_capabilities",
+            "calls": 45276,
+            "totalSeconds": 258.9704848890289,
+            "maxSeconds": 0.6514191730000221
+          },
+          {
+            "operation": "SELECT:teams",
+            "calls": 31768,
+            "totalSeconds": 177.8762914959998,
+            "maxSeconds": 0.44539240799997515
+          },
+          {
+            "operation": "SELECT:incentive_safety_evaluations",
+            "calls": 30249,
+            "totalSeconds": 174.8170180260301,
+            "maxSeconds": 0.6719518479999351
+          },
+          {
+            "operation": "SELECT:policy_decisions",
+            "calls": 31285,
+            "totalSeconds": 171.8145246449896,
+            "maxSeconds": 0.5701978200000895
+          },
+          {
+            "operation": "SELECT:tasks",
+            "calls": 22800,
+            "totalSeconds": 126.5782589150229,
+            "maxSeconds": 0.34052717999998094
+          },
+          {
+            "operation": "SELECT:team_memberships",
+            "calls": 22128,
+            "totalSeconds": 123.3980444850124,
+            "maxSeconds": 0.2761458940000239
+          },
+          {
+            "operation": "SELECT:shadow_evaluations",
+            "calls": 20001,
+            "totalSeconds": 104.69095343200888,
+            "maxSeconds": 0.1318471199999749
+          }
+        ]
+      },
+      "lifecycleLatencyMs": {
+        "p50": 2125.6081429999085,
+        "p95": 7313.497459999894,
+        "max": 22872.792885999956
+      },
+      "limits": "Synthetic service/HTTP workload on disposable PostgreSQL; full lifecycle latency includes all commits; not production capacity certification."
+    }
+  ],
+  "logicalHash": "6087d34ba14ad0189983ed9f22ef1bdb28e7247e05c928552f4718600453af48",
+  "backendUniquePass": 1116,
+  "regression": {
+    "backend": {
+      "tests": 1113,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "sha256": "caaf71f3ff79721eaf757d5bbd7ef86c4aa19c902951a14e39362205bd8df782",
+      "file": "maturity-backend-final.xml"
+    },
+    "e11": {
+      "tests": 3,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "sha256": "5f41558c038be67d215047e904770368d0b704d3e08af1e6574ce03807187bd7",
+      "file": "maturity-e11-postfix.xml"
+    },
+    "golden": 149,
+    "e8": 48,
+    "e9": 48,
+    "e10": 26,
+    "e11Focused": 54,
+    "capabilities": 50,
+    "organization": 40,
+    "historicalOrganizationValidation": 7,
+    "frontend": {
+      "tests": 551,
+      "files": 26,
+      "status": "PASS"
+    },
+    "browser": {
+      "tests": 349,
+      "workers": 4,
+      "status": "PASS"
+    },
+    "typecheck": "PASS",
+    "demoBuild": "PASS",
+    "serverBuild": "PASS",
+    "buildWarning": "Existing chunk size warning"
+  },
+  "e11Workloads": [
+    {
+      "status": "PASS",
+      "run": 1,
+      "companies": 8,
+      "users": 400,
+      "workers": 20,
+      "events": 5280,
+      "candidates": 5280,
+      "githubEvents": 480,
+      "internalEvents": 4800,
+      "sourceRetries": 5280,
+      "evaluationAttempts": 5808,
+      "outcomes": {
+        "CLEAR": 5232,
+        "REQUIRE_REVIEW": 32,
+        "SUPPRESS_INCENTIVE": 8,
+        "OBSERVE": 8
+      },
+      "findings": {
+        "RECIPROCAL_PAIR_BURST": 8,
+        "REPEAT_PAIR_CONCENTRATION": 24,
+        "ACTOR_VELOCITY": 8,
+        "RECIPIENT_VELOCITY": 8
+      },
+      "expectedUnsafeMissed": 0,
+      "expectedSafeFlagged": 0,
+      "shadowEvaluations": 5280,
+      "pureShadowApprovals": 0,
+      "pureShadowEffects": 0,
+      "liveAttempts": 64,
+      "realEffects": 28,
+      "reviewGatedPayouts": 22,
+      "preventedPayouts": 36,
+      "duplicateEvaluations": 0,
+      "duplicateEffects": 0,
+      "ledgerTotal": "280",
+      "ledgerMismatches": 0,
+      "walletMismatches": 0,
+      "crossTenantLeakage": 0,
+      "deadlocks": 0,
+      "httpRequests": 0,
+      "unexpectedExceptions": 0,
+      "logicalHash": "8dd4a45197eaf32955406130788bf9705656a8cb8b5eae041963583f5a1130dd",
+      "evaluationSeconds": 214.6,
+      "evaluationsPerSecond": 27.06,
+      "totalSeconds": 824.45
+    },
+    {
+      "status": "PASS",
+      "run": 2,
+      "companies": 8,
+      "users": 400,
+      "workers": 20,
+      "events": 5280,
+      "candidates": 5280,
+      "githubEvents": 480,
+      "internalEvents": 4800,
+      "sourceRetries": 5280,
+      "evaluationAttempts": 5808,
+      "outcomes": {
+        "CLEAR": 5232,
+        "REQUIRE_REVIEW": 32,
+        "SUPPRESS_INCENTIVE": 8,
+        "OBSERVE": 8
+      },
+      "findings": {
+        "RECIPROCAL_PAIR_BURST": 8,
+        "REPEAT_PAIR_CONCENTRATION": 24,
+        "ACTOR_VELOCITY": 8,
+        "RECIPIENT_VELOCITY": 8
+      },
+      "expectedUnsafeMissed": 0,
+      "expectedSafeFlagged": 0,
+      "shadowEvaluations": 5280,
+      "pureShadowApprovals": 0,
+      "pureShadowEffects": 0,
+      "liveAttempts": 64,
+      "realEffects": 28,
+      "reviewGatedPayouts": 22,
+      "preventedPayouts": 36,
+      "duplicateEvaluations": 0,
+      "duplicateEffects": 0,
+      "ledgerTotal": "280",
+      "ledgerMismatches": 0,
+      "walletMismatches": 0,
+      "crossTenantLeakage": 0,
+      "deadlocks": 0,
+      "httpRequests": 0,
+      "unexpectedExceptions": 0,
+      "logicalHash": "8dd4a45197eaf32955406130788bf9705656a8cb8b5eae041963583f5a1130dd",
+      "evaluationSeconds": 190.29,
+      "evaluationsPerSecond": 30.52,
+      "totalSeconds": 435.64
+    },
+    {
+      "status": "PASS",
+      "run": 3,
+      "companies": 8,
+      "users": 400,
+      "workers": 20,
+      "events": 5280,
+      "candidates": 5280,
+      "githubEvents": 480,
+      "internalEvents": 4800,
+      "sourceRetries": 5280,
+      "evaluationAttempts": 5808,
+      "outcomes": {
+        "CLEAR": 5232,
+        "REQUIRE_REVIEW": 32,
+        "SUPPRESS_INCENTIVE": 8,
+        "OBSERVE": 8
+      },
+      "findings": {
+        "RECIPROCAL_PAIR_BURST": 8,
+        "REPEAT_PAIR_CONCENTRATION": 24,
+        "ACTOR_VELOCITY": 8,
+        "RECIPIENT_VELOCITY": 8
+      },
+      "expectedUnsafeMissed": 0,
+      "expectedSafeFlagged": 0,
+      "shadowEvaluations": 5280,
+      "pureShadowApprovals": 0,
+      "pureShadowEffects": 0,
+      "liveAttempts": 64,
+      "realEffects": 28,
+      "reviewGatedPayouts": 22,
+      "preventedPayouts": 36,
+      "duplicateEvaluations": 0,
+      "duplicateEffects": 0,
+      "ledgerTotal": "280",
+      "ledgerMismatches": 0,
+      "walletMismatches": 0,
+      "crossTenantLeakage": 0,
+      "deadlocks": 0,
+      "httpRequests": 0,
+      "unexpectedExceptions": 0,
+      "logicalHash": "8dd4a45197eaf32955406130788bf9705656a8cb8b5eae041963583f5a1130dd",
+      "evaluationSeconds": 134.38,
+      "evaluationsPerSecond": 43.22,
+      "totalSeconds": 385.55
+    }
+  ],
+  "e7": {
+    "status": "PASS",
+    "sourceEvents": 10000,
+    "reconciliation": {
+      "effects": 1695,
+      "credits": 1695,
+      "reversals": 170,
+      "debits": 170,
+      "issued_amount": "46225",
+      "reversed_amount": "-4690",
+      "ledger_credit_amount": "46225",
+      "ledger_debit_amount": "-4690",
+      "orphan_effects": 0,
+      "orphan_credits": 0,
+      "orphan_reversals": 0,
+      "orphan_debits": 0,
+      "cross_tenant": 0,
+      "reversal_mismatch": 0,
+      "duplicate_candidates": 0,
+      "duplicate_reversals": 0,
+      "activity_rows": 0,
+      "notification_rows": 0,
+      "task_rows": 0,
+      "redemption_rows": 0,
+      "amount_variance": "0",
+      "net_e7_amount": "41535",
+      "balance_users": 305,
+      "balance_mismatches": 0
+    }
+  },
+  "e71": {
+    "status": "PASS",
+    "logicalHash": "79518fadf7152ec3e6430952346d60b9e57a9931fcc257dc3ae1758d4b6df428",
+    "provenance": {
+      "events": 2200,
+      "candidates": 1982,
+      "decisions": 1982,
+      "approvals": 600,
+      "effects": 200,
+      "broken_chains": 0
+    },
+    "reconciliation": {
+      "effects": 200,
+      "credits": 200,
+      "reversals": 20,
+      "debits": 20,
+      "issued": "1675",
+      "reversed": "-160",
+      "mismatches": 0,
+      "reversal_mismatches": 0,
+      "duplicates": 0,
+      "deadlocks": 0,
+      "net": "1515",
+      "balance_users": 90,
+      "balance_mismatches": 0,
+      "amount_variance": 0
+    },
+    "errors": {
+      "expected_auth": 3,
+      "expected_validation": 6,
+      "unexpected_4xx": 0,
+      "unexpected_5xx": 0,
+      "db_errors": 0,
+      "deadlocks": 0,
+      "timeouts": 0
+    }
+  },
+  "findings": {
+    "resolvedP1": 1,
+    "P0": 0,
+    "P1": 0,
+    "P2": 3,
+    "P3": 12,
+    "backend": 5,
+    "frontend": 5,
+    "demoUat": 2,
+    "operations": 3,
+    "apiConsistency": 2
+  },
+  "featureIslands": {
+    "connected": 5,
+    "partiallyConnected": 10,
+    "intentionallyIndependent": 1,
+    "isolated": 0
+  },
+  "notes": [
+    "M1 task admission/capacity deadlock fixed; 7 failing baseline regressions and 37 passing focused post-fix checks. See DEFECTS.md.",
+    "Interrupted runs are excluded; see RUN_LOG.md.",
+    "Mixed runs overlap on a shared developer host; timings are not isolated capacity measurements.",
+    "P2 navigation, attribution UI and demo gaps must be resolved before broad UAT.",
+    "No Cohesion implementation, UAT, WSE or AI work started.",
+    "Graphify refreshes varied by one deduplicated node/edge; graphAfter records the final pre-publication refresh, not runtime semantics."
+  ]
+}

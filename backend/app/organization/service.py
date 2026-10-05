@@ -23,6 +23,19 @@ def guarded(function):
     return wrapped
 
 
+def exclusive_guarded(function):
+    """Enter before account reads when a command may upgrade capacity locks.
+
+    Two task commands must not hold SHARE account locks from scope admission
+    and then both upgrade the same account to NO KEY UPDATE for capacity.
+    """
+    @wraps(function)
+    def wrapped(db,actor,*args,**kwargs):
+        lock(db,actor.company_id,exclusive=True)
+        return function(db,actor,*args,**kwargs)
+    return wrapped
+
+
 def parse(value):
     if value is None:return dict(COMPANY)
     if type(value) is not dict or value.get('kind') not in ('COMPANY','TEAM','PROJECT'):

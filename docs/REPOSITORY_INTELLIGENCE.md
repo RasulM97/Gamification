@@ -1,7 +1,7 @@
 # Repository intelligence (E0.1)
 
 Current system navigation starts at [documentation index](README.md) and
-[E11 status](STATUS.md). The E0.1 measurements and future-event investigation
+[current verified status](STATUS.md). The E0.1 measurements and future-event investigation
 examples below are historical. Canonical Events and E1–E11 consumers now exist;
 refresh/query the current graph and inspect source before relying on old examples.
 

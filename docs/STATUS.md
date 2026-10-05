@@ -1,5 +1,14 @@
 # Current verified system status
 
+As of 2026-10-05, **System Integration / Maturity Gate is CLOSED / PASS**.
+Three clean 10,000-activity runs produced identical logical hashes; 1,116 unique
+backend checks, 551 frontend checks and 349 browser checks passed. One verified
+P1 task-lock deadlock was corrected without changing Core, migrations or Golden
+expectations. See [acceptance](maturity/ACCEPTANCE.md),
+[measured evidence](maturity/EVIDENCE.json), [defect record](maturity/DEFECTS.md) and
+[Cohesion backlog](maturity/COHESION_BACKLOG.md). Cohesion is next but not started;
+three P2 UI/demo gaps must be addressed before broad UAT. WSE and AI remain deferred.
+
 As of 2026-10-03, **Minimal Organization + Project Context is CLOSED / PASS**.
 It extends Module Flags / Capability Controls and the separately published
 validation baseline `fef99143d08a2870e31a7f100a45987ae0ab1252`.
@@ -60,4 +69,4 @@ Admin-controlled GitHub resource attribution and immutable event context without
 changing Core, Safety, capability scope or economic identity.
 See the [contract](organization/CONTEXT_V1.md) and
 [current measured evidence](organization/IMPLEMENTATION_EVIDENCE.json).
-[Final acceptance](organization/IMPLEMENTATION_ACCEPTANCE.md) is PASS; no later roadmap phase has started.
+[Final acceptance](organization/IMPLEMENTATION_ACCEPTANCE.md) is PASS; the subsequent [System Integration / Maturity Gate](maturity/ACCEPTANCE.md) is also PASS.

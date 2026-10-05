@@ -26,6 +26,14 @@ authoritative; Graphify is navigation, not a specification.
 The separately published [validation](organization/VALIDATION.md) and its
 14-gap inventory remain historical evidence, not the implementation specification.
 
+## System Integration / Maturity Gate
+
+CLOSED / PASS: [acceptance](maturity/ACCEPTANCE.md), [measured evidence](maturity/EVIDENCE.json),
+[dependencies and transaction boundaries](maturity/DEPENDENCIES_AND_TRANSACTIONS.md),
+[execution log](maturity/RUN_LOG.md), [Cohesion backlog](maturity/COHESION_BACKLOG.md).
+Three clean mixed runs and full regressions passed after the documented task-lock fix.
+Cohesion Sweep, UAT, WSE and AI have not started.
+
 ## Historical evidence
 
 Phase acceptance reports retain their original counts, dates and scope. Current

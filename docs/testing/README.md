@@ -1,6 +1,27 @@
 # Testing and verified evidence
 
-Latest executed acceptance: **Minimal Organization + Project Context, 2026-10-03**.
+Latest executed acceptance: **System Integration / Maturity Gate, 2026-10-05**.
+[Acceptance](../maturity/ACCEPTANCE.md) and [measured evidence](../maturity/EVIDENCE.json):
+
+- Backend 1,113 + separately executed E11 3 = **1,116 unique PASS**, no failures/errors/skips.
+- 34 new combined workflow, failure, authority and concurrency cases PASS.
+- Three clean mixed runs: 10 companies, 1,200 users, 20 workers, 10,006 Events,
+  10,000 Candidates/Policy/Safety/Shadow records, 104 effects, 18 reversals, net 86.
+- Matching logical hash; zero measured economic, scope or tenant mismatches and deadlocks.
+- Golden 149, E8 48, E9 48, E10 26, E11 focused 54, capabilities 50,
+  Organization 40 and historical validation 7 PASS, included in backend.
+- E7, E7.1 and all three E11 workloads PASS with unchanged expected outcomes.
+- Frontend 551 / 26 files; clean browser 349 / four workers; typecheck and both builds PASS.
+
+The [permanent system dataset](../../backend/tests/system_integration/README.md)
+requires an isolated `cve_system_integration_test` database. The
+[execution log](../maturity/RUN_LOG.md) preserves failed/interrupted attempts,
+including the reproduced task deadlock and browser timeouts under concurrent
+load. No retries or weakened timeouts were used to claim clean browser acceptance.
+
+## Historical Organization acceptance
+
+Executed acceptance: **Minimal Organization + Project Context, 2026-10-03**.
 [Acceptance](../organization/IMPLEMENTATION_ACCEPTANCE.md) and
 [measured evidence](../organization/IMPLEMENTATION_EVIDENCE.json) record:
 
