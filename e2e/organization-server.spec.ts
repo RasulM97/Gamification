@@ -15,7 +15,8 @@ test('Admin creates project and sends membership changes to server', async ({ pa
     return route.fulfill({ json: {} })
   })
   await page.locator('.nav button').filter({ hasText: 'Admin' }).click()
-  await page.getByRole('button', { name: en['organization.manage'], exact: true }).click()
+  /* Cohesion F3: the panel auto-loads on mount — no manual manage button. */
+  await expect(page.getByLabel(en['organization.kind'])).toBeVisible()
   await page.getByLabel(en['organization.kind']).selectOption('PROJECT')
   const form = page.locator('form').filter({ has: page.getByRole('button', { name: en['organization.create'], exact: true }) })
   await form.getByRole('textbox').fill('Alpha')
