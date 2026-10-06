@@ -403,7 +403,7 @@ function Shell() {
           {view === 'wallet' && <WalletView />}
           {view === 'notifications' && <NotificationsView onOpenTask={setTaskId} onOpenRedemption={() => go('redemptions')} />}
           {view === 'activity' && <ActivityView onOpenTask={setTaskId} />}
-          {view === 'admin' && isAdmin && <AdminView onRewards={() => go('rewards')} />}
+          {view === 'admin' && isAdmin && <AdminView onRewards={() => go('rewards')} onGo={go} />}
           {view === 'people' && peopleEnabled && <PeopleView />}
           {view === 'incentives' && isMgr && <IncentivesView />}
           {view === 'integrations' && isAdmin && githubEnabled && <IntegrationsView />}

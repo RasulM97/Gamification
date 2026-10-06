@@ -6,10 +6,12 @@ import { UploadPolicyForm } from '../components/UploadPolicyForm'
 import { EventText, EventReason } from '../components/EventText'
 import { CapacityControl } from '../components/CapacityControl'
 import { WorkspaceControls } from '../components/WorkspaceControls'
+import { PayoutsPanel } from '../features/governance/IncentivePanels'
+import { ChainDrawer } from '../features/governance/ChainDrawer'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { capacityLimit, activeCount, balanceOf } from '../domain/engine'
-import { Avatar, Coin, Drawer, Field, LedgerBadge, Modal, Panel, ago, coins, roleKey } from '../ui'
+import { Avatar, Coin, Drawer, Field, LedgerBadge, Modal, Panel, Seg, ago, coins, roleKey } from '../ui'
 import { useI18n } from '../i18n'
 import { WORKSPACE_TOOLS } from '../runtime'
 import { OnboardingView } from '../features/onboarding/OnboardingView'
@@ -73,73 +75,130 @@ function PersonDrawer({ userId, onClose }: { userId: string | null; onClose: () 
   )
 }
 
-export function AdminView({ onRewards }: { onRewards?: () => void }) {
+/* People & wallets: who works here, their capacity and fulfillment authority,
+   and wallet operations (adjust) — the ORGANIZATION responsibility. */
+function PeopleWalletsPanel({ onAdjust, onPerson }: {
+  onAdjust: (userId: string) => void; onPerson: (userId: string) => void
+}) {
+  const { state, dispatch } = useStore()
+  const me = useMe()
+  const { t } = useI18n()
+  return (
+    <Panel pad={false} title={t('admin.peopleWallets')} right={<span className="eyebrow" dir="auto">{state.company}</span>}>
+      <div className="table-wrap">
+        <table className="people-table">
+          <thead><tr><th>{t('common.person')}</th><th>{t('admin.systemRole')}</th><th>{t('common.position')}</th><th>{t('capacity.label')}</th><th>{t('admin.fulfillment')}</th><th className="n">{t('common.balance')}</th><th className="n"></th></tr></thead>
+          <tbody>
+            {state.users.map(u => {
+              const admin = u.role === 'ADMIN'
+              return (
+              <tr key={u.id} style={{ cursor: 'pointer' }} onClick={() => onPerson(u.id)}
+                title={t('admin.openOperational')}>
+                <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <Avatar name={u.name} size={22} /><b dir="auto">{u.name}</b></span></td>
+                <td><span className="bd bd-normal">{t(roleKey(u.role))}</span></td>
+                <td className="dim" dir="auto">{u.position}</td><td><CapacityControl user={u} /></td>
+                {/* N2.2 §6: REWARD_FULFILL is a capability, separate from
+                    the system Role — admin-granted to employees/managers,
+                    it unlocks nothing but executor seats on rewards.
+                    Admins fulfill by office and never carry the flag. */}
+                <td onClick={e => e.stopPropagation()}>
+                  {admin ? <span className="dim" style={{ fontSize: 11.5 }}>{t('admin.byOffice')}</span> : (
+                    <button className="btn" style={{ fontSize: 11.5, padding: '3px 10px' }}
+                      aria-label={t('admin.fulfillToggleAria', { name: u.name })}
+                      onClick={() => dispatch({ type: 'TOGGLE_FULFILL_PERMISSION', by: me.id, userId: u.id })}>
+                      {u.canFulfillRewards ? t('admin.grantedRevoke') : t('admin.grant')}
+                    </button>
+                  )}
+                </td>
+                {/* Admins manage the economy but do not participate in it —
+                    no spendable wallet, no Adjust action (M1-C A1). */}
+                <td className="n">{admin ? <span className="dim" style={{ fontSize: 11.5 }}>— n/a</span> : <><Coin n={balanceOf(state, u.id)} /><Debt userId={u.id} /></>}</td>
+                <td className="n" onClick={e => e.stopPropagation()}>
+                  <EditUserButton user={u} />
+                  {!admin && (
+                    <button className="btn" style={{ fontSize: 11.5, padding: '3px 10px' }}
+                      onClick={e => { e.stopPropagation(); onAdjust(u.id) }}>{t('admin.action.adjust')}</button>
+                  )}
+                </td>
+              </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  )
+}
+
+/* WS2-B: the Admin view is a responsibility-based control plane, not a menu
+   of backend modules. Sections map to business responsibilities:
+     ORGANIZATION           — people, teams/projects, memberships, authority
+     PRODUCT CONFIGURATION  — capabilities and company policy configuration
+     AUDIT & ECONOMICS      — executed incentive/economic history w/ drill-down
+     DEVELOPMENT            — workspace tools (dev/UAT only, unchanged)
+   Onboarding stays pinned on top while it gates the workspace. */
+type Section = 'organization' | 'configuration' | 'audit' | 'development'
+
+export function AdminView({ onRewards, onGo }: { onRewards?: () => void; onGo?: (view: string) => void }) {
   const { state, dispatch, reset } = useStore()
   const me = useMe()
   const { t } = useI18n()
+  const [section, setSection] = useState<Section>('organization')
   const [adjustFor, setAdjustFor] = useState<string | null>(null)
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
   const [personFor, setPersonFor] = useState<string | null>(null)
+  const [chainCandidate, setChainCandidate] = useState<string | null>(null)
+
+  const sections: { v: Section; label: string }[] = [
+    { v: 'organization', label: t('admin.section.organization') },
+    { v: 'configuration', label: t('admin.section.configuration') },
+    { v: 'audit', label: t('admin.section.audit') },
+    ...(WORKSPACE_TOOLS ? [{ v: 'development' as Section, label: t('admin.section.development') }] : []),
+  ]
 
   return (
     <div className="wrap">
       <OnboardingView onRewards={onRewards} />
-      <CapabilitiesPanel />
-      <OrganizationPanel />
-      <Panel pad={false} title={t('admin.peopleWallets')} right={<span className="eyebrow" dir="auto">{state.company}</span>}>
-        <div className="table-wrap">
-          <table className="people-table">
-            <thead><tr><th>{t('common.person')}</th><th>{t('admin.systemRole')}</th><th>{t('common.position')}</th><th>{t('capacity.label')}</th><th>{t('admin.fulfillment')}</th><th className="n">{t('common.balance')}</th><th className="n"></th></tr></thead>
-            <tbody>
-              {state.users.map(u => {
-                const admin = u.role === 'ADMIN'
-                return (
-                <tr key={u.id} style={{ cursor: 'pointer' }} onClick={() => setPersonFor(u.id)}
-                  title={t('admin.openOperational')}>
-                  <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    <Avatar name={u.name} size={22} /><b dir="auto">{u.name}</b></span></td>
-                  <td><span className="bd bd-normal">{t(roleKey(u.role))}</span></td>
-                  <td className="dim" dir="auto">{u.position}</td><td><CapacityControl user={u} /></td>
-                  {/* N2.2 §6: REWARD_FULFILL is a capability, separate from
-                      the system Role — admin-granted to employees/managers,
-                      it unlocks nothing but executor seats on rewards.
-                      Admins fulfill by office and never carry the flag. */}
-                  <td onClick={e => e.stopPropagation()}>
-                    {admin ? <span className="dim" style={{ fontSize: 11.5 }}>{t('admin.byOffice')}</span> : (
-                      <button className="btn" style={{ fontSize: 11.5, padding: '3px 10px' }}
-                        aria-label={t('admin.fulfillToggleAria', { name: u.name })}
-                        onClick={() => dispatch({ type: 'TOGGLE_FULFILL_PERMISSION', by: me.id, userId: u.id })}>
-                        {u.canFulfillRewards ? t('admin.grantedRevoke') : t('admin.grant')}
-                      </button>
-                    )}
-                  </td>
-                  {/* Admins manage the economy but do not participate in it —
-                      no spendable wallet, no Adjust action (M1-C A1). */}
-                  <td className="n">{admin ? <span className="dim" style={{ fontSize: 11.5 }}>— n/a</span> : <><Coin n={balanceOf(state, u.id)} /><Debt userId={u.id} /></>}</td>
-                  <td className="n" onClick={e => e.stopPropagation()}>
-                    <EditUserButton user={u} />
-                    {!admin && (
-                      <button className="btn" style={{ fontSize: 11.5, padding: '3px 10px' }}
-                        onClick={e => { e.stopPropagation(); setAdjustFor(u.id); setAmount(''); setReason('') }}>{t('admin.action.adjust')}</button>
-                    )}
-                  </td>
-                </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
+      <div className="toolbar" style={{ marginBottom: 12 }}>
+        <Seg value={section} onChange={v => setSection(v as Section)} options={sections} />
+      </div>
 
-      <Panel title={t('admin.uploadPolicy')}>
-        <p className="dim" style={{ fontSize: 12.5, marginBottom: 12 }}>
-          {t('admin.uploadPolicyNote')}
-        </p>
-        <UploadPolicyForm />
-      </Panel>
+      {section === 'organization' && (
+        <>
+          <PeopleWalletsPanel onAdjust={id => { setAdjustFor(id); setAmount(''); setReason('') }} onPerson={setPersonFor} />
+          <OrganizationPanel />
+        </>
+      )}
 
-      {WORKSPACE_TOOLS && <Panel title={t('admin.demoControls')}>
+      {section === 'configuration' && (
+        <>
+          <CapabilitiesPanel />
+          <Panel title={t('admin.uploadPolicy')}>
+            <p className="dim" style={{ fontSize: 12.5, marginBottom: 12 }}>
+              {t('admin.uploadPolicyNote')}
+            </p>
+            <UploadPolicyForm />
+          </Panel>
+        </>
+      )}
+
+      {section === 'audit' && (
+        <>
+          <PayoutsPanel onChain={setChainCandidate} />
+          {onGo && (
+            <p className="dim" style={{ fontSize: 12.5 }}>
+              {t('admin.audit.note')}{' '}
+              <span className="linkish" onClick={() => onGo('activity')}>{t('common.activity')}</span>
+              {' · '}
+              <span className="linkish" onClick={() => onGo('wallet')}>{t('wallet.companyLedger')}</span>
+            </p>
+          )}
+        </>
+      )}
+
+      {section === 'development' && WORKSPACE_TOOLS && <Panel title={t('admin.demoControls')}>
         <p className="dim" style={{ fontSize: 12.5, marginBottom: 12 }}>
           {t('admin.resetSeedDescription')}
         </p>
@@ -150,6 +209,7 @@ export function AdminView({ onRewards }: { onRewards?: () => void }) {
       </Panel>}
 
       <PersonDrawer userId={personFor} onClose={() => setPersonFor(null)} />
+      <ChainDrawer candidateId={chainCandidate} onClose={() => setChainCandidate(null)} />
 
       <Modal open={!!adjustFor} onClose={() => setAdjustFor(null)}
         title={<>{t('admin.adjustmentTitle')}<small>{t('admin.adjustmentSub', { name: state.users.find(u => u.id === adjustFor)?.name ?? '' })}</small></>}>

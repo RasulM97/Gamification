@@ -1,7 +1,10 @@
-/* Incentives workspace (Cohesion F1) — one discoverable surface for the
+/* Incentives workspace (Cohesion F1, WS2) — one discoverable surface for the
  * governed incentive pipeline instead of isolated engineering concepts.
  * Tabs are authority-scoped: management sees its scoped approval queue;
- * admins additionally see Rules, Policies, Safety, Shadow and Payouts.
+ * admins additionally see Rules, Policies, Safety and Shadow. Payouts
+ * (executed economic history) live in the Admin control plane under
+ * Audit & economics (WS2-B). Provenance drill-down is role-specific:
+ * managers get business-language decision context, admins the full chain.
  * All data flows through the governance source (server API or demo
  * fixtures) — views never call fetch directly. */
 import { useState } from 'react'
@@ -10,15 +13,15 @@ import { useI18n } from '../../i18n'
 import { Empty, Panel, Seg, ago } from '../../ui'
 import { governance } from './source'
 import { useGovData } from './hooks'
-import { RulesPanel, PoliciesPanel, SafetyPanel, ShadowPanel, PayoutsPanel } from './IncentivePanels'
+import { RulesPanel, PoliciesPanel, SafetyPanel, ShadowPanel } from './IncentivePanels'
 import { ChainDrawer } from './ChainDrawer'
-import type { ApprovalItem } from './types'
+import { ApprovalContextDrawer } from './ApprovalContextDrawer'
 
-type Tab = 'approvals' | 'rules' | 'policies' | 'safety' | 'shadow' | 'payouts'
+type Tab = 'approvals' | 'rules' | 'policies' | 'safety' | 'shadow'
 
 const REASON_CODES = ['MERIT', 'REVIEWED', 'POLICY_OK', 'INSUFFICIENT_EVIDENCE', 'POLICY_VIOLATION', 'OTHER']
 
-function ApprovalsPanel({ onChain }: { onChain: (candidateId: string) => void }) {
+function ApprovalsPanel({ onOpen }: { onOpen: (approvalId: string, candidateId: string) => void }) {
   const { state } = useStore()
   const { t } = useI18n()
   const [status, setStatus] = useState('PENDING')
@@ -60,7 +63,7 @@ function ApprovalsPanel({ onChain }: { onChain: (candidateId: string) => void })
             </div>
             {a.finalDecision?.note && <div className="dim" style={{ fontSize: 12 }} dir="auto">{a.finalDecision.note}</div>}
           </div>
-          <button className="btn" onClick={() => onChain(a.candidateId)}>{t('incentives.viewChain')}</button>
+          <button className="btn" onClick={() => onOpen(a.id, a.candidateId)}>{t('incentives.viewChain')}</button>
           {a.status === 'PENDING' && (
             <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
               <select className="btn" value={reason} onChange={e => setReason(e.target.value)} aria-label={t('common.reason')}>
@@ -87,24 +90,30 @@ export function IncentivesView() {
   const isAdmin = me.role === 'ADMIN'
   const shadowEnabled = state.capabilities?.SHADOW_MODE !== false
   const tabs: Tab[] = isAdmin
-    ? ['approvals', 'rules', 'policies', 'safety', ...(shadowEnabled ? ['shadow' as Tab] : []), 'payouts']
+    ? ['approvals', 'rules', 'policies', 'safety', ...(shadowEnabled ? ['shadow' as Tab] : [])]
     : ['approvals']
   const [tab, setTab] = useState<Tab>('approvals')
   const [chainCandidate, setChainCandidate] = useState<string | null>(null)
+  const [contextApproval, setContextApproval] = useState<string | null>(null)
   const active = tabs.includes(tab) ? tab : 'approvals'
+  /* WS2-A: the drill-down follows the caller's authority — admins open the
+     full provenance chain; managers open business-language decision context
+     backed by an endpoint they are actually authorized to read. */
+  const open = (approvalId: string, candidateId: string) =>
+    isAdmin ? setChainCandidate(candidateId) : setContextApproval(approvalId)
 
   return (
     <div className="wrap">
       <div className="toolbar" style={{ marginBottom: 12 }}>
         <Seg value={active} onChange={v => setTab(v as Tab)} options={tabs.map(v => ({ v, label: t('incentives.tab.' + v) }))} />
       </div>
-      {active === 'approvals' && <ApprovalsPanel onChain={setChainCandidate} />}
+      {active === 'approvals' && <ApprovalsPanel onOpen={open} />}
       {active === 'rules' && isAdmin && <RulesPanel onChain={setChainCandidate} />}
       {active === 'policies' && isAdmin && <PoliciesPanel />}
       {active === 'safety' && isAdmin && <SafetyPanel onChain={setChainCandidate} />}
       {active === 'shadow' && isAdmin && shadowEnabled && <ShadowPanel onChain={setChainCandidate} />}
-      {active === 'payouts' && isAdmin && <PayoutsPanel onChain={setChainCandidate} />}
       <ChainDrawer candidateId={chainCandidate} onClose={() => setChainCandidate(null)} />
+      <ApprovalContextDrawer approvalId={contextApproval} onClose={() => setContextApproval(null)} />
     </div>
   )
 }

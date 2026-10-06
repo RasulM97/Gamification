@@ -37,11 +37,11 @@ test('admin: incentives workspace shows the demo pipeline with a working provena
   await expect(page.locator('.drawer')).toContainText('Event')
   await expect(page.locator('.drawer')).toContainText('Payout')
   await page.keyboard.press('Escape')
-  /* rules tab lists the demo rules */
-  await page.getByRole('button', { name: 'Rules', exact: true }).click()
+  /* rules tab lists the demo rules (WS2-B: business-language tab labels) */
+  await page.getByRole('button', { name: 'Reward rules', exact: true }).click()
   await expect(page.locator('.content')).toContainText('Listens for')
   /* shadow tab is gated on SHADOW_MODE capability — demo enables it */
-  await expect(page.getByRole('button', { name: 'Shadow', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'What-if preview', exact: true })).toBeVisible()
 })
 
 test('manager: sees the incentive approval queue but not admin tabs or integrations', async ({ page }) => {
@@ -50,7 +50,7 @@ test('manager: sees the incentive approval queue but not admin tabs or integrati
   await expect(page.locator('nav.nav').getByRole('button', { name: 'Integrations' })).toHaveCount(0)
   await nav(page, 'Incentive approvals')
   await expect(page.locator('.content')).toContainText('Approvals')
-  await expect(page.getByRole('button', { name: 'Rules', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Reward rules', exact: true })).toHaveCount(0)
 })
 
 test('employee: no incentives/integrations entries; people view works', async ({ page }) => {

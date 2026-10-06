@@ -12,9 +12,10 @@ import { api } from '../../api'
 import { IS_DEMO } from '../../runtime'
 import { demoGovernance, type DemoGovernance } from './demoData'
 import type {
-  AppreciationItem, ApprovalItem, CandidateItem, ChannelIdentityItem, DecisionItem, EffectItem,
-  EventItem, GithubAttributionItem, GithubIdentityItem, GithubSourceItem, GovernanceSource, HelpItem,
-  OrgUnit, Page, PolicyItem, RuleItem, SafetyEvalItem, ShadowItem, SlackWorkspaceItem,
+  AppreciationItem, ApprovalContext, ApprovalItem, CandidateItem, ChainDetail, ChannelIdentityItem,
+  DecisionItem, EffectItem, EventItem, GithubAttributionItem, GithubIdentityItem, GithubSourceItem,
+  GovernanceSource, HelpItem, IncentiveProvenanceItem, OrgUnit, Page, PolicyItem, RuleItem,
+  SafetyEvalItem, ShadowItem, SlackWorkspaceItem,
 } from './types'
 
 const page = <T>(items: T[], offset = 0, limit = 100): Page<T> => ({ items, offset, limit })
@@ -119,6 +120,15 @@ const server: GovernanceSource = {
   async listOrgUnits() {
     return (await api.get<{ units: OrgUnit[] }>('/organization')).units
   },
+  /* WS2-A provenance reads — backend composes and authorizes per role.
+     The demo-only actorId parameter is ignored: the session is authoritative. */
+  async myIncentives() {
+    const r = await api.get<{ items: IncentiveProvenanceItem[]; offset: number; limit: number }>(
+      '/provenance/me?offset=0')
+    return page(r.items, r.offset, r.limit)
+  },
+  getApprovalContext: id => api.get<ApprovalContext>(`/provenance/approvals/${id}`),
+  getChain: id => api.get<ChainDetail>(`/provenance/chain/${id}`),
 }
 
 /* ── demo implementation: deterministic fixtures, local-only mutation ──── */
@@ -261,6 +271,85 @@ const demoSource: GovernanceSource = {
     if (action === 'confirm') { item.status = 'CONFIRMED'; item.confirmedAt = now }
   },
   listOrgUnits: async () => demo_state().orgUnits,
+  /* WS2-A demo provenance — the same projections, composed locally from the
+     deterministic fixtures. Never calls the network. */
+  myIncentives: async actorId => {
+    const s = demo_state()
+    const items = s.effects.filter(e => e.beneficiaryUserId === actorId).map(e => {
+      const candidate = s.candidates.find(c => c.id === e.candidateId)
+      const event = s.events.find(ev => ev.id === candidate?.canonicalEventId)
+      const decision = s.decisions.find(d => d.candidateId === e.candidateId)
+      const approval = s.approvals.find(a => a.finalDecision?.id === e.approvalDecisionId)?.finalDecision ?? null
+      const snapshot = candidate?.ruleSnapshot ?? {}
+      return {
+        effectId: e.id, ledgerTransactionId: e.ledgerTransactionId, amount: e.amount,
+        status: e.status, createdAt: e.createdAt,
+        eventType: event?.type ?? null, occurredAt: event?.occurredAt ?? null,
+        subjectId: (event?.subjectId ?? event?.actorId) ?? null,
+        ruleName: (snapshot.name as string) ?? null, ruleDescription: null,
+        proposedReward: typeof candidate?.data?.proposedReward === 'number' ? candidate.data.proposedReward as number : null,
+        scope: (snapshot as { scope?: { kind: 'TEAM' | 'PROJECT'; id: string } }).scope ?? null,
+        policyDecision: decision?.effectiveDecision ?? null,
+        policyExplanation: decision?.explanation ?? null,
+        approval: approval && {
+          decision: approval.decision, decidedBy: approval.decidedBy,
+          decidedAt: approval.decidedAt, reasonCode: approval.reasonCode, note: approval.note,
+        },
+        reversal: e.reversal,
+      }
+    })
+    return page(items, 0)
+  },
+  async getApprovalContext(requestId) {
+    const s = demo_state()
+    const approval = s.approvals.find(a => a.id === requestId)
+    if (!approval) throw new Error('Approval request not found')
+    const candidate = s.candidates.find(c => c.id === approval.candidateId)
+    const event = s.events.find(ev => ev.id === candidate?.canonicalEventId)
+    const decision = s.decisions.find(d => d.candidateId === approval.candidateId)
+    const safety = s.safety.find(x => x.candidateId === approval.candidateId)
+    const snapshot = candidate?.ruleSnapshot ?? {}
+    return {
+      approval,
+      context: {
+        eventType: event?.type ?? null, occurredAt: event?.occurredAt ?? null,
+        subjectId: (event?.subjectId ?? event?.actorId) ?? null,
+        ruleName: (snapshot.name as string) ?? null, ruleDescription: null,
+        proposedReward: typeof candidate?.data?.proposedReward === 'number' ? candidate.data.proposedReward as number : null,
+        scope: (snapshot as { scope?: { kind: 'TEAM' | 'PROJECT'; id: string } }).scope ?? null,
+        policyDecision: decision?.effectiveDecision ?? null,
+        policyExplanation: decision?.explanation ?? null,
+        safetyOutcome: safety?.outcome ?? null,
+        trigger: approval.trigger ?? 'POLICY', requiredAuthority: approval.requiredAuthority,
+        myAuthority: 'MANAGER',
+        effects: s.effects.filter(e => e.candidateId === approval.candidateId),
+      },
+    }
+  },
+  async getChain(candidateId) {
+    const s = demo_state()
+    const candidate = s.candidates.find(c => c.id === candidateId)
+    if (!candidate) throw new Error('Candidate not found')
+    const event = s.events.find(ev => ev.id === candidate.canonicalEventId) ?? null
+    const decision = s.decisions.find(d => d.candidateId === candidateId) ?? null
+    const safety = s.safety.find(x => x.candidateId === candidateId) ?? null
+    const snapshot = candidate.ruleSnapshot ?? {}
+    return {
+      summary: {
+        eventType: event?.type ?? null, occurredAt: event?.occurredAt ?? null,
+        subjectId: (event?.subjectId ?? event?.actorId) ?? null,
+        ruleName: (snapshot.name as string) ?? null, ruleDescription: null,
+        proposedReward: typeof candidate.data?.proposedReward === 'number' ? candidate.data.proposedReward as number : null,
+        scope: (snapshot as { scope?: { kind: 'TEAM' | 'PROJECT'; id: string } }).scope ?? null,
+        policyDecision: decision?.effectiveDecision ?? null,
+        policyExplanation: decision?.explanation ?? null,
+        safetyOutcome: safety?.outcome ?? null,
+      },
+      event, candidate, decision, safety,
+      approvals: s.approvals.filter(a => a.candidateId === candidateId),
+      effects: s.effects.filter(e => e.candidateId === candidateId),
+    }
+  },
 }
 
 /* Static build-time mode: one branch is dead-code-eliminated per build. */

@@ -43,6 +43,7 @@ from .notifications.approval_push import register as register_approval_push
 register_approval_push()
 from .shadow.routes import router as shadow_router
 from .incentive_safety.routes import router as safety_router
+from .provenance.routes import router as provenance_router
 
 STATIC_DIR = os.environ.get('CVE_STATIC_DIR') or str(
     Path(__file__).resolve().parents[2] / 'dist')
@@ -118,6 +119,7 @@ app.include_router(github_router)
 app.include_router(slack_router)
 app.include_router(shadow_router)
 app.include_router(safety_router)
+app.include_router(provenance_router)
 
 
 @app.get('/api/health')

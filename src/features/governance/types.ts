@@ -73,6 +73,42 @@ export interface EventItem {
   payload: Record<string, unknown>; correlationId: string | null; causationId: string | null
 }
 
+/* ── WS2-A: role-specific provenance projections ───────────────────────────
+ * Business-language views of the governance chain, composed server-side.
+ * No internal nouns for employees; managers get decision context; admins get
+ * the summary plus complete drill-down. */
+
+export interface ProvenanceSummary {
+  eventType: string | null; occurredAt: number | null; subjectId: string | null
+  ruleName: string | null; ruleDescription: string | null
+  proposedReward: number | null; scope: { kind: 'TEAM' | 'PROJECT'; id: string } | null
+  policyDecision: string | null; policyExplanation: string | null
+  safetyOutcome: string | null
+}
+
+/* Employee projection: engine internals (safety outcome, candidate/policy
+ * IDs) are deliberately absent. */
+export interface IncentiveProvenanceItem extends Omit<ProvenanceSummary, 'safetyOutcome'> {
+  effectId: string; ledgerTransactionId: string
+  amount: string; status: 'ISSUED' | 'REVERSED'; createdAt: number
+  approval: null | { decision: string; decidedBy: string; decidedAt: number; reasonCode: string | null; note: string | null }
+  reversal: EffectItem['reversal']
+}
+
+export interface ApprovalContext {
+  approval: ApprovalItem
+  context: ProvenanceSummary & {
+    trigger: string; requiredAuthority: string; myAuthority: string
+    effects: EffectItem[]
+  }
+}
+
+export interface ChainDetail {
+  summary: ProvenanceSummary
+  event: EventItem | null; candidate: CandidateItem; decision: DecisionItem | null
+  safety: SafetyEvalItem | null; approvals: ApprovalItem[]; effects: EffectItem[]
+}
+
 export interface GithubSourceItem {
   id: string; provider: 'GITHUB'; name: string; repositoryId: string
   status: 'ACTIVE' | 'DISABLED'; webhookPath: string; createdAt: number; updatedAt: number
@@ -162,4 +198,9 @@ export interface GovernanceSource {
   helpAction(id: string, action: 'accept' | 'finish' | 'confirm', actorId?: string): Promise<void>
   /* Organization (D1/F3) */
   listOrgUnits(): Promise<OrgUnit[]>
+  /* WS2-A provenance (role-scoped, read-only). actorId is demo-only: the
+     server derives the caller from the session. */
+  myIncentives(actorId?: string): Promise<Page<IncentiveProvenanceItem>>
+  getApprovalContext(requestId: string): Promise<ApprovalContext>
+  getChain(candidateId: string): Promise<ChainDetail>
 }

@@ -187,8 +187,9 @@ test.describe('admin', () => {
     await page.locator('select').first().selectOption('u-aisha')
     await expect(page.locator('table', { hasText: 'posted wallet adjustment' })).toBeVisible()
     await expect(page.locator('table')).toContainText('Pilot week correction')
-    // policy
+    // policy -- WS2-B: company policy configuration lives in the Configuration section
     await nav(page, 'Admin')
+    await page.locator('.content').getByRole('button', { name: 'Configuration' }).click()
     await page.locator('input[type=number]').first().fill('8')
     await page.getByRole('button', { name: 'Save policy' }).click()
     await expect(page.getByRole('button', { name: 'Save policy' })).toBeDisabled()
