@@ -131,9 +131,13 @@ def _match_unit(units, rest):
                or rest.lower().startswith(u.name.lower() + ' ')]
     if not matches:
         return None, rest
-    unit = max(matches, key=lambda u: len(u.name))
-    if len({u.name.lower() for u in matches if len(u.name) == len(unit.name)}) > 1:
-        return None, rest  # duplicate unit names — refuse, never guess
+    best = max(len(u.name) for u in matches)
+    top = [u for u in matches if len(u.name) == best]
+    if len(top) > 1:
+        # Equal-length prefix matches of the same input can only be units that
+        # share the exact same name — refuse, never arbitrarily pick one.
+        return None, rest
+    unit = top[0]
     remainder = rest[len(unit.name):].strip()
     return unit, remainder
 
@@ -148,7 +152,22 @@ def _help_scope(db, company, user, text_value):
         if not teams:
             raise Refusal('SCOPE_GUIDANCE', 'You do not belong to an active Team. '
                           'Use /cve-help general … instead, or ask your Admin.')
-        scope, description = teams[0], rest
+        if len(teams) == 1:
+            # Single-Team callers keep /cve-help team <request>; naming the
+            # Team explicitly is accepted too.
+            scope, description = _match_unit(teams, rest)
+            if scope is None:
+                scope, description = teams[0], rest
+        else:
+            # Multi-Team callers (e.g. Admins) must explicitly name the Team —
+            # never default to the first one.
+            scope, description = _match_unit(teams, rest)
+            if scope is None:
+                eligible = ', '.join(u.name for u in teams)
+                raise Refusal('SCOPE_GUIDANCE', 'You belong to more than one Team — '
+                              'name the Team explicitly. '
+                              f'Eligible Teams: {eligible}. '
+                              'Use /cve-help team <team name> <what you need>.')
         context, name = {'kind': 'TEAM', 'id': scope.id}, scope.name
     elif keyword == 'project':
         if not projects:

@@ -252,3 +252,93 @@ def test_retry_returns_identical_confirmation_across_actions(slack_org):
     # Zero duplicates across every business surface.
     assert len(help_rows(db)) == 1
     assert db.scalar(sa.select(sa.func.count()).select_from(ChannelDelivery)) == 2
+
+
+# ------------------------------------- adversarial: duplicate-name ambiguity
+# Review findings: duplicate same-name units must fail closed (never pick one
+# arbitrarily), and multi-Team callers must name the Team explicitly.
+
+def test_duplicate_project_names_fail_closed(slack_org):
+    """Two active same-name Projects both eligible to the caller → refusal,
+    zero Help requests — never an arbitrary choice."""
+    client, db, workspace, _ = slack_org
+    db.add(Project(id='proj-atlas2', company_id='gold-a', name='Atlas'))
+    db.flush()
+    db.add(ProjectMembership(company_id='gold-a', project_id='proj-atlas2', user_id='ap-employee'))
+    db.commit()
+    refused = command(client, workspace, '/cve-help', text='project Atlas Which one?',
+                      user='U0002EMPLOY', trigger='1000000030.000030.dup01')
+    assert refused.json()['result'] == 'REFUSED_DOMAIN'
+    assert 'Eligible Projects' in refused.json()['text']
+    assert help_rows(db) == []  # ambiguous input creates zero Help requests
+    # A distinct, unambiguous name still routes normally.
+    ok = command(client, workspace, '/cve-help', text='project Solo Still unambiguous',
+                 user='U0002EMPLOY', trigger='1000000031.000031.dup02')
+    assert ok.json()['result'] == 'ACCEPTED'
+    assert help_rows(db)[0].project_id == 'proj-solo'
+
+
+def test_duplicate_team_names_fail_closed_for_admin(slack_org):
+    """Admin with two active same-name Teams: naming the duplicate is still
+    ambiguous → refusal, zero rows."""
+    client, db, workspace, _ = slack_org
+    db.add(Team(id='team-plat2', company_id='gold-a', name='Platform'))
+    db.commit()
+    refused = command(client, workspace, '/cve-help', text='team Platform Which Platform?',
+                      user='U0004ADMIN', trigger='1000000032.000032.dup03')
+    assert refused.json()['result'] == 'REFUSED_DOMAIN'
+    assert 'Eligible Teams' in refused.json()['text']
+    assert help_rows(db) == []
+
+
+def test_admin_with_multiple_teams_must_name_the_team(slack_org):
+    """Admin eligible for several Teams: bare `team <request>` never defaults
+    to teams[0] — it refuses with explicit-name guidance. An explicitly named,
+    uniquely-identified Team routes correctly."""
+    client, db, workspace, _ = slack_org
+    db.add(Team(id='team-design', company_id='gold-a', name='Design'))
+    db.flush()
+    # ap-other belongs to no Team; eligible recipient for the Design request.
+    db.add(TeamMembership(company_id='gold-a', team_id='team-design', user_id='ap-other'))
+    db.commit()
+    refused = command(client, workspace, '/cve-help', text='team Need an admin decision',
+                      user='U0004ADMIN', trigger='1000000033.000033.dup04')
+    assert refused.json()['result'] == 'REFUSED_DOMAIN'
+    text = refused.json()['text']
+    assert 'name the Team explicitly' in text
+    assert 'Design' in text and 'Platform' in text
+    assert '/cve-help team <team name>' in text
+    assert help_rows(db) == []  # zero rows from ambiguous input
+    ok = command(client, workspace, '/cve-help', text='team Design Need an admin decision',
+                 user='U0004ADMIN', trigger='1000000034.000034.dup05')
+    assert ok.json()['result'] == 'ACCEPTED'
+    row = help_rows(db)[0]
+    assert row.team_id == 'team-design'
+    assert ok.json()['text'] == 'Your Help request was sent to eligible members of Design.'
+    assert {r.recipient_user_id for r in pushes(db, 'HELP_ROUTED')} == {'ap-other'}
+
+
+def test_single_team_employee_syntax_unchanged(slack_org):
+    """Employees with exactly one active Team keep `/cve-help team <request>`;
+    explicitly naming their Team also works and strips the name."""
+    client, db, workspace, _ = slack_org
+    bare = command(client, workspace, '/cve-help', text='team Plain request text',
+                   user='U0002EMPLOY', trigger='1000000035.000035.dup06')
+    assert bare.json()['result'] == 'ACCEPTED'
+    named = command(client, workspace, '/cve-help', text='team Platform Named request text',
+                    user='U0002EMPLOY', trigger='1000000036.000036.dup07')
+    assert named.json()['result'] == 'ACCEPTED'
+    rows = help_rows(db)
+    assert len(rows) == 2 and all(r.team_id == 'team-plat' for r in rows)
+    assert rows[0].title == 'Plain request text' and rows[1].title == 'Named request text'
+
+
+def test_foreign_tenant_same_name_units_never_in_scope(slack_org):
+    """The eligible-unit list is tenant-scoped, so a foreign same-name unit can
+    neither create ambiguity nor be selected: gold-b 'Platform' does not make
+    gold-a's single 'Platform' ambiguous for the admin."""
+    client, db, workspace, _ = slack_org
+    response = command(client, workspace, '/cve-help', text='team Platform Tenant check',
+                       user='U0004ADMIN', trigger='1000000037.000037.dup08')
+    assert response.json()['result'] == 'ACCEPTED'
+    assert help_rows(db)[0].team_id == 'team-plat'  # gold-a only; team-foreign unreachable
