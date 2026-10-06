@@ -38,7 +38,7 @@ def test_existing_upgrade_preserves_all_rows_and_downgrade(mig_url):
         with engine.connect() as conn:
             assert snapshot(conn) == before
             assert conn.scalar(sa.text('SELECT count(*) FROM canonical_events')) == 0
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'ee01c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'ee02a1b3c402'
         with Session(engine) as db:
             store = PostgresEventStore(db)
             row = store.append('co-aster', incoming(actor_id='u-dana', subject_id='u-marcus'))

@@ -34,7 +34,7 @@ def test_source_migration_preserves_all_existing_rows(mig_url, existing):
         command.upgrade(cfg, 'head'); command.upgrade(cfg, 'head')
         with eng.connect() as conn:
             assert snapshot(conn) == before
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'ee01c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'ee02a1b3c402'
             assert conn.scalar(sa.text('SELECT count(*) FROM webhook_sources')) == 0
             assert {c['name'] for c in sa.inspect(conn).get_columns('webhook_sources')} == set(WebhookSource.__table__.columns.keys())
         with Session(eng) as db:

@@ -68,6 +68,9 @@ class ChannelDelivery(Base):
     action: Mapped[str] = mapped_column(String(12))
     result: Mapped[str] = mapped_column(String(24))
     detail: Mapped[str] = mapped_column(String(200), default='')
+    # WS1.1 (F-5): the exact user-facing receipt of the original submission,
+    # so a provider retry returns the same confirmation, never a degraded one.
+    receipt_text: Mapped[str | None] = mapped_column(String(200), nullable=True)
     record_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     created_at: Mapped[float] = mapped_column(Float, default=now_ms)
 

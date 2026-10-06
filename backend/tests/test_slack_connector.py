@@ -34,15 +34,19 @@ def test_thanks_exactly_once_across_slack_retries(slack):
 
 def test_help_via_slack_enters_same_lifecycle(slack):
     client, db, workspace, _ = slack
-    response = command(client, workspace, '/cve-help', text='Need a second review', user='U0002EMPLOY')
+    response = command(client, workspace, '/cve-help', text='general Need a second review', user='U0002EMPLOY')
     assert response.status_code == 200, response.text
     row = db.scalar(sa.select(HelpRequest))
     assert row is not None and row.requester_user_id == 'ap-employee'
     assert row.submission_id.startswith('slack:T0001ACME:')
     assert row.routing_status == 'ROUTED'  # company scope → administrative fallback (admins)
     assert response.json()['recordId'] == row.id
-    again = command(client, workspace, '/cve-help', text='Need a second review', user='U0002EMPLOY')
+    # Truthful receipt: company-scoped Help reaches the administrators.
+    assert response.json()['text'] == 'Your Help request was sent to the company administrators.'
+    again = command(client, workspace, '/cve-help', text='general Need a second review', user='U0002EMPLOY')
     assert again.json()['duplicate'] is True
+    # F-5: the retry returns the SAME confirmation as the original submission.
+    assert again.json()['text'] == response.json()['text']
     assert db.scalar(sa.select(sa.func.count()).select_from(HelpRequest)) == 1
     # The request is acceptably live: an admin can accept it through the normal API.
     accept = client.post(f'/api/collaboration/help/{row.id}/accept', headers=headers(db, 'gold-admin-a'), json={})
@@ -114,8 +118,13 @@ def test_disabled_workspace_and_capability(slack):
     admin = db.get(User, 'gold-admin-a')
     capability_update(db, admin, 'SLACK_CONNECTOR', {'enabled': False})
     db.commit()
-    off = command(client, workspace, '/cve-help', text='x')
-    assert off.status_code == 409 and off.json()['code'] == 'CAPABILITY_DISABLED'
+    off = command(client, workspace, '/cve-help', text='general x')
+    # WS1.1: a signed, well-formed command on a disabled capability gets mapped
+    # user guidance (audited refusal), not a raw engine code.
+    assert off.status_code == 200
+    assert off.json()['result'] == 'REFUSED_DOMAIN'
+    assert off.json()['text'] == 'This feature is currently disabled for your company.'
+    assert db.scalar(sa.select(sa.func.count()).select_from(HelpRequest)) == 0
     capability_update(db, admin, 'SLACK_CONNECTOR', {'enabled': True})
     db.commit()  # release the exclusive capability lock before the next request
     patched = client.patch('/api/integrations/slack/' + workspace['id'], headers=auth, json={'status': 'DISABLED'})

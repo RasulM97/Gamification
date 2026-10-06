@@ -153,7 +153,7 @@ for m in sent_mail:
 sent_mail.clear()
 
 # ---------------------------------------------------------------- S2: help via Slack
-section('S2 — HELP VIA SLACK /cve-help (Lena, mapped identity)')
+section('S2 — HELP VIA SLACK /cve-help team (Lena, mapped identity) [WS1.1]')
 db.add(ChannelWorkspace(id='cw-meridian', company_id='meridian', external_team_id='TMERIDIAN1',
                         name='Meridian Slack', workspace_key='w' * 32, secret_nonce='cd' * 32))
 db.flush()
@@ -175,13 +175,11 @@ def slack(command, user, text, trigger):
     return actions.receive(db, ws.workspace_key, ts, sig, body)
 
 
-receipt = slack('/cve-help', 'ULENA00001', 'Need help reviewing the Atlas launch checklist', 'trg-help-1')
+receipt = slack('/cve-help', 'ULENA00001', 'team Need help reviewing the Atlas launch checklist', 'trg-help-1')
 db.commit()
 say(f"ephemeral receipt to Lena: {receipt['text']}  (result={receipt['result']}, recordId={receipt['recordId']})")
-row = db.scalar(sa.select(NotificationDelivery).order_by(NotificationDelivery.id.desc()).limit(1))
 help_row = db.get(__import__('app.collaboration.model', fromlist=['HelpRequest']).HelpRequest, receipt['recordId'])
-say(f"slack-created help scope: team_id={help_row.team_id} project_id={help_row.project_id} "
-    f"routingStatus={help_row.routing_status}")
+say(f"slack-created help scope: team_id={help_row.team_id} routingStatus={help_row.routing_status}")
 say(f"routed recipients (outbox): {[r.recipient_user_id for r in outbox() if r.params.get('helpId') == receipt['recordId']]}")
 say(f"drain: {drain_now()}")
 db.commit()
@@ -191,29 +189,40 @@ for m in sent_mail:
     say(m['body'])
 sent_mail.clear()
 
+section('S2b — SLACK /cve-help WITHOUT EXPLICIT SCOPE (guidance, no request)')
+receipt = slack('/cve-help', 'ULENA00001', 'Need help with the export', 'trg-help-guide')
+db.commit()
+say(f"ephemeral receipt: {receipt['text']}  (result={receipt['result']})")
+say(f"help requests created: {db.scalar(sa.select(sa.func.count()).select_from(help_row.__class__))} (unchanged — guidance only)")
+
 # ---------------------------------------------------------------- S3/S4/S5: Slack friction
 section('S3 — SLACK UNMAPPED USER (David, no identity mapping)')
 receipt = slack('/cve-help', 'UDAVID0001', 'Need help with the CRM export', 'trg-david-1')
 db.commit()
 say(f"ephemeral receipt: {receipt['text']}  (result={receipt['result']})")
 
-section('S4 — SLACK WRONG FORMAT (Lena, empty text)')
+section('S4 — SLACK EMPTY TEXT (Lena) [WS1.1 mapped guidance]')
 receipt = slack('/cve-help', 'ULENA00001', '', 'trg-lena-empty')
 db.commit()
-say(f"ephemeral receipt: {receipt['text']}  (result={receipt['result']}, detail refused domain code)")
+say(f"ephemeral receipt: {receipt['text']}  (result={receipt['result']})")
 bad = db.scalar(sa.select(__import__('app.slack_connector.model', fromlist=['ChannelDelivery']).ChannelDelivery)
                 .order_by(sa.desc('created_at')).limit(1))
-say(f"audit row: result={bad.result} detail={bad.detail!r}")
+say(f"audit row keeps the code: result={bad.result} detail={bad.detail!r}")
 
-section('S5 — SLACK /cve-recognize BY EMPLOYEE (Lena -> Tomas, not a manager)')
+section('S5 — SLACK /cve-recognize BY EMPLOYEE (Lena -> Tomas, not a manager) [WS1.1 mapped]')
 receipt = slack('/cve-recognize', 'ULENA00001', '<@UTOMAS0001> Great debugging session today', 'trg-rec-1')
 db.commit()
 say(f"ephemeral receipt: {receipt['text']}  (result={receipt['result']})")
+bad = db.scalar(sa.select(__import__('app.slack_connector.model', fromlist=['ChannelDelivery']).ChannelDelivery)
+                .order_by(sa.desc('created_at')).limit(1))
+say(f"audit row keeps the code: detail={bad.detail!r}")
 
-section('S5b — SLACK DUPLICATE RETRY (same trigger_id replayed)')
-receipt = slack('/cve-help', 'ULENA00001', 'Need help reviewing the Atlas launch checklist', 'trg-help-1')
+section('S5b — SLACK DUPLICATE RETRY (same trigger_id replayed) [WS1.1 identical confirmation]')
+receipt = slack('/cve-help', 'ULENA00001', 'team Need help reviewing the Atlas launch checklist', 'trg-help-1')
 db.commit()
 say(f"ephemeral receipt: {receipt['text']}  (duplicate={receipt['duplicate']})")
+say("retry text == original text: "
+    f"{receipt['text'] == 'Your Help request was sent to eligible members of Platform.'}")
 say(f"help request count: {db.scalar(sa.select(sa.func.count()).select_from(help_row.__class__))}")
 
 # ---------------------------------------------------------------- S6: escalation

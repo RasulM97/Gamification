@@ -27,6 +27,6 @@ def test_capability_migration(mig_url):
                 with pytest.raises(sa.exc.IntegrityError),db.begin_nested():db.execute(sa.text(sql))
         with pytest.raises(RuntimeError,match='Cannot discard capability'):command.downgrade(cfg,'eb01c9e2601')
         with engine.connect() as connection:
-            assert connection.scalar(sa.text('SELECT version_num FROM alembic_version'))=='ee01c9e2601'
+            assert connection.scalar(sa.text('SELECT version_num FROM alembic_version'))=='ee02a1b3c402'
             assert connection.scalar(sa.text('SELECT count(*) FROM capability_changes'))==1
     finally:engine.dispose()

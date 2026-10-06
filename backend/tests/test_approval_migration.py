@@ -39,7 +39,7 @@ def test_approval_migration(mig_url,populated):
         command.upgrade(cfg,'head'); command.upgrade(cfg,'head')
         with engine.connect() as conn:
             assert snapshot(conn)==before
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='ee01c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='ee02a1b3c402'
             inspector=sa.inspect(conn)
             for model in (ApprovalRequest,ApprovalDecision):
                 name=model.__tablename__

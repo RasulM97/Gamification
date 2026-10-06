@@ -121,6 +121,25 @@ def test_backoff_is_capped(golden_db):
     assert delivery._backoff_ms(100) == 3_600_000
 
 
+def test_escalation_copy_differs_from_initial_routing(golden_db):
+    """F-2: an escalation must never read as a duplicate of the first-hop email."""
+    db = golden_db
+    from app.notifications.email import render
+    params = {'requesterName': 'Lena Fischer', 'title': 'Orion migration fails',
+              'scopeName': 'Platform'}
+    initial = make_row(db, dedupe='dw:copy:1', cls='HELP_REQUEST_ACTION_REQUIRED',
+                       event='HELP_ROUTED', params=params)
+    escalated = make_row(db, dedupe='dw:copy:2', cls='HELP_REQUEST_ACTION_REQUIRED',
+                         event='HELP_ESCALATED', params=params)
+    first, second = render(initial, 'Henrik Dahl', None), render(escalated, 'Henrik Dahl', None)
+    assert first[0] != second[0]
+    assert first[1] != second[1]
+    assert second[0].startswith('Escalated:')
+    assert 'remained unresolved' in second[1] and 'escalated' in second[1]
+    assert 'Orion migration fails' in second[1] and 'Platform' in second[1]  # original context kept
+    assert 'remained unresolved' not in first[1]
+
+
 def test_unknown_and_inactive_recipients_are_skipped(golden_db):
     db = golden_db
     db.add(User(id='dw-inactive', company_id='gold-a', name='Inactive', role='EMPLOYEE',

@@ -30,11 +30,20 @@ def render(row: NotificationDelivery, recipient_name: str, actor_name: str | Non
                 + '\nNote: this link never authorizes the decision itself — CVE re-checks your current authority when you act.\n')
     elif row.push_class == 'HELP_REQUEST_ACTION_REQUIRED':
         who = p.get('requesterName') or actor_name or 'A colleague'
-        subject = f'{who} is asking for help'
-        body = (f"Hi {recipient_name},\n\n{who} needs help"
-                + (f":\n\n\"{p.get('title', '')}\"\n" if p.get('title') else '.\n')
-                + (f"\nContext: {p.get('scopeName')}\n" if p.get('scopeName') else '')
-                + f"\nYou can accept the request in CVE: {link}\n")
+        if row.event_type == 'HELP_ESCALATED':
+            # F-2: escalation is explicitly distinguishable from first-hop routing.
+            subject = f'Escalated: {who} is still waiting for help'
+            body = (f"Hi {recipient_name},\n\n{who}'s help request has remained unresolved "
+                    'and has been escalated to you as the responsible manager.\n\n'
+                    + (f"\"{p.get('title', '')}\"\n" if p.get('title') else '')
+                    + (f"\nContext: {p.get('scopeName')}\n" if p.get('scopeName') else '')
+                    + f"\nYou can accept the request in CVE: {link}\n")
+        else:
+            subject = f'{who} is asking for help'
+            body = (f"Hi {recipient_name},\n\n{who} needs help"
+                    + (f":\n\n\"{p.get('title', '')}\"\n" if p.get('title') else '.\n')
+                    + (f"\nContext: {p.get('scopeName')}\n" if p.get('scopeName') else '')
+                    + f"\nYou can accept the request in CVE: {link}\n")
     else:  # locked taxonomy — unreachable unless push.py is widened without approval
         raise DomainError('VALIDATION', 'Unknown outbound push class')
     return subject, body

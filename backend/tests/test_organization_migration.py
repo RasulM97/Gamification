@@ -51,6 +51,6 @@ def test_organization_populated_history_and_tenant_constraints(mig_url):
                 db.execute(sa.delete(Team).where(Team.id==team['id']))
         with pytest.raises(RuntimeError,match='Cannot discard organization'):command.downgrade(cfg,'ec01c9e2601')
         with engine.connect() as conn:
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='ee01c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='ee02a1b3c402'
             assert conn.scalar(sa.text('SELECT count(*) FROM team_memberships'))==1
     finally:engine.dispose()

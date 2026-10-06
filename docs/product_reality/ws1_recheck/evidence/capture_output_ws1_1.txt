@@ -1,0 +1,239 @@
+2026-10-06 20:42:23,730 INFO rule_evaluation event_id=ce-f0550b1bd18349ad9232ab5e7e6ff72b rules_evaluated=1 rules_matched=1 candidates_staged=1 duration_ms=16.1
+2026-10-06 20:42:23,756 INFO policy_evaluation company_id=meridian candidate_id=rc-c9e666156db6 policies_evaluated=1 policies_matched=1 effective_decision=REQUIRE_APPROVAL duration_ms=16.6
+
+==============================================================================
+S1 — HELP CREATED IN CVE, TEAM-SCOPED (Lena, Platform team)
+==============================================================================
+requester view: status=OPEN routingStatus=ROUTED
+outbox: class=HELP_REQUEST_ACTION_REQUIRED event=HELP_ROUTED recipient=tomas params.scope=TEAM/Platform
+outbox: class=HELP_REQUEST_ACTION_REQUIRED event=HELP_ROUTED recipient=henrik params.scope=TEAM/Platform
+in-app notifications: tomas=[('HELP_ROUTED', 'ACTION_REQUIRED')] henrik=[('HELP_ROUTED', 'ACTION_REQUIRED')] marta=[] lena=[]
+drain: {'sent': 2, 'failed': 0, 'skipped': 0, 'pending': 0, 'unconfigured': False}
+--- email to=henrik@meridian.example message-id=<HELP_ROUTED:henrik:help-4fb763995a7e@cve-outbound>
+Subject: Lena Fischer is asking for help
+Hi Henrik Dahl,
+
+Lena Fischer needs help:
+
+"Orion migration script fails on foreign keys"
+
+Context: Platform
+
+You can accept the request in CVE: https://cve.meridian.example
+
+--- email to=tomas@meridian.example message-id=<HELP_ROUTED:tomas:help-4fb763995a7e@cve-outbound>
+Subject: Lena Fischer is asking for help
+Hi Tomas Ribeiro,
+
+Lena Fischer needs help:
+
+"Orion migration script fails on foreign keys"
+
+Context: Platform
+
+You can accept the request in CVE: https://cve.meridian.example
+
+
+==============================================================================
+S2 — HELP VIA SLACK /cve-help team (Lena, mapped identity) [WS1.1]
+==============================================================================
+ephemeral receipt to Lena: Your Help request was sent to eligible members of Platform.  (result=ACCEPTED, recordId=help-05de13b23b63)
+slack-created help scope: team_id=team-platform routingStatus=ROUTED
+routed recipients (outbox): ['tomas', 'henrik']
+drain: {'sent': 2, 'failed': 0, 'skipped': 0, 'pending': 0, 'unconfigured': False}
+--- email to=henrik@meridian.example
+Subject: Lena Fischer is asking for help
+Hi Henrik Dahl,
+
+Lena Fischer needs help:
+
+"Need help reviewing the Atlas launch checklist"
+
+Context: Platform
+
+You can accept the request in CVE: https://cve.meridian.example
+
+--- email to=tomas@meridian.example
+Subject: Lena Fischer is asking for help
+Hi Tomas Ribeiro,
+
+Lena Fischer needs help:
+
+"Need help reviewing the Atlas launch checklist"
+
+Context: Platform
+
+You can accept the request in CVE: https://cve.meridian.example
+
+
+==============================================================================
+S2b — SLACK /cve-help WITHOUT EXPLICIT SCOPE (guidance, no request)
+==============================================================================
+ephemeral receipt: Choose where to ask: /cve-help team <what you need> · /cve-help general <what you need>  (result=REFUSED_DOMAIN)
+help requests created: 2 (unchanged — guidance only)
+
+==============================================================================
+S3 — SLACK UNMAPPED USER (David, no identity mapping)
+==============================================================================
+ephemeral receipt: Your Slack account is not linked to a CVE user yet. Ask an administrator to connect your account.  (result=REFUSED_UNMAPPED_ACTOR)
+
+==============================================================================
+S4 — SLACK EMPTY TEXT (Lena) [WS1.1 mapped guidance]
+==============================================================================
+ephemeral receipt: Choose where to ask: /cve-help team <what you need> · /cve-help general <what you need>  (result=REFUSED_DOMAIN)
+audit row keeps the code: result=REFUSED_DOMAIN detail='SCOPE_GUIDANCE'
+
+==============================================================================
+S5 — SLACK /cve-recognize BY EMPLOYEE (Lena -> Tomas, not a manager) [WS1.1 mapped]
+==============================================================================
+ephemeral receipt: You are not allowed to perform this action in the selected Team or Project.  (result=REFUSED_DOMAIN)
+audit row keeps the code: detail='FORBIDDEN'
+
+==============================================================================
+S5b — SLACK DUPLICATE RETRY (same trigger_id replayed) [WS1.1 identical confirmation]
+==============================================================================
+ephemeral receipt: Your Help request was sent to eligible members of Platform.  (duplicate=True)
+retry text == original text: True
+help request count: 2
+
+==============================================================================
+S6 — HELP ESCALATION (S1 request unanswered past the 240-min window)
+==============================================================================
+pass_due result: {'escalated': 2, 'retried': 0, 'capabilityEnabled': True}
+escalation push: recipient=henrik reason=WINDOW_EXPIRED scope=Platform
+escalation push: recipient=henrik reason=WINDOW_EXPIRED scope=Platform
+drain: {'sent': 2, 'failed': 0, 'skipped': 0, 'pending': 0, 'unconfigured': False}
+--- email to=henrik@meridian.example
+Subject: Escalated: Lena Fischer is still waiting for help
+Hi Henrik Dahl,
+
+Lena Fischer's help request has remained unresolved and has been escalated to you as the responsible manager.
+
+"Orion migration script fails on foreign keys"
+
+Context: Platform
+
+You can accept the request in CVE: https://cve.meridian.example
+
+--- email to=henrik@meridian.example
+Subject: Escalated: Lena Fischer is still waiting for help
+Hi Henrik Dahl,
+
+Lena Fischer's help request has remained unresolved and has been escalated to you as the responsible manager.
+
+"Need help reviewing the Atlas launch checklist"
+
+Context: Platform
+
+You can accept the request in CVE: https://cve.meridian.example
+
+
+==============================================================================
+S6b — ACCEPTED HELP NEVER ESCALATES
+==============================================================================
+pass_due after accept: {'escalated': 0, 'retried': 0, 'capabilityEnabled': True}  (escalated must stay 0)
+requester in-app after accept: [('HELP_ACCEPTED', 'INFORMATIONAL')]
+
+==============================================================================
+S7 — INCENTIVE APPROVAL PUSH (Tomas earns above-threshold incentive)
+==============================================================================
+approval request id=ar-498e3931afff requiredAuthority=MANAGER_OR_ADMIN
+push: recipient=marta amount=20 subject=Tomas Ribeiro
+push: recipient=henrik amount=20 subject=Tomas Ribeiro
+subject tomas excluded: True
+drain: {'sent': 2, 'failed': 0, 'skipped': 0, 'pending': 0, 'unconfigured': False}
+--- email to=henrik@meridian.example
+Subject: An incentive decision is waiting for you
+Hi Henrik Dahl,
+
+An incentive of 20 coins for Tomas Ribeiro is waiting for your decision.
+
+Review and decide in CVE: https://cve.meridian.example
+
+Note: this link never authorizes the decision itself — CVE re-checks your current authority when you act.
+
+--- email to=marta@meridian.example
+Subject: An incentive decision is waiting for you
+Hi Marta Iglesias,
+
+An incentive of 20 coins for Tomas Ribeiro is waiting for your decision.
+
+Review and decide in CVE: https://cve.meridian.example
+
+Note: this link never authorizes the decision itself — CVE re-checks your current authority when you act.
+
+
+==============================================================================
+S8 — RECOGNITION (Henrik recognizes Tomas, in-app)
+==============================================================================
+tomas in-app: [('HELP_ROUTED', 'ACTION_REQUIRED'), ('MANAGER_RECOGNITION', 'INFORMATIONAL'), ('HELP_ROUTED', 'ACTION_REQUIRED'), ('HELP_ROUTED', 'ACTION_REQUIRED')]
+drain: {'sent': 1, 'failed': 0, 'skipped': 0, 'pending': 0, 'unconfigured': False}
+--- email to=tomas@meridian.example
+Subject: Henrik Dahl recognized your work
+Hi Tomas Ribeiro,
+
+Henrik Dahl gave you formal recognition:
+
+"Owned the Orion schema migration end to end."
+
+View it in CVE: https://cve.meridian.example
+
+
+==============================================================================
+S9 — SLACK /cve-recognize BY MANAGER (Henrik -> Tomas)
+==============================================================================
+ephemeral receipt: Your recognition was delivered to Tomas Ribeiro.  (result=ACCEPTED)
+drain: {'sent': 1, 'failed': 0, 'skipped': 0, 'pending': 0, 'unconfigured': False}
+--- email to=tomas@meridian.example
+Subject: Henrik Dahl recognized your work
+Hi Tomas Ribeiro,
+
+Henrik Dahl gave you formal recognition:
+
+"Calm incident handling on Friday"
+
+View it in CVE: https://cve.meridian.example
+
+
+==============================================================================
+S10 — NOTIFICATION FATIGUE DAY (thanks, help accepted/finished, approval decided)
+==============================================================================
+thanks push rows staged: 0 (must be 0)
+HELP_ACCEPTED/HELP_FINISHED push rows: 0 (must be 0)
+lena in-app: [('HELP_ACCEPTED', 'INFORMATIONAL'), ('PEER_THANKS', 'INFORMATIONAL'), ('HELP_FINISHED', 'ACTION_REQUIRED')]
+tomas in-app: [('HELP_ROUTED', 'ACTION_REQUIRED'), ('MANAGER_RECOGNITION', 'INFORMATIONAL'), ('MANAGER_RECOGNITION', 'INFORMATIONAL'), ('HELP_ROUTED', 'ACTION_REQUIRED'), ('HELP_ROUTED', 'ACTION_REQUIRED'), ('HELP_CONFIRMED', 'INFORMATIONAL')]
+TOTAL outbox rows this whole day: 12
+  HELP_REQUEST_ACTION_REQUIRED           HELP_ESCALATED         -> henrik
+  INCENTIVE_APPROVAL_ACTION_REQUIRED     APPROVAL_REQUESTED     -> marta
+  HELP_REQUEST_ACTION_REQUIRED           HELP_ROUTED            -> tomas
+  RECOGNITION_RECEIVED                   MANAGER_RECOGNITION    -> tomas
+  HELP_REQUEST_ACTION_REQUIRED           HELP_ROUTED            -> tomas
+  INCENTIVE_APPROVAL_ACTION_REQUIRED     APPROVAL_REQUESTED     -> henrik
+  RECOGNITION_RECEIVED                   MANAGER_RECOGNITION    -> tomas
+  HELP_REQUEST_ACTION_REQUIRED           HELP_ROUTED            -> henrik
+  HELP_REQUEST_ACTION_REQUIRED           HELP_ROUTED            -> henrik
+  HELP_REQUEST_ACTION_REQUIRED           HELP_ROUTED            -> tomas
+  HELP_REQUEST_ACTION_REQUIRED           HELP_ROUTED            -> henrik
+  HELP_REQUEST_ACTION_REQUIRED           HELP_ESCALATED         -> henrik
+drain: {'sent': 0, 'failed': 0, 'skipped': 0, 'pending': 0, 'unconfigured': False}
+
+==============================================================================
+S11 — NO OUTBOUND CONFIGURED (real send_email, smtp_host empty)
+==============================================================================
+pending before drain: 1; drain summary: {'sent': 0, 'failed': 0, 'skipped': 0, 'pending': 1, 'unconfigured': True}
+rows still PENDING, attempts untouched: [('MANAGER_RECOGNITION:lena:app-3be18fbcfcc4', 'PENDING', 0)]
+(product stays up; admin sees PENDING rows — nothing pretends to be delivered)
+
+EVIDENCE CAPTURE COMPLETE
+Exception during reset or similar
+Traceback (most recent call last):
+  File "D:\Web projects\Gami app N2.1\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 986, in _finalize_fairy
+    fairy._reset(
+  File "D:\Web projects\Gami app N2.1\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1441, in _reset
+    pool._dialect.do_rollback(self)
+  File "D:\Web projects\Gami app N2.1\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 712, in do_rollback
+    dbapi_connection.rollback()
+psycopg2.OperationalError: server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+

@@ -48,7 +48,7 @@ def test_safety_upgrade_and_history_guard(mig_url):
         with pytest.raises(RuntimeError, match='Cannot discard incentive safety history'):
             command.downgrade(cfg, 'ea01c9e2601')
         with engine.connect() as conn:
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'ee01c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'ee02a1b3c402'
     finally:
         engine.dispose()
 

@@ -40,7 +40,7 @@ def test_policy_migration_preserves_history(mig_url,populated):
         command.upgrade(cfg,'head'); command.upgrade(cfg,'head')
         with eng.connect() as conn:
             assert snapshot(conn)==before
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='ee01c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='ee02a1b3c402'
             for model in (Policy,PolicyDecision):
                 assert {c['name'] for c in sa.inspect(conn).get_columns(model.__tablename__)}==set(model.__table__.columns.keys())
                 assert conn.scalar(sa.select(sa.func.count()).select_from(model))==0

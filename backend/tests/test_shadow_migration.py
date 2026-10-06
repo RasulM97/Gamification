@@ -42,6 +42,6 @@ def test_shadow_migration(mig_url):
             command.downgrade(cfg,'e90a1c9e2601')
         with eng.connect() as conn:
             assert conn.scalar(sa.select(ShadowEvaluation.id)) == sid
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'ee01c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'ee02a1b3c402'
         assert snapshot(eng) == before
     finally: eng.dispose()
