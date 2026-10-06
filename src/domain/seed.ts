@@ -269,5 +269,5 @@ export function seed(): State {
     { id: 'a0', at: now - 34 * D, actorId: 'u-marcus', taskId: 't-audit', cycle: 1, action:'',object:'', ...seedEvents.activity['a0'] },
   ]
 
-  return { capabilities: { TASK_LITE: true, RECOGNITION: true, THANKS: true, HELP: true, GITHUB_CONNECTOR: true, SHADOW_MODE: true, INCENTIVE_SAFETY: true }, company: 'Aster Dynamics', seq: 100, settings: { ...DEFAULT_SETTINGS }, users, tasks, ledger, rewardCategories, rewards, redemptions, notices, activity, notifMuted: {} }
+  return { capabilities: { TASK_LITE: true, RECOGNITION: true, THANKS: true, HELP: true, GITHUB_CONNECTOR: true, SLACK_CONNECTOR: true, SHADOW_MODE: true, INCENTIVE_SAFETY: true }, company: 'Aster Dynamics', seq: 100, settings: { ...DEFAULT_SETTINGS }, users, tasks, ledger, rewardCategories, rewards, redemptions, notices, activity, notifMuted: {} }
 }

@@ -1169,5 +1169,22 @@
   "incentives.approvals.incentiveRequest": "طلب حافز",
   "incentives.approvals.safetyReview": "مراجعة أمان",
   "integrations.action.disable": "تعطيل",
-  "integrations.action.enable": "تفعيل"
+  "integrations.action.enable": "تفعيل",
+  "event.helpRouted": "{{requesterName}} يحتاج إلى مساعدة في {{scopeName}}: {{title}}",
+  "event.helpEscalated": "تم التصعيد: {{requesterName}} ما زال يحتاج إلى مساعدة في {{scopeName}}: {{title}}",
+  "event.helpRoutingUnresolved": "لا يوجد أحد متاح لطلب المساعدة الخاص بك حالياً: {{title}}",
+  "event.approvalRequested": "مكافأة لـ{{subjectName}} تحتاج إلى موافقتك.",
+  "people.help.routing.ROUTED": "تم التوجيه",
+  "people.help.routing.UNRESOLVED": "بانتظار المستلمين",
+  "people.help.routing.ESCALATED": "تم التصعيد",
+  "capabilities.SLACK_CONNECTOR": "موصّل Slack",
+  "capabilities.SLACK_CONNECTOR.description": "يتيح طلب المساعدة وتوجيه الشكر وتقدير الزملاء من مساحة عمل Slack متصلة.",
+  "integrations.slack.title": "Slack",
+  "integrations.slack.teamId": "معرّف فريق Slack",
+  "integrations.slack.create": "ربط مساحة عمل Slack",
+  "integrations.slack.commandPath": "رابط الأوامر",
+  "integrations.slack.secretOnce": "سر التوقيع (يظهر مرة واحدة — احفظه في تطبيق Slack):",
+  "integrations.slack.hint": "أوامر Slash ‏/cve-help و/cve-thanks و/cve-recognize ترسل إلى هذا الرابط.",
+  "integrations.action.rotate": "تدوير السر",
+  "integrations.slack.workspaceName": "اسم مساحة العمل"
 }

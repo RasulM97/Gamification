@@ -1169,5 +1169,22 @@
   "incentives.approvals.incentiveRequest": "インセンティブ申請",
   "incentives.approvals.safetyReview": "安全性レビュー",
   "integrations.action.disable": "無効化",
-  "integrations.action.enable": "有効化"
+  "integrations.action.enable": "有効化",
+  "event.helpRouted": "{{requesterName}}さんが{{scopeName}}でヘルプを求めています: {{title}}",
+  "event.helpEscalated": "エスカレーション: {{requesterName}}さんが{{scopeName}}でまだヘルプを必要としています: {{title}}",
+  "event.helpRoutingUnresolved": "現在、ヘルプ依頼に対応できる人がいません: {{title}}",
+  "event.approvalRequested": "{{subjectName}}さんへのインセンティブが承認待ちです。",
+  "people.help.routing.ROUTED": "ルーティング済み",
+  "people.help.routing.UNRESOLVED": "受信者待ち",
+  "people.help.routing.ESCALATED": "エスカレーション済み",
+  "capabilities.SLACK_CONNECTOR": "Slack コネクタ",
+  "capabilities.SLACK_CONNECTOR.description": "接続された Slack ワークスペースからヘルプ依頼、感謝、表彰を行えるようにします。",
+  "integrations.slack.title": "Slack",
+  "integrations.slack.teamId": "Slack チーム ID",
+  "integrations.slack.create": "Slack ワークスペースを接続",
+  "integrations.slack.commandPath": "コマンド URL",
+  "integrations.slack.secretOnce": "署名シークレット（一度だけ表示されます — Slack アプリに保存してください）:",
+  "integrations.slack.hint": "スラッシュコマンド /cve-help、/cve-thanks、/cve-recognize はこの URL に送信されます。",
+  "integrations.action.rotate": "シークレットをローテーション",
+  "integrations.slack.workspaceName": "ワークスペース名"
 }

@@ -31,6 +31,7 @@ def test_approval_golden(approval_db,case):
     request=create_request(db,admin,source['decision']['decisionId']); db.commit()
     assert request['status']=='PENDING'
     assert request['requiredAuthority']==('MANAGER_OR_ADMIN' if case.get('hint')=='MANAGER' else 'ADMIN')
+    request_ids={request['id']}
     if kind=='decide':
         actor=db.get(User,case['actor']); body={'decision':case.get('command','APPROVED')}
         if 'error' in case:
@@ -58,6 +59,7 @@ def test_approval_golden(approval_db,case):
             assert pd['decisionId']!=source['decision']['decisionId']
             second=create_request(db,admin,pd['decisionId']); db.commit()
             assert second['id']!=request['id']
+            request_ids.add(second['id'])
         # Changes to current configuration are intentional in these scenarios.
         before={k:v for k,v in before.items() if k not in ('rules','policies','policy_decisions')}
     elif kind=='immutable':
@@ -77,5 +79,13 @@ def test_approval_golden(approval_db,case):
         assert db.get(ApprovalDecision,result['finalDecision']['id']).approval_request_id==request['id']
         assert db.scalar(sa.select(sa.func.count()).select_from(ApprovalRequest))==1
     after=rows()
-    assert {k:v for k,v in after.items() if k in before and k not in ('approval_requests','approval_decisions')} == {
-        k:v for k,v in before.items() if k not in ('approval_requests','approval_decisions')}
+    # WS1 (founder-approved): request creation fans out APPROVAL_REQUESTED
+    # in-app + outbox rows. Everything in those tables must reference THIS
+    # request; every other table remains byte-identical.
+    for table, column in (('notifications', 'params'), ('notification_deliveries', 'params')):
+        for raw in set(after.get(table, [])) - set(before.get(table, [])):
+            assert json.loads(raw)['event_type'] == 'APPROVAL_REQUESTED', (table, raw)
+            assert json.loads(raw)[column]['approvalRequestId'] in request_ids, (table, raw)
+    unchanged = ('approval_requests', 'approval_decisions', 'notifications', 'notification_deliveries')
+    assert {k:v for k,v in after.items() if k in before and k not in unchanged} == {
+        k:v for k,v in before.items() if k not in unchanged}

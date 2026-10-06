@@ -1169,5 +1169,22 @@
   "incentives.approvals.incentiveRequest": "인센티브 요청",
   "incentives.approvals.safetyReview": "안전 검토",
   "integrations.action.disable": "비활성화",
-  "integrations.action.enable": "활성화"
+  "integrations.action.enable": "활성화",
+  "event.helpRouted": "{{requesterName}}님이 {{scopeName}}에서 도움을 요청했습니다: {{title}}",
+  "event.helpEscalated": "에스컬레이션됨: {{requesterName}}님이 {{scopeName}}에서 아직 도움이 필요합니다: {{title}}",
+  "event.helpRoutingUnresolved": "현재 도움 요청을 받을 수 있는 사람이 없습니다: {{title}}",
+  "event.approvalRequested": "{{subjectName}}님의 인센티브가 승인을 기다리고 있습니다.",
+  "people.help.routing.ROUTED": "전달됨",
+  "people.help.routing.UNRESOLVED": "수신자 대기 중",
+  "people.help.routing.ESCALATED": "에스컬레이션됨",
+  "capabilities.SLACK_CONNECTOR": "Slack 커넥터",
+  "capabilities.SLACK_CONNECTOR.description": "연결된 Slack 워크스페이스에서 도움 요청, 감사, 인정을 할 수 있게 합니다.",
+  "integrations.slack.title": "Slack",
+  "integrations.slack.teamId": "Slack 팀 ID",
+  "integrations.slack.create": "Slack 워크스페이스 연결",
+  "integrations.slack.commandPath": "명령 URL",
+  "integrations.slack.secretOnce": "서명 시크릿(한 번만 표시됨 — Slack 앱에 저장하세요):",
+  "integrations.slack.hint": "슬래시 명령 /cve-help, /cve-thanks, /cve-recognize가 이 URL로 전송됩니다.",
+  "integrations.action.rotate": "시크릿 교체",
+  "integrations.slack.workspaceName": "워크스페이스 이름"
 }

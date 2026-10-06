@@ -104,7 +104,7 @@ def test_help_lifecycle_ownership_history_and_tenant(collab):
     assert db.scalar(sa.select(CanonicalEvent.type))=='internal.help.completed'
     assert db.scalar(sa.select(CanonicalEvent.subject_id))=='ap-employee'
     assert db.scalar(sa.select(sa.func.count()).select_from(Activity))==4
-    assert db.scalar(sa.select(sa.func.count()).select_from(Notification))==3
+    assert db.scalar(sa.select(sa.func.count()).select_from(Notification))==5  # WS1: +2 HELP_ROUTED to the two active gold-a Admins (company-scope administrative fallback)
     assert db.scalar(sa.select(sa.func.count()).select_from(LedgerTransaction))==0
 
 

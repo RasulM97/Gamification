@@ -69,8 +69,9 @@ test('admin: integrations view shows source status, identities and attribution',
   await expect(page.locator('.content')).toContainText('Identity mapping')
   await expect(page.locator('.content')).toContainText('Resource attribution')
   await expect(page.locator('.content')).toContainText('Webhook')
-  /* demo fixture ships one ACTIVE GitHub source with a Disable toggle */
-  await expect(page.getByRole('button', { name: 'Disable' })).toBeVisible()
+  /* demo fixture ships one ACTIVE GitHub source with a Disable toggle;
+     WS1 adds a second ACTIVE Slack workspace below, so scope to the first */
+  await expect(page.getByRole('button', { name: 'Disable' }).first()).toBeVisible()
 })
 
 test('admin: organization panel auto-loads demo units read-only', async ({ page }) => {

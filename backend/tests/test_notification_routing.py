@@ -105,8 +105,15 @@ def test_batch_fanout_has_constant_queries_and_unique_recipients(db, count):
 
 def test_architecture_and_single_live_writer():
     root = Path(__file__).parents[1] / 'app'
+    # WS1 additions (founder-approved selective push): the outbox path lives in
+    # this package — model/push/outbound/email/delivery/approval_push — so it
+    # needs smtp/time/config plumbing and the approvals hook subscription.
+    # Authority resolution itself stays in approvals.notify; 'approvals' here
+    # is only the hooks module (dependency inversion, never the reverse).
     allowed = {'collections', 'copy', 'dataclasses', 'json', 'math', 'typing', 'sqlalchemy',
-               'domain', 'events', 'models', 'contracts', 'in_app'}
+               'domain', 'events', 'models', 'contracts', 'in_app',
+               'smtplib', 'email', 'time', 'config',
+               'model', 'push', 'outbound', 'router', 'approvals'}
     for path in (root / 'notifications').glob('*.py'):
         for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
             if isinstance(node, ast.ImportFrom):

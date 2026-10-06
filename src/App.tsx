@@ -69,6 +69,8 @@ function Shell() {
   const peopleEnabled = IS_DEMO || state.capabilities === undefined
     || !!(state.capabilities.THANKS ?? true) || !!(state.capabilities.RECOGNITION ?? true) || !!(state.capabilities.HELP ?? true)
   const githubEnabled = IS_DEMO || state.capabilities?.GITHUB_CONNECTOR === true
+  const slackEnabled = IS_DEMO || state.capabilities?.SLACK_CONNECTOR === true
+  const integrationsEnabled = githubEnabled || slackEnabled
   const taskViews: View[] = ['tasks', 'mywork', 'available', 'reviews', 'attention']
 
   const [view, setView] = useState<View>('overview')
@@ -103,6 +105,11 @@ function Shell() {
   const [bellTab, setBellTab] = useState<'tasks' | 'rewards'>('tasks')
   const unreadTasks = myNotices.filter(n => !n.read && noticeTab(n) === 'TASKS').length
   const unreadRewards = myNotices.filter(n => !n.read && noticeTab(n) === 'REWARDS').length
+  /* WS1 selective push surfaces as nav badges too: actionable Help routing on
+     People, pending incentive approvals on Incentives. */
+  const helpPushCount = myNotices.filter(n =>
+    !n.read && (n.eventType === 'HELP_ROUTED' || n.eventType === 'HELP_ESCALATED')).length
+  const approvalPushCount = myNotices.filter(n => !n.read && n.eventType === 'APPROVAL_REQUESTED').length
   const bellNotices = myNotices.filter(n => noticeTab(n).toLowerCase() === bellTab)
   const reviewCount = state.tasks.filter(t => t.status === 'SUBMITTED' && canReviewTask(state, t, me)).length
   const attentionCount = selectNeedsAttention(state, me).total
@@ -173,7 +180,7 @@ function Shell() {
       ...(peopleEnabled ? [{
         /* Cohesion F1: E8 collaboration as a product surface, not an API. */
         groupKey: 'common.people', items: [
-          { v: 'people', labelKey: 'people.title', icon: '♥' } as NavItem,
+          { v: 'people', labelKey: 'people.title', icon: '♥', badge: helpPushCount } as NavItem,
         ],
       }] : []), {
         groupKey: 'common.economy', items: [
@@ -188,12 +195,12 @@ function Shell() {
            is separate from redemption FULFILLMENT in Economy. Managers see
            their scoped approval queue only; admins get the full workspace. */
         groupKey: 'common.incentives', items: [
-          { v: 'incentives', labelKey: isAdmin ? 'incentives.title' : 'nav.incentiveApprovals', icon: '✦' },
+          { v: 'incentives', labelKey: isAdmin ? 'incentives.title' : 'nav.incentiveApprovals', icon: '✦', badge: approvalPushCount },
         ],
       },
       /* Cohesion F2: integrations admin — hidden when the capability is
          disabled; the API blocks direct calls the same way. */
-      ...(isAdmin && githubEnabled ? [{
+      ...(isAdmin && integrationsEnabled ? [{
         groupKey: 'common.integrations', items: [
           { v: 'integrations', labelKey: 'integrations.title', icon: '⎇' } as NavItem,
         ],
@@ -219,7 +226,7 @@ function Shell() {
       },
       ...(peopleEnabled ? [{
         groupKey: 'common.people', items: [
-          { v: 'people', labelKey: 'people.title', icon: '♥' } as NavItem,
+          { v: 'people', labelKey: 'people.title', icon: '♥', badge: helpPushCount } as NavItem,
         ],
       }] : []), {
         groupKey: 'common.economy', items: [

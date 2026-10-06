@@ -35,6 +35,12 @@ from .approvals.routes import router as approvals_router
 from .economic_effects.routes import router as economic_router
 from .collaboration.routes import router as collaboration_router
 from .github_connector.routes import router as github_router
+from .slack_connector.routes import router as slack_router
+from .notifications.approval_push import register as register_approval_push
+
+# WS1: approvals publishes request creation; notifications pushes (approvals
+# never imports notifications — dependency boundary is test-enforced).
+register_approval_push()
 from .shadow.routes import router as shadow_router
 from .incentive_safety.routes import router as safety_router
 
@@ -109,6 +115,7 @@ app.include_router(approvals_router)
 app.include_router(economic_router)
 app.include_router(collaboration_router)
 app.include_router(github_router)
+app.include_router(slack_router)
 app.include_router(shadow_router)
 app.include_router(safety_router)
 

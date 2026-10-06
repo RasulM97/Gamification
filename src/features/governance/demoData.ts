@@ -10,7 +10,7 @@
 import type {
   AppreciationItem, ApprovalItem, CandidateItem, DecisionItem, EffectItem, EventItem,
   GithubAttributionItem, GithubIdentityItem, GithubSourceItem, HelpItem, OrgUnit,
-  PolicyItem, RuleItem, SafetyEvalItem, ShadowItem,
+  PolicyItem, RuleItem, SafetyEvalItem, ShadowItem, SlackWorkspaceItem,
 } from './types'
 
 const H = 3600e3, D = 24 * H
@@ -196,6 +196,16 @@ export function demoGovernance(now = Date.now()) {
       effectiveFrom: now - 30 * D, effectiveUntil: now - 10 * D },
   ]
 
+  /* WS1 demo: one bound Slack workspace with two explicitly mapped identities. */
+  const slackWorkspaces: SlackWorkspaceItem[] = [
+    { id: 'cw-1', provider: 'SLACK', name: 'Aster Dynamics Slack', externalTeamId: 'T04ASTERDYN',
+      status: 'ACTIVE', commandPath: '/api/channels/slack/demo-slack-key', createdAt: now - 9 * D, updatedAt: now - 9 * D },
+  ]
+  const slackIdentities = [
+    { workspaceId: 'cw-1', externalUserId: 'U04PRIYA', userId: 'u-priya' },
+    { workspaceId: 'cw-1', externalUserId: 'U04JONAS', userId: 'u-jonas' },
+  ]
+
   const thanks: AppreciationItem[] = [
     { id: 'th-1', companyId: 'co-aster', senderUserId: 'u-priya', recipientUserId: 'u-jonas',
       message: 'Covered my client call while I was stuck in the audit — thank you!', createdAt: now - 30 * H,
@@ -212,16 +222,17 @@ export function demoGovernance(now = Date.now()) {
     { id: 'help-1', companyId: 'co-aster', requesterUserId: 'u-aisha', title: 'ERP export access',
       description: 'Need the Q3 commission extract permissions for the reconciliation task.',
       status: 'OPEN', createdAt: now - 6 * H, acceptedByUserId: null, acceptedAt: null,
-      finishedAt: null, confirmedAt: null },
+      finishedAt: null, confirmedAt: null, routingStatus: 'ESCALATED',
+      routedAt: now - 6 * H, escalatedAt: now - 2 * H },
     { id: 'help-2', companyId: 'co-aster', requesterUserId: 'u-priya', title: 'Variance report review',
       description: 'Second pair of eyes on the warehouse A variance report.',
       status: 'CONFIRMED', createdAt: now - 5 * D, acceptedByUserId: 'u-jonas', acceptedAt: now - 5 * D,
-      finishedAt: now - 4 * D - 2 * H, confirmedAt: now - 4 * D },
+      finishedAt: now - 4 * D - 2 * H, confirmedAt: now - 4 * D, routingStatus: 'ROUTED', routedAt: now - 5 * D },
   ]
 
   return { orgUnits, rules, policies, events, candidates, decisions, safety, approvals,
            effects, shadow, githubSources, githubIdentities, githubAttributions,
-           thanks, recognition, help }
+           slackWorkspaces, slackIdentities, thanks, recognition, help }
 }
 
 export type DemoGovernance = ReturnType<typeof demoGovernance>

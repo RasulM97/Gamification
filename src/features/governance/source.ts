@@ -12,9 +12,9 @@ import { api } from '../../api'
 import { IS_DEMO } from '../../runtime'
 import { demoGovernance, type DemoGovernance } from './demoData'
 import type {
-  AppreciationItem, ApprovalItem, CandidateItem, DecisionItem, EffectItem, EventItem,
-  GithubAttributionItem, GithubIdentityItem, GithubSourceItem, GovernanceSource, HelpItem,
-  OrgUnit, Page, PolicyItem, RuleItem, SafetyEvalItem, ShadowItem,
+  AppreciationItem, ApprovalItem, CandidateItem, ChannelIdentityItem, DecisionItem, EffectItem,
+  EventItem, GithubAttributionItem, GithubIdentityItem, GithubSourceItem, GovernanceSource, HelpItem,
+  OrgUnit, Page, PolicyItem, RuleItem, SafetyEvalItem, ShadowItem, SlackWorkspaceItem,
 } from './types'
 
 const page = <T>(items: T[], offset = 0, limit = 100): Page<T> => ({ items, offset, limit })
@@ -89,6 +89,20 @@ const server: GovernanceSource = {
   },
   async assignGithubResource(sourceId, kind, resourceId, projectId) {
     await api.put(`/integrations/github/${sourceId}/resources/${kind}/${resourceId}/project`, { projectId })
+  },
+  async listSlackWorkspaces() {
+    return (await api.get<{ workspaces: SlackWorkspaceItem[] }>('/integrations/slack')).workspaces
+  },
+  createSlackWorkspace: (name, externalTeamId) =>
+    api.post<SlackWorkspaceItem & { secret?: string }>('/integrations/slack', { name, externalTeamId }),
+  setSlackWorkspaceStatus: (id, status) => api.patch<SlackWorkspaceItem>(`/integrations/slack/${id}`, { status }),
+  rotateSlackSecret: id =>
+    api.post<SlackWorkspaceItem & { secret?: string }>(`/integrations/slack/${id}/rotate-secret`, {}),
+  async listSlackIdentities(workspaceId) {
+    return (await api.get<{ mappings: ChannelIdentityItem[] }>(`/integrations/slack/${workspaceId}/identities`)).mappings
+  },
+  async mapSlackIdentity(workspaceId, externalUserId, userId) {
+    await api.put(`/integrations/slack/${workspaceId}/identities/${externalUserId}`, { userId })
   },
   listAppreciation: kind => api.get<AppreciationItem[]>(`/collaboration/${kind}`),
   async giveThanks(recipientUserId, message) {
@@ -190,6 +204,37 @@ const demoSource: GovernanceSource = {
     if (projectId)
       s.githubAttributions.push({ id: `ga-${kind}-${resourceId}-${now}`, resourceKind: kind, resourceId,
         projectId, effectiveFrom: now, effectiveUntil: null })
+  },
+  listSlackWorkspaces: async () => demo_state().slackWorkspaces,
+  async createSlackWorkspace(name, externalTeamId) {
+    const s = demo_state()
+    const now = Date.now()
+    const item: SlackWorkspaceItem = {
+      id: `cw-demo-${now}`, provider: 'SLACK', name, externalTeamId, status: 'ACTIVE',
+      commandPath: `/api/channels/slack/demo-key-${s.slackWorkspaces.length + 1}`,
+      createdAt: now, updatedAt: now,
+    }
+    s.slackWorkspaces.push(item)
+    return { ...item, secret: 'demo-signing-secret-shown-once' }
+  },
+  async setSlackWorkspaceStatus(id, status) {
+    const workspace = demo_state().slackWorkspaces.find(w => w.id === id)
+    if (workspace) { workspace.status = status; workspace.updatedAt = Date.now() }
+    return workspace as SlackWorkspaceItem
+  },
+  async rotateSlackSecret(id) {
+    const workspace = demo_state().slackWorkspaces.find(w => w.id === id)
+    if (workspace) workspace.updatedAt = Date.now()
+    return { ...(workspace as SlackWorkspaceItem), secret: 'demo-signing-secret-rotated' }
+  },
+  listSlackIdentities: async workspaceId =>
+    demo_state().slackIdentities.filter(m => m.workspaceId === workspaceId)
+      .map(({ externalUserId, userId }) => ({ externalUserId, userId })),
+  async mapSlackIdentity(workspaceId, externalUserId, userId) {
+    const s = demo_state()
+    const existing = s.slackIdentities.find(m => m.workspaceId === workspaceId && m.externalUserId === externalUserId)
+    if (existing) existing.userId = userId
+    else s.slackIdentities.push({ workspaceId, externalUserId, userId })
   },
   listAppreciation: async (kind, actorId) =>
     demo_state()[kind].filter(a => !actorId || a.senderUserId === actorId || a.issuerUserId === actorId || a.recipientUserId === actorId),

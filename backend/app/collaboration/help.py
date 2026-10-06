@@ -8,13 +8,15 @@ from ..domain import DomainError
 from ..models import now_ms
 from .model import HelpRequest
 from .common import command,members,retry_lock,history,emit
+from . import routing
 
 
 def view(row):
     return dict(**({'scope':scope(row)} if row.team_id or row.project_id else {}),id=row.id,companyId=row.company_id,requesterUserId=row.requester_user_id,
         title=row.title,description=row.description,status=row.status,createdAt=row.created_at,
         acceptedByUserId=row.accepted_by_user_id,acceptedAt=row.accepted_at,
-        finishedAt=row.finished_at,confirmedAt=row.confirmed_at)
+        finishedAt=row.finished_at,confirmedAt=row.confirmed_at,
+        routingStatus=row.routing_status,routedAt=row.routed_at,escalatedAt=row.escalated_at)
 
 
 @organization.guarded
@@ -34,6 +36,9 @@ def create(db,actor,body):
                     description=data['description'],submission_id=data['submissionId'])
     db.add(row); db.flush()
     history(db,actor,'HELP_REQUESTED',{'helpId':row.id,'title':row.title})
+    # WS1: route to the bounded scope audience (never a broadcast). The
+    # requester is excluded; recipient snapshots land in help_routings.
+    routing.route_initial(db,actor,row,context)
     return view(row)
 
 

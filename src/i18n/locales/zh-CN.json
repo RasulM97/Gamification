@@ -1169,5 +1169,22 @@
   "incentives.approvals.incentiveRequest": "激励请求",
   "incentives.approvals.safetyReview": "安全复核",
   "integrations.action.disable": "停用",
-  "integrations.action.enable": "启用"
+  "integrations.action.enable": "启用",
+  "event.helpRouted": "{{requesterName}}在{{scopeName}}中需要帮助：{{title}}",
+  "event.helpEscalated": "已升级：{{requesterName}}在{{scopeName}}中仍需要帮助：{{title}}",
+  "event.helpRoutingUnresolved": "暂时没有人可以处理您的帮助请求：{{title}}",
+  "event.approvalRequested": "{{subjectName}}的一笔奖励需要您的审批。",
+  "people.help.routing.ROUTED": "已送达",
+  "people.help.routing.UNRESOLVED": "等待接收人",
+  "people.help.routing.ESCALATED": "已升级",
+  "capabilities.SLACK_CONNECTOR": "Slack 连接器",
+  "capabilities.SLACK_CONNECTOR.description": "允许成员在已连接的 Slack 工作区中请求帮助、表达感谢和表彰同事。",
+  "integrations.slack.title": "Slack",
+  "integrations.slack.teamId": "Slack 团队 ID",
+  "integrations.slack.create": "连接 Slack 工作区",
+  "integrations.slack.commandPath": "命令 URL",
+  "integrations.slack.secretOnce": "签名密钥（仅显示一次——请保存到您的 Slack 应用中）：",
+  "integrations.slack.hint": "斜杠命令 /cve-help、/cve-thanks 和 /cve-recognize 会发送到此 URL。",
+  "integrations.action.rotate": "轮换密钥",
+  "integrations.slack.workspaceName": "工作区名称"
 }

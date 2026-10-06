@@ -80,6 +80,14 @@ export interface GithubSourceItem {
 
 export interface GithubIdentityItem { externalUserId: string; userId: string }
 
+/* WS1 Slack intake (Decision B): workspace binding + explicit identity mapping. */
+export interface SlackWorkspaceItem {
+  id: string; provider: 'SLACK'; name: string; externalTeamId: string
+  status: 'ACTIVE' | 'DISABLED'; commandPath: string; createdAt: number; updatedAt: number
+}
+
+export interface ChannelIdentityItem { externalUserId: string; userId: string }
+
 export interface GithubAttributionItem {
   id: string; resourceKind: 'issue' | 'pull_request'; resourceId: string
   projectId: string | null; effectiveFrom: number; effectiveUntil: number | null
@@ -96,6 +104,8 @@ export interface HelpItem {
   requesterUserId: string; title: string; description: string; status: string
   createdAt: number; acceptedByUserId: string | null; acceptedAt: number | null
   finishedAt: number | null; confirmedAt: number | null
+  /* WS1 routing state (Decision A): ROUTED | UNRESOLVED | ESCALATED. */
+  routingStatus?: string; routedAt?: number | null; escalatedAt?: number | null
 }
 
 export interface OrgUnit {
@@ -133,6 +143,13 @@ export interface GovernanceSource {
   mapGithubIdentity(sourceId: string, externalUserId: string, userId: string): Promise<void>
   listGithubAttributions(sourceId: string): Promise<GithubAttributionItem[]>
   assignGithubResource(sourceId: string, kind: 'issue' | 'pull_request', resourceId: string, projectId: string | null): Promise<void>
+  /* Slack intake (WS1). secret is returned exactly once at create/rotate. */
+  listSlackWorkspaces(): Promise<SlackWorkspaceItem[]>
+  createSlackWorkspace(name: string, externalTeamId: string): Promise<SlackWorkspaceItem & { secret?: string }>
+  setSlackWorkspaceStatus(id: string, status: 'ACTIVE' | 'DISABLED'): Promise<SlackWorkspaceItem>
+  rotateSlackSecret(id: string): Promise<SlackWorkspaceItem & { secret?: string }>
+  listSlackIdentities(workspaceId: string): Promise<ChannelIdentityItem[]>
+  mapSlackIdentity(workspaceId: string, externalUserId: string, userId: string): Promise<void>
   /* People (E8). actorId is demo-only: the server scopes results to the
      authenticated actor; the demo source applies the same filter locally. */
   listAppreciation(kind: 'thanks' | 'recognition', actorId?: string): Promise<AppreciationItem[]>

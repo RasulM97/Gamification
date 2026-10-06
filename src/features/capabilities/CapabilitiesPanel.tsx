@@ -5,7 +5,7 @@ import { api } from '../../api'
 import { useI18n } from '../../i18n'
 import { Panel } from '../../ui'
 
-const KEYS = ['TASK_LITE', 'RECOGNITION', 'THANKS', 'HELP', 'GITHUB_CONNECTOR', 'SHADOW_MODE', 'INCENTIVE_SAFETY'] as const
+const KEYS = ['TASK_LITE', 'RECOGNITION', 'THANKS', 'HELP', 'GITHUB_CONNECTOR', 'SLACK_CONNECTOR', 'SHADOW_MODE', 'INCENTIVE_SAFETY'] as const
 
 export function CapabilitiesPanel() {
   const { state, refresh } = useStore(), { t } = useI18n()

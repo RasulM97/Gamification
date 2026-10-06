@@ -9,6 +9,8 @@ from ..canonical_events.model import CanonicalEvent
 from .model import ApprovalRequest, ApprovalDecision
 from .contracts import required_authority, AUTHORITIES, STATUSES
 from .authorization import management_actor, require_authority
+from .hooks import REQUEST_CREATED
+from .notify import request_intents
 from .validation import command
 from ..incentive_safety.authority import require_review, lock as lock_safety
 
@@ -50,11 +52,20 @@ def create_request(db, actor, policy_decision_id, *, safety_evaluation_id=None):
         trigger='INCENTIVE_SAFETY' if safety_evaluation_id else 'POLICY',safety_evaluation_id=safety_evaluation_id)
     statement=(statement.on_conflict_do_nothing(constraint='uq_approval_request_safety') if safety_evaluation_id
         else statement.on_conflict_do_nothing(index_elements=['policy_decision_id'],index_where=ApprovalRequest.safety_evaluation_id.is_(None)))
-    db.execute(statement)
+    result = db.execute(statement)
+    created = getattr(result, 'rowcount', 0) > 0
     row = db.execute(select(ApprovalRequest,ApprovalDecision).outerjoin(ApprovalDecision,
         ApprovalDecision.approval_request_id==ApprovalRequest.id).where(
             ApprovalRequest.company_id==actor.company_id, ApprovalRequest.policy_decision_id==source.id,
             ApprovalRequest.safety_evaluation_id==safety_evaluation_id)).one()
+    if created:
+        # WS1: a new human-decision request pushes to current authority holders.
+        # Approvals never imports subscribers (dependency boundary); listeners
+        # are wired at bootstrap — see notifications.approval_push.register().
+        intents = request_intents(db, actor, row[0])
+        if intents:
+            for listener in REQUEST_CREATED:
+                listener(db, intents)
     return view(*row)
 
 

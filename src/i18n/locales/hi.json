@@ -1169,5 +1169,22 @@
   "incentives.approvals.incentiveRequest": "प्रोत्साहन अनुरोध",
   "incentives.approvals.safetyReview": "सुरक्षा समीक्षा",
   "integrations.action.disable": "अक्षम करें",
-  "integrations.action.enable": "सक्षम करें"
+  "integrations.action.enable": "सक्षम करें",
+  "event.helpRouted": "{{requesterName}} को {{scopeName}} में सहायता चाहिए: {{title}}",
+  "event.helpEscalated": "एस्केलेट किया गया: {{requesterName}} को {{scopeName}} में अभी भी सहायता चाहिए: {{title}}",
+  "event.helpRoutingUnresolved": "आपके सहायता अनुरोध के लिए अभी कोई उपलब्ध नहीं है: {{title}}",
+  "event.approvalRequested": "{{subjectName}} के लिए एक इन्सेंटिव आपके अनुमोदन की प्रतीक्षा में है।",
+  "people.help.routing.ROUTED": "रूट किया गया",
+  "people.help.routing.UNRESOLVED": "प्राप्तकर्ताओं की प्रतीक्षा में",
+  "people.help.routing.ESCALATED": "एस्केलेट किया गया",
+  "capabilities.SLACK_CONNECTOR": "Slack कनेक्टर",
+  "capabilities.SLACK_CONNECTOR.description": "कनेक्टेड Slack वर्कस्पेस से सहायता माँगने, धन्यवाद देने और सहकर्मियों को पहचानने की अनुमति देता है।",
+  "integrations.slack.title": "Slack",
+  "integrations.slack.teamId": "Slack टीम ID",
+  "integrations.slack.create": "Slack वर्कस्पेस कनेक्ट करें",
+  "integrations.slack.commandPath": "कमांड URL",
+  "integrations.slack.secretOnce": "साइनिंग सीक्रेट (केवल एक बार दिखाया जाता है — इसे अपने Slack ऐप में सहेजें):",
+  "integrations.slack.hint": "स्लैश कमांड /cve-help, /cve-thanks और /cve-recognize इस URL पर पोस्ट होते हैं।",
+  "integrations.action.rotate": "सीक्रेट बदलें",
+  "integrations.slack.workspaceName": "वर्कस्पेस का नाम"
 }

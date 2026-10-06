@@ -1169,5 +1169,22 @@
   "incentives.approvals.incentiveRequest": "Teşvik isteği",
   "incentives.approvals.safetyReview": "Güvenlik incelemesi",
   "integrations.action.disable": "Devre dışı bırak",
-  "integrations.action.enable": "Etkinleştir"
+  "integrations.action.enable": "Etkinleştir",
+  "event.helpRouted": "{{requesterName}}, {{scopeName}} kapsamında yardım istiyor: {{title}}",
+  "event.helpEscalated": "Yükseltildi: {{requesterName}} hâlâ {{scopeName}} kapsamında yardım bekliyor: {{title}}",
+  "event.helpRoutingUnresolved": "Yardım isteğiniz için şu anda uygun kimse yok: {{title}}",
+  "event.approvalRequested": "{{subjectName}} için bir teşvik onayınızı bekliyor.",
+  "people.help.routing.ROUTED": "Yönlendirildi",
+  "people.help.routing.UNRESOLVED": "Alıcı bekleniyor",
+  "people.help.routing.ESCALATED": "Yükseltildi",
+  "capabilities.SLACK_CONNECTOR": "Slack bağlayıcısı",
+  "capabilities.SLACK_CONNECTOR.description": "Bağlı bir Slack çalışma alanından yardım isteme, teşekkür etme ve takdir etmeyi sağlar.",
+  "integrations.slack.title": "Slack",
+  "integrations.slack.teamId": "Slack ekip kimliği",
+  "integrations.slack.create": "Slack çalışma alanı bağla",
+  "integrations.slack.commandPath": "Komut URL’si",
+  "integrations.slack.secretOnce": "İmza sırrı (yalnızca bir kez gösterilir — Slack uygulamanıza kaydedin):",
+  "integrations.slack.hint": "/cve-help, /cve-thanks ve /cve-recognize eğik çizgi komutları bu URL’ye gönderilir.",
+  "integrations.action.rotate": "Sırrı döndür",
+  "integrations.slack.workspaceName": "Çalışma alanı adı"
 }

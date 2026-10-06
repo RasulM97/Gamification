@@ -1169,5 +1169,22 @@
   "incentives.approvals.incentiveRequest": "درخواست مشوق",
   "incentives.approvals.safetyReview": "بازبینی ایمنی",
   "integrations.action.disable": "غیرفعال کردن",
-  "integrations.action.enable": "فعال کردن"
+  "integrations.action.enable": "فعال کردن",
+  "event.helpRouted": "{{requesterName}} در {{scopeName}} به کمک نیاز دارد: {{title}}",
+  "event.helpEscalated": "ارجاع فوری: {{requesterName}} هنوز در {{scopeName}} به کمک نیاز دارد: {{title}}",
+  "event.helpRoutingUnresolved": "فعلاً کسی برای درخواست کمک شما در دسترس نیست: {{title}}",
+  "event.approvalRequested": "یک پاداش برای {{subjectName}} نیاز به تأیید شما دارد.",
+  "people.help.routing.ROUTED": "هدایت شد",
+  "people.help.routing.UNRESOLVED": "در انتظار گیرندگان",
+  "people.help.routing.ESCALATED": "ارجاع فوری شد",
+  "capabilities.SLACK_CONNECTOR": "اتصال Slack",
+  "capabilities.SLACK_CONNECTOR.description": "امکان درخواست کمک، تشکر و قدردانی از همکاران را از فضای کاری Slack متصل فراهم می‌کند.",
+  "integrations.slack.title": "Slack",
+  "integrations.slack.teamId": "شناسه تیم Slack",
+  "integrations.slack.create": "اتصال فضای کاری Slack",
+  "integrations.slack.commandPath": "نشانی فرمان",
+  "integrations.slack.secretOnce": "رمز امضا (فقط یک بار نمایش داده می‌شود — آن را در برنامه Slack ذخیره کنید):",
+  "integrations.slack.hint": "دستورهای اسلش ‎/cve-help، ‎/cve-thanks و ‎/cve-recognize به این نشانی ارسال می‌شوند.",
+  "integrations.action.rotate": "چرخش رمز",
+  "integrations.slack.workspaceName": "نام فضای کاری"
 }

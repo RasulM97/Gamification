@@ -1169,5 +1169,22 @@
   "incentives.approvals.incentiveRequest": "Incentive request",
   "incentives.approvals.safetyReview": "Safety review",
   "integrations.action.disable": "Disable",
-  "integrations.action.enable": "Enable"
+  "integrations.action.enable": "Enable",
+  "event.helpRouted": "{{requesterName}} needs help in {{scopeName}}: {{title}}",
+  "event.helpEscalated": "Escalated: {{requesterName}} still needs help in {{scopeName}}: {{title}}",
+  "event.helpRoutingUnresolved": "No one is available for your help request yet: {{title}}",
+  "event.approvalRequested": "An incentive for {{subjectName}} needs your approval.",
+  "people.help.routing.ROUTED": "Routed",
+  "people.help.routing.UNRESOLVED": "Awaiting recipients",
+  "people.help.routing.ESCALATED": "Escalated",
+  "capabilities.SLACK_CONNECTOR": "Slack connector",
+  "capabilities.SLACK_CONNECTOR.description": "Let people ask for help, give thanks and recognize colleagues from a connected Slack workspace.",
+  "integrations.slack.title": "Slack",
+  "integrations.slack.teamId": "Slack team ID",
+  "integrations.slack.create": "Connect Slack workspace",
+  "integrations.slack.commandPath": "Command URL",
+  "integrations.slack.secretOnce": "Signing secret (shown once — store it in your Slack app):",
+  "integrations.slack.hint": "Slash commands /cve-help, /cve-thanks and /cve-recognize post to this URL.",
+  "integrations.action.rotate": "Rotate secret",
+  "integrations.slack.workspaceName": "Workspace name"
 }

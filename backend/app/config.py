@@ -23,5 +23,24 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(',') if o.strip()]
 
+    # WS1 outbound delivery (email). Empty smtp_host disables sending —
+    # outbox rows stay PENDING and inspectable; the product remains honest
+    # about the delivery limitation instead of pretending delivery happened.
+    smtp_host: str = ''
+    smtp_port: int = 587
+    smtp_username: str = ''
+    smtp_password: str = Field(default='', repr=False)
+    smtp_from: str = 'cve@localhost'
+    smtp_starttls: bool = True
+    # Absolute base used in outbound messages so recipients can open CVE.
+    public_base_url: str = 'http://localhost:4180'
+    # Help escalation window (minutes). Bounded: 15 minutes … 7 days.
+    help_escalation_minutes: int = 240
+
+    @property
+    def help_escalation_window_ms(self) -> float:
+        minutes = min(max(self.help_escalation_minutes, 15), 10080)
+        return minutes * 60 * 1000
+
 
 settings = Settings()

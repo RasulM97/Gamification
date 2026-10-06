@@ -68,7 +68,9 @@ def test_deterministic_enterprise_collaboration_workload(golden_db):
     assert statuses==Counter({200:1200,409:600})
     count=lambda model:db.scalar(sa.select(sa.func.count()).select_from(model))
     assert [count(model) for model in (PeerThanks,ManagerRecognition,HelpRequest,CanonicalEvent)]==[300,300,300,900]
-    assert count(Activity)==1800 and count(Notification)==1500
+    # WS1: +300 HELP_ROUTED in-app rows (one routed admin per company per help
+    # request) alongside the frozen 1500; Activity stays untouched at 1800.
+    assert count(Activity)==1800 and count(Notification)==1800
     assert count(LedgerTransaction)==0
     # Explicit economic subset; every competing helper has a participant wallet.
     issued=0; reversed_count=0; expected_balances=Counter()

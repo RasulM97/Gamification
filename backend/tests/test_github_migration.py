@@ -30,5 +30,5 @@ def test_github_migration(mig_url,monkeypatch):
         with pytest.raises(RuntimeError,match='Cannot discard GitHub delivery history'):command.downgrade(cfg,'e80b2d9e2603')
         with eng.connect() as conn:
             assert conn.scalar(sa.text('SELECT count(*) FROM github_deliveries'))==1
-            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='ed01c9e2601'
+            assert conn.scalar(sa.text('SELECT version_num FROM alembic_version'))=='ee01c9e2601'
     finally:eng.dispose()

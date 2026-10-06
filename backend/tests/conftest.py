@@ -50,10 +50,15 @@ from app.rules.model import Rule, RuleCandidate  # noqa: E402,F401
 from app.policies.model import Policy, PolicyDecision  # noqa: E402,F401
 from app.approvals.model import ApprovalRequest, ApprovalDecision  # noqa: E402,F401
 from app.economic_effects.model import EconomicEffect, EconomicReversal  # noqa: E402,F401
-from app.collaboration.model import PeerThanks, ManagerRecognition, HelpRequest  # noqa: E402,F401
+from app.collaboration.model import PeerThanks, ManagerRecognition, HelpRequest, HelpRouting  # noqa: E402,F401
 from app.github_connector.model import GithubSource, GithubIdentity, GithubDelivery  # noqa: E402,F401
+from app.slack_connector.model import ChannelWorkspace, ChannelIdentity, ChannelDelivery  # noqa: E402,F401
+from app.notifications.model import NotificationDelivery  # noqa: E402,F401
+from app.notifications.approval_push import register as register_approval_push  # noqa: E402
 from app.shadow.model import ShadowEvaluation  # noqa: E402,F401
 from app.seed import run as seed_run  # noqa: E402
+
+register_approval_push()  # WS1 wiring, idempotent; main.py registers for prod
 
 Base.metadata.create_all(engine)  # schema for tests (alembic owns prod schema)
 

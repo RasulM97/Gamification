@@ -11,12 +11,16 @@ from ..events import EVENT_TYPES
 from ..models import Redemption, Reward, Task, User
 from .contracts import NotificationChannel, NotificationIntent, NotificationResult
 from .in_app import InAppNotificationChannel
+from .outbound import OutboundChannel
 
 
 class NotificationRouter:
     def __init__(self, db: Session, company_id: str):
         self.db, self.company_id = db, company_id
         self.channel: NotificationChannel = InAppNotificationChannel(db)
+        # WS1: outbound outbox staging rides the same transaction. Only the
+        # three founder-approved push classes fan out (see push.py).
+        self.outbound = OutboundChannel(db)
 
     def notify(self, intent: NotificationIntent) -> NotificationResult:
         return self.notify_many([intent])
@@ -39,6 +43,7 @@ class NotificationRouter:
         # active users awaiting activation. Feature recipient pools may do so.
         eligible = [i for i in batch if users[i.recipient_user_id].active is not False]
         self.channel.stage(eligible)
+        self.outbound.stage(eligible)
         return NotificationResult('STAGED' if eligible else 'SKIPPED',
                                   len(eligible), len(batch) - len(eligible))
 

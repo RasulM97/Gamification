@@ -1169,5 +1169,22 @@
   "incentives.approvals.incentiveRequest": "Запрос поощрения",
   "incentives.approvals.safetyReview": "Проверка безопасности",
   "integrations.action.disable": "Отключить",
-  "integrations.action.enable": "Включить"
+  "integrations.action.enable": "Включить",
+  "event.helpRouted": "{{requesterName}} нужна помощь ({{scopeName}}): {{title}}",
+  "event.helpEscalated": "Эскалация: {{requesterName}} всё ещё нужна помощь ({{scopeName}}): {{title}}",
+  "event.helpRoutingUnresolved": "Пока некому откликнуться на ваш запрос помощи: {{title}}",
+  "event.approvalRequested": "Поощрение для {{subjectName}} ожидает вашего одобрения.",
+  "people.help.routing.ROUTED": "Доставлено",
+  "people.help.routing.UNRESOLVED": "Ожидает получателей",
+  "people.help.routing.ESCALATED": "Эскалировано",
+  "capabilities.SLACK_CONNECTOR": "Подключение Slack",
+  "capabilities.SLACK_CONNECTOR.description": "Позволяет просить помощь, благодарить и отмечать коллег из подключённого пространства Slack.",
+  "integrations.slack.title": "Slack",
+  "integrations.slack.teamId": "ID команды Slack",
+  "integrations.slack.create": "Подключить пространство Slack",
+  "integrations.slack.commandPath": "URL команд",
+  "integrations.slack.secretOnce": "Секрет подписи (показывается один раз — сохраните его в приложении Slack):",
+  "integrations.slack.hint": "Слэш-команды /cve-help, /cve-thanks и /cve-recognize отправляются на этот URL.",
+  "integrations.action.rotate": "Сменить секрет",
+  "integrations.slack.workspaceName": "Название пространства"
 }

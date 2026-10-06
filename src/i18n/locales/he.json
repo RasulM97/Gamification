@@ -1169,5 +1169,22 @@
   "incentives.approvals.incentiveRequest": "בקשת תמריץ",
   "incentives.approvals.safetyReview": "בדיקת בטיחות",
   "integrations.action.disable": "השבתה",
-  "integrations.action.enable": "הפעלה"
+  "integrations.action.enable": "הפעלה",
+  "event.helpRouted": "{{requesterName}} זקוק/ה לעזרה ב{{scopeName}}: {{title}}",
+  "event.helpEscalated": "הסלמה: {{requesterName}} עדיין זקוק/ה לעזרה ב{{scopeName}}: {{title}}",
+  "event.helpRoutingUnresolved": "כרגע אין אף אחד זמין לבקשת העזרה שלך: {{title}}",
+  "event.approvalRequested": "תמריץ עבור {{subjectName}} ממתין לאישורך.",
+  "people.help.routing.ROUTED": "נותב",
+  "people.help.routing.UNRESOLVED": "ממתין לנמענים",
+  "people.help.routing.ESCALATED": "הוסלם",
+  "capabilities.SLACK_CONNECTOR": "חיבור Slack",
+  "capabilities.SLACK_CONNECTOR.description": "מאפשר לבקש עזרה, להודות ולהכיר בתרומת עמיתים מסביבת עבודה מחוברת של Slack.",
+  "integrations.slack.title": "Slack",
+  "integrations.slack.teamId": "מזהה צוות Slack",
+  "integrations.slack.create": "חיבור סביבת עבודה של Slack",
+  "integrations.slack.commandPath": "כתובת פקודות",
+  "integrations.slack.secretOnce": "סוד חתימה (מוצג פעם אחת — שמור אותו באפליקציית Slack):",
+  "integrations.slack.hint": "פקודות הסלאש ‎/cve-help, ‎/cve-thanks ו־‎/cve-recognize נשלחות לכתובת זו.",
+  "integrations.action.rotate": "החלפת סוד",
+  "integrations.slack.workspaceName": "שם סביבת העבודה"
 }

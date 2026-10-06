@@ -134,6 +134,9 @@ export function PeopleView() {
                   <b dir="auto">{h.title}</b>
                   <span className={'bd ' + (h.status === 'OPEN' ? 'bd-important' : h.status === 'CONFIRMED' ? 'bd-normal' : 'bd-none')}>
                     {t('people.help.status.' + h.status)}</span>
+                  {h.status === 'OPEN' && h.routingStatus &&
+                    <span className={'bd ' + (h.routingStatus === 'ESCALATED' ? 'bd-important' : h.routingStatus === 'ROUTED' ? 'bd-normal' : 'bd-none')}>
+                      {t('people.help.routing.' + h.routingStatus)}</span>}
                 </div>
                 <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>
                   {name(h.requesterUserId)} · {ago(h.createdAt)}
