@@ -4,9 +4,15 @@
  * as secondary information (technical depth on demand, never forced). */
 import { currentLocale, translate, useI18n } from '../../i18n'
 
-/* Event types with an authored business phrase. Unknown types fall back to a
- * generic phrase — no guessing from prose, no raw codes for employees. */
-const KNOWN = ['github.pull_request.merged', 'internal.help.confirmed', 'internal.peer.thanks'] as const
+/* Event types with an authored business phrase — exactly the canonical event
+ * catalog the platform emits (GitHub connector + internal collaboration).
+ * Unknown or custom types fall back to a generic phrase — no guessing from
+ * prose, no raw codes for employees. */
+const KNOWN = [
+  'github.pull_request.opened', 'github.pull_request.closed', 'github.pull_request.merged',
+  'github.issue.opened', 'github.issue.closed',
+  'internal.peer.thanks', 'internal.manager.recognition', 'internal.help.completed',
+] as const
 
 export function eventPhrase(type: string | null | undefined, locale = currentLocale()): string {
   if (type && (KNOWN as readonly string[]).includes(type)) return translate(locale, 'provenance.event.' + type)

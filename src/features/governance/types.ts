@@ -86,13 +86,20 @@ export interface ProvenanceSummary {
   safetyOutcome: string | null
 }
 
-/* Employee projection: engine internals (safety outcome, candidate/policy
- * IDs) are deliberately absent. */
-export interface IncentiveProvenanceItem extends Omit<ProvenanceSummary, 'safetyOutcome'> {
-  effectId: string; ledgerTransactionId: string
-  amount: string; status: 'ISSUED' | 'REVERSED'; createdAt: number
-  approval: null | { decision: string; decidedBy: string; decidedAt: number; reasonCode: string | null; note: string | null }
-  reversal: EffectItem['reversal']
+/* Employee projection (WS2 review): deliberately minimal — no engine nouns,
+ * no candidate/policy/safety identifiers, no approver free-text. effectId and
+ * ledgerTransactionId exist only to correlate wallet rows; non-payout outcomes
+ * carry nulls for payout-only fields. */
+export type IncentiveStatus = 'ISSUED' | 'REVERSED'
+  | 'AUTHORIZED_PENDING' | 'PENDING_REVIEW' | 'NOT_APPROVED' | 'NOT_AUTHORIZED' | 'SAFEGUARDED'
+
+export interface IncentiveProvenanceItem {
+  ledgerTransactionId: string | null; effectId: string | null
+  amount: string | null; status: IncentiveStatus; createdAt: number
+  eventType: string | null; occurredAt: number | null
+  ruleName: string | null; policyReason: 'MATCHED_POLICY' | 'DEFAULT_GOVERNANCE' | null
+  decidedBy: string | null; decidedAt: number | null
+  reversal: null | { reasonCode: string; createdAt: number }
 }
 
 export interface ApprovalContext {

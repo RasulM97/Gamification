@@ -1,6 +1,10 @@
 import { Debt } from '../presentation/Debt'
 import { EventText, EventReason, eventText } from '../components/EventText'
 import { MyIncentiveDrawer } from '../features/governance/MyIncentiveDrawer'
+import { EventPhrase } from '../features/governance/ProvenanceText'
+import { useGovData } from '../features/governance/hooks'
+import { governance } from '../features/governance/source'
+import type { IncentiveProvenanceItem } from '../features/governance/types'
 import type { LedgerEntry } from '../domain/model'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
@@ -20,13 +24,23 @@ export function WalletView() {
   /* 'company' = admin's whole-ledger view; otherwise a specific user id. */
   const [viewing, setViewing] = useState(isAdmin ? 'company' : me.id)
   /* WS2-A: own incentive entries get a business-language "why" drawer. */
-  const [whyFor, setWhyFor] = useState<LedgerEntry | null>(null)
+  const [whyFor, setWhyFor] = useState<{ entry?: LedgerEntry; item?: IncentiveProvenanceItem } | null>(null)
   const company = viewing === 'company'
   const targetId = company ? me.id : viewing
   const target = state.users.find(u => u.id === targetId)
   const bal = balanceOf(state, targetId)
   const rows = state.ledger.filter(l => company || l.userId === targetId)
   const user = (id: string) => state.users.find(u => u.id === id)
+
+  /* WS2 review: one role-scoped read feeds both the "why" drawer and the
+     non-payout incentive outcomes section (own wallet only). */
+  const incentives = useGovData(
+    () => (!company && targetId === me.id) ? governance.myIncentives(me.id) : Promise.resolve(null),
+    [company, targetId, me.id])
+  const whyItem = !whyFor ? null
+    : whyFor.item ?? incentives.data?.items.find(i =>
+        i.ledgerTransactionId === whyFor.entry?.id || whyFor.entry?.ref === 'economic-reversal:' + i.effectId) ?? null
+  const outcomes = (incentives.data?.items ?? []).filter(i => i.ledgerTransactionId === null)
 
   const earned = rows.filter(l => l.amount > 0 && l.userId === targetId).reduce((a, l) => a + l.amount, 0)
   const spent = rows.filter(l => l.amount < 0 && l.userId === targetId).reduce((a, l) => a - l.amount, 0)
@@ -124,7 +138,7 @@ export function WalletView() {
                     {/* WS2-A: own incentive entries answer "why did I get this?" — business language, own rows only (the API scopes to the caller). */}
                     {(l.type === 'INCENTIVE_REWARD' || l.type === 'INCENTIVE_REVERSAL') && l.userId === me.id && (
                       <button className="btn" style={{ fontSize: 11.5, padding: '2px 8px', marginInlineStart: 8 }}
-                        data-testid="incentive-why" onClick={() => setWhyFor(l)}>{t('provenance.walletWhy')}</button>
+                        data-testid="incentive-why" onClick={() => setWhyFor({ entry: l })}>{t('provenance.walletWhy')}</button>
                     )}</td>
                   <td><LedgerBadge t={l.type} /></td>
                   <td className="n"><Coin n={l.amount} sign /></td>
@@ -135,7 +149,25 @@ export function WalletView() {
           </table>
         </div>
       </Panel>
-      <MyIncentiveDrawer entry={whyFor} onClose={() => setWhyFor(null)} />
+      {!company && targetId === me.id && outcomes.length > 0 && (
+        <Panel pad={false} title={t('wallet.outcomes')}>
+          {outcomes.map((item, index) => (
+            <div className="aitem" key={index}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <EventPhrase type={item.eventType} />
+                <span className="dim" style={{ fontSize: 12 }}> · {ago(item.occurredAt ?? item.createdAt)}</span>
+                {item.ruleName && <div className="dim" style={{ fontSize: 12 }} dir="auto">{item.ruleName}</div>}
+              </div>
+              <span className={'bd ' + (item.status === 'AUTHORIZED_PENDING' ? 'bd-normal'
+                : item.status === 'PENDING_REVIEW' || item.status === 'SAFEGUARDED' ? 'bd-important' : 'bd-urgent')}>
+                {t('provenance.status.' + item.status)}</span>
+              <button className="btn" data-testid="outcome-why"
+                onClick={() => setWhyFor({ item })}>{t('provenance.walletWhy')}</button>
+            </div>
+          ))}
+        </Panel>
+      )}
+      <MyIncentiveDrawer item={whyItem} open={!!whyFor} loading={incentives.loading} onClose={() => setWhyFor(null)} />
     </div>
   )
 }

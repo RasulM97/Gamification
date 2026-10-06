@@ -14,7 +14,7 @@ import { demoGovernance, type DemoGovernance } from './demoData'
 import type {
   AppreciationItem, ApprovalContext, ApprovalItem, CandidateItem, ChainDetail, ChannelIdentityItem,
   DecisionItem, EffectItem, EventItem, GithubAttributionItem, GithubIdentityItem, GithubSourceItem,
-  GovernanceSource, HelpItem, IncentiveProvenanceItem, OrgUnit, Page, PolicyItem, RuleItem,
+  GovernanceSource, HelpItem, IncentiveProvenanceItem, IncentiveStatus, OrgUnit, Page, PolicyItem, RuleItem,
   SafetyEvalItem, ShadowItem, SlackWorkspaceItem,
 } from './types'
 
@@ -275,29 +275,58 @@ const demoSource: GovernanceSource = {
      deterministic fixtures. Never calls the network. */
   myIncentives: async actorId => {
     const s = demo_state()
-    const items = s.effects.filter(e => e.beneficiaryUserId === actorId).map(e => {
-      const candidate = s.candidates.find(c => c.id === e.candidateId)
+    /* Same minimized employee shape as the server projection: payout rows
+       plus non-payout governance outcomes, no engine internals. */
+    const policyReason = (d?: DecisionItem | null): 'MATCHED_POLICY' | 'DEFAULT_GOVERNANCE' | null =>
+      !d ? null : d.matchedPolicies.length === 1 && d.matchedPolicies[0] === 'pol-default'
+        ? 'DEFAULT_GOVERNANCE' : 'MATCHED_POLICY'
+    const facts = (candidateId: string) => {
+      const candidate = s.candidates.find(c => c.id === candidateId)
       const event = s.events.find(ev => ev.id === candidate?.canonicalEventId)
+      return { candidate, event }
+    }
+    const payouts = s.effects.filter(e => e.beneficiaryUserId === actorId).map(e => {
+      const { candidate, event } = facts(e.candidateId)
       const decision = s.decisions.find(d => d.candidateId === e.candidateId)
       const approval = s.approvals.find(a => a.finalDecision?.id === e.approvalDecisionId)?.finalDecision ?? null
-      const snapshot = candidate?.ruleSnapshot ?? {}
       return {
-        effectId: e.id, ledgerTransactionId: e.ledgerTransactionId, amount: e.amount,
-        status: e.status, createdAt: e.createdAt,
+        ledgerTransactionId: e.ledgerTransactionId, effectId: e.id, amount: e.amount,
+        status: e.status as IncentiveStatus, createdAt: e.createdAt,
         eventType: event?.type ?? null, occurredAt: event?.occurredAt ?? null,
-        subjectId: (event?.subjectId ?? event?.actorId) ?? null,
-        ruleName: (snapshot.name as string) ?? null, ruleDescription: null,
-        proposedReward: typeof candidate?.data?.proposedReward === 'number' ? candidate.data.proposedReward as number : null,
-        scope: (snapshot as { scope?: { kind: 'TEAM' | 'PROJECT'; id: string } }).scope ?? null,
-        policyDecision: decision?.effectiveDecision ?? null,
-        policyExplanation: decision?.explanation ?? null,
-        approval: approval && {
-          decision: approval.decision, decidedBy: approval.decidedBy,
-          decidedAt: approval.decidedAt, reasonCode: approval.reasonCode, note: approval.note,
-        },
-        reversal: e.reversal,
+        ruleName: (candidate?.ruleSnapshot?.name as string) ?? null,
+        policyReason: policyReason(decision),
+        decidedBy: approval?.decidedBy ?? null, decidedAt: approval?.decidedAt ?? null,
+        reversal: e.reversal && { reasonCode: e.reversal.reasonCode, createdAt: e.reversal.createdAt },
       }
     })
+    const outcomes = s.candidates.flatMap(c => {
+      const event = s.events.find(ev => ev.id === c.canonicalEventId)
+      if (((event?.subjectId ?? event?.actorId) ?? null) !== actorId) return []
+      if (s.effects.some(e => e.candidateId === c.id)) return []
+      const decision = s.decisions.find(d => d.candidateId === c.id) ?? null
+      const safety = s.safety.find(x => x.candidateId === c.id) ?? null
+      const rejected = s.approvals.find(a => a.candidateId === c.id && a.finalDecision?.decision === 'REJECTED')?.finalDecision ?? null
+      const pending = s.approvals.some(a => a.candidateId === c.id && a.status === 'PENDING')
+      let status: IncentiveStatus | null = null
+      if (safety?.outcome === 'SUPPRESS_INCENTIVE') status = 'SAFEGUARDED'
+      else if (rejected) status = 'NOT_APPROVED'
+      else if (decision?.effectiveDecision === 'BLOCK') status = 'NOT_AUTHORIZED'
+      else if (pending || decision?.effectiveDecision === 'REQUIRE_APPROVAL' || safety?.outcome === 'REQUIRE_REVIEW')
+        status = 'PENDING_REVIEW'
+      else if (decision?.effectiveDecision === 'ALLOW') status = 'AUTHORIZED_PENDING'
+      if (!status) return []   // SHADOW_ONLY / unevaluated: never employee-facing
+      return [{
+        ledgerTransactionId: null, effectId: null, amount: null, status,
+        createdAt: rejected?.decidedAt ?? decision?.createdAt ?? c.createdAt,
+        eventType: event?.type ?? null, occurredAt: event?.occurredAt ?? null,
+        ruleName: (c.ruleSnapshot?.name as string) ?? null,
+        policyReason: policyReason(decision),
+        decidedBy: rejected?.decidedBy ?? null, decidedAt: rejected?.decidedAt ?? null,
+        reversal: null,
+      }]
+    })
+    const items = [...payouts, ...outcomes].sort((a, b) =>
+      b.createdAt - a.createdAt || (b.ledgerTransactionId ?? '').localeCompare(a.ledgerTransactionId ?? ''))
     return page(items, 0)
   },
   async getApprovalContext(requestId) {

@@ -10,6 +10,7 @@ from app.economic_effects.service import issue
 from app.economic_effects.reversal import reverse
 from tests.approval_helpers import approval_db, chain
 from tests.economic_helpers import economic_chain
+from tests.safety_helpers import safety
 from tests.golden.conftest import golden_db  # noqa: F401 — fixture namespace
 
 
@@ -45,12 +46,14 @@ def test_employee_sees_own_incentive_in_business_language(approval_db, client):
     # What happened / why / result — business fields, no engine nouns.
     assert item['amount'] == '25' and item['status'] == 'ISSUED'
     assert item['eventType'] == 'custom.signal.observed'
-    assert item['ruleName'] and item['policyExplanation'] is not None
-    assert item['subjectId'] == 'ap-employee'
+    assert item['ruleName'] and item['policyReason'] in ('MATCHED_POLICY', 'DEFAULT_GOVERNANCE')
     assert item['ledgerTransactionId'] == effect['ledgerTransactionId']
     # Internal machinery is deliberately absent from the employee projection.
     assert 'safetyOutcome' not in item
     assert 'candidateId' not in item and 'policyDecisionId' not in item
+    for forbidden in ('subjectId', 'ruleDescription', 'proposedReward', 'scope',
+                      'policyDecision', 'policyExplanation', 'approval', 'reasonCode', 'note'):
+        assert forbidden not in item
 
 
 def test_my_incentives_are_strictly_own_rows(approval_db, client):
@@ -78,13 +81,145 @@ def test_historical_reversed_effect_stays_visible(approval_db, client):
     assert items[0]['reversal']['reasonCode'] == 'ADMIN_CORRECTION'
 
 
+def _all_keys(node):
+    keys = set()
+    if isinstance(node, dict):
+        for key, value in node.items():
+            keys.add(key)
+            keys |= _all_keys(value)
+    elif isinstance(node, list):
+        for value in node:
+            keys |= _all_keys(value)
+    return keys
+
+
 def test_approved_effect_carries_approval_business_fields(approval_db, client):
     db = approval_db
     source, effect = issued(db, subject='ap-employee', amount=25,
                             governance='REQUIRE_APPROVAL', approval='APPROVED')
-    item = client.get('/api/provenance/me', headers=headers(db, 'ap-employee')).json()['items'][0]
-    assert item['approval']['decision'] == 'APPROVED'
-    assert item['approval']['decidedBy'] == 'ap-other'
+    response = client.get('/api/provenance/me', headers=headers(db, 'ap-employee'))
+    item = response.json()['items'][0]
+    # Safe approver identity only — the free-text note never leaves the backend.
+    assert item['decidedBy'] == 'ap-other' and item['decidedAt'] is not None
+    assert 'approval' not in item
+    keys = _all_keys(response.json())
+    assert 'note' not in keys and 'reasonCode' not in keys
+
+
+# ------------------------------------- employee non-payout outcomes (WS2 fix)
+
+def test_outcome_authorized_pending_issuance(approval_db, client):
+    """ALLOW decision with no effect yet: the employee sees an honest
+    authorized-pending state, not silence."""
+    db = approval_db
+    economic_chain(db, subject='ap-employee', amount=25)  # ALLOW, never issued
+    items = client.get('/api/provenance/me', headers=headers(db, 'ap-employee')).json()['items']
+    assert [item['status'] for item in items] == ['AUTHORIZED_PENDING']
+    item = items[0]
+    assert item['amount'] is None and item['ledgerTransactionId'] is None
+    assert item['effectId'] is None and item['reversal'] is None
+    assert item['ruleName'] and item['policyReason'] in ('MATCHED_POLICY', 'DEFAULT_GOVERNANCE')
+
+
+def test_outcome_not_authorized_when_policy_blocks(approval_db, client):
+    db = approval_db
+    economic_chain(db, subject='ap-employee', amount=25, governance='BLOCK')
+    items = client.get('/api/provenance/me', headers=headers(db, 'ap-employee')).json()['items']
+    assert [item['status'] for item in items] == ['NOT_AUTHORIZED']
+    assert items[0]['amount'] is None and items[0]['decidedBy'] is None
+
+
+def test_outcome_pending_review_on_require_approval(approval_db, client):
+    db = approval_db
+    economic_chain(db, subject='ap-employee', governance='REQUIRE_APPROVAL')  # no request yet
+    items = client.get('/api/provenance/me', headers=headers(db, 'ap-employee')).json()['items']
+    assert [item['status'] for item in items] == ['PENDING_REVIEW']
+
+
+def test_outcome_pending_review_with_open_request(approval_db, client):
+    db = approval_db
+    economic_chain(db, subject='ap-employee', governance='REQUIRE_APPROVAL', approval='PENDING')
+    items = client.get('/api/provenance/me', headers=headers(db, 'ap-employee')).json()['items']
+    assert [item['status'] for item in items] == ['PENDING_REVIEW']
+
+
+def test_outcome_not_approved_after_rejection(approval_db, client):
+    db = approval_db
+    source = economic_chain(db, subject='ap-employee', governance='REQUIRE_APPROVAL')
+    from app.approvals.service import create_request, decide
+    request = create_request(db, db.get(User, 'gold-admin-a'), source['decision']['decisionId'])
+    db.commit()
+    decide(db, db.get(User, 'ap-other'), request['id'],
+           {'decision': 'REJECTED', 'reasonCode': 'BUDGET_EXCEEDED',
+            'note': 'secret manager free-text'})
+    db.commit()
+    response = client.get('/api/provenance/me', headers=headers(db, 'ap-employee'))
+    items = response.json()['items']
+    assert [item['status'] for item in items] == ['NOT_APPROVED']
+    assert items[0]['decidedBy'] == 'ap-other' and items[0]['decidedAt'] is not None
+    # Approver free text and internal reason codes never reach the employee.
+    assert 'secret manager free-text' not in response.text
+    keys = _all_keys(response.json())
+    assert 'note' not in keys and 'reasonCode' not in keys
+
+
+def test_outcome_safeguarded_when_safety_suppresses(approval_db, client):
+    db = approval_db
+    source = economic_chain(db, subject='ap-employee', amount=25)  # ALLOW decision
+    safety(db, source, outcome='SUPPRESS_INCENTIVE')
+    response = client.get('/api/provenance/me', headers=headers(db, 'ap-employee'))
+    items = response.json()['items']
+    assert [item['status'] for item in items] == ['SAFEGUARDED']
+    # Safety findings/evidence are never exposed to employees (anti-gaming).
+    keys = _all_keys(response.json())
+    assert 'findings' not in keys and 'evidence' not in keys and 'safetyOutcome' not in keys
+
+
+def test_shadow_only_evaluation_stays_invisible(approval_db, client):
+    """SHADOW_ONLY is admin observability — never an employee-facing outcome."""
+    db = approval_db
+    economic_chain(db, subject='ap-employee', governance='SHADOW_ONLY')
+    items = client.get('/api/provenance/me', headers=headers(db, 'ap-employee')).json()['items']
+    assert items == []
+
+
+def test_candidate_without_decision_is_invisible(approval_db, client):
+    """A candidate that was never policy-evaluated has no business outcome."""
+    db = approval_db
+    admin = db.get(User, 'gold-admin-a')
+    from app.rules.service import create_rule, evaluate_event
+    from app.canonical_events.contracts import EventInput
+    from app.canonical_events.store import PostgresEventStore
+    from tests.test_rule_evaluator import rule
+    create_rule(db, admin, rule(eventType='synthetic.unevaluated.outcome', conditions=[],
+                                outcome={'kind': 'INCENTIVE', 'data': {'proposedReward': 5}}))
+    event = PostgresEventStore(db).append('gold-a', EventInput(
+        type='synthetic.unevaluated.outcome', schema_version=1, source_kind='MANUAL',
+        source_id=admin.id, source_event_id='unevaluated-1', occurred_at=1750000000000,
+        actor_id=admin.id, subject_id='ap-employee', payload={}))
+    db.commit()
+    evaluate_event(db, admin, event.id)
+    db.commit()
+    items = client.get('/api/provenance/me', headers=headers(db, 'ap-employee')).json()['items']
+    assert items == []
+
+
+def test_outcome_subject_falls_back_to_actor(approval_db, client):
+    """Events without a subject attribute the outcome to the actor — the same
+    identity rule the approval service enforces."""
+    db = approval_db
+    economic_chain(db, subject=None, actor_id='ap-employee', governance='BLOCK')
+    items = client.get('/api/provenance/me', headers=headers(db, 'ap-employee')).json()['items']
+    assert [item['status'] for item in items] == ['NOT_AUTHORIZED']
+
+
+def test_outcomes_are_strictly_own_and_tenant_isolated(approval_db, client):
+    db = approval_db
+    economic_chain(db, subject='ap-employee', governance='BLOCK')
+    economic_chain(db, subject='ap-employee', governance='REQUIRE_APPROVAL')
+    assert client.get('/api/provenance/me', headers=headers(db, 'ap-manager')).json()['items'] == []
+    foreign = client.get('/api/provenance/me', headers=headers(db, 'gold-admin-b'))
+    assert foreign.status_code == 200 and foreign.json()['items'] == []
 
 
 # ------------------------------------------------- manager approval context

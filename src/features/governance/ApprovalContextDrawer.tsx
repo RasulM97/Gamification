@@ -38,7 +38,7 @@ export function ApprovalContextDrawer({ approvalId, onClose }: { approvalId: str
           <div className="dsec">
             <span className="eyebrow">{t('provenance.what')}</span>
             <div style={{ marginTop: 6, fontSize: 13 }}>
-              <EventPhrase type={ctx.eventType} showCode />
+              <EventPhrase type={ctx.eventType} />
               {ctx.occurredAt && <span className="dim"> · {ago(ctx.occurredAt)}</span>}
               {ctx.subjectId && <div className="dim" style={{ marginTop: 4 }}>{name(ctx.subjectId)}</div>}
             </div>
@@ -69,7 +69,9 @@ export function ApprovalContextDrawer({ approvalId, onClose }: { approvalId: str
               {ctx.effects.length > 0
                 ? t('provenance.consequence.executed')
                 : <>
-                    <div>{t('provenance.consequence.approve', { coins: ctx.proposedReward ?? 0, name: name(ctx.subjectId) })}</div>
+                    {/* Truthful copy: approval authorizes; issuance is a
+                        separate admin step. Never claim approval pays. */}
+                    <div>{t('provenance.consequence.approve')}</div>
                     <div>{t('provenance.consequence.reject')}</div>
                   </>}
             </div>
