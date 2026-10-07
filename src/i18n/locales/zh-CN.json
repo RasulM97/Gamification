@@ -1294,5 +1294,6 @@
   "flow.stat.held": "待复核",
   "flow.stat.rejected": "已拒绝",
   "flow.stat.safeguarded": "已保护",
-  "flow.windowDays": "最近 {{days}} 天"
+  "flow.windowDays": "最近 {{days}} 天",
+  "flow.current": "当前状态"
 }

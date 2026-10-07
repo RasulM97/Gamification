@@ -1294,5 +1294,6 @@
   "flow.stat.held": "На проверке",
   "flow.stat.rejected": "Отклонено",
   "flow.stat.safeguarded": "Защищено",
-  "flow.windowDays": "Последние {{days}} дней"
+  "flow.windowDays": "Последние {{days}} дней",
+  "flow.current": "Сейчас"
 }

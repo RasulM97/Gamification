@@ -1294,5 +1294,6 @@
   "flow.stat.held": "レビュー保留",
   "flow.stat.rejected": "却下",
   "flow.stat.safeguarded": "保護済み",
-  "flow.windowDays": "過去 {{days}} 日"
+  "flow.windowDays": "過去 {{days}} 日",
+  "flow.current": "現在"
 }

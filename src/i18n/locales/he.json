@@ -1294,5 +1294,6 @@
   "flow.stat.held": "בבדיקה",
   "flow.stat.rejected": "נדחה",
   "flow.stat.safeguarded": "מוגן",
-  "flow.windowDays": "{{days}} הימים האחרונים"
+  "flow.windowDays": "{{days}} הימים האחרונים",
+  "flow.current": "כרגע"
 }

@@ -1,9 +1,10 @@
 /* WS3 Team/Company Flow — manager/admin only. Emphasis: interventions,
  * blockers, waiting decisions, unresolved coordination. This is NOT an
  * employee-monitoring screen: incentive flow is aggregate business state
- * counts only (issued/pending/held/rejected/safeguarded over a fixed
- * window), never per-person breakdowns. The backend enforces scope
- * authority; this view only presents and navigates. */
+ * counts only, split into CURRENT state (pending/held/safeguarded, no time
+ * cutoff) and RECENT flow (issued/rejected over a fixed window) — never
+ * per-person breakdowns. The backend enforces scope authority; this view
+ * only presents and navigates. */
 import { useMe } from '../../store'
 import { Empty, Panel } from '../../ui'
 import { useI18n, fmtInt } from '../../i18n'
@@ -54,11 +55,17 @@ export function FlowView({ onNavigate }: { onNavigate: (view: string) => void })
                   emptyKey="flow.noHelp" />
       </Panel>
       {stats && <Panel title={t('flow.incentiveFlow')}>
-        <p className="dim" style={{ marginTop: 0 }}>{t('flow.windowDays', { days: stats.windowDays })}</p>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }} data-testid="flow-incentive-stats">
-          {(['issued', 'pending', 'held', 'rejected', 'safeguarded'] as const).map(key =>
+        <p className="dim" style={{ marginTop: 0 }}>{t('flow.current')}</p>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }} data-testid="flow-current-stats">
+          {(['pending', 'held', 'safeguarded'] as const).map(key =>
             <span key={key} className="badge" data-testid={`flow-stat-${key}`}>
-              {t('flow.stat.' + key)} · {fmtInt(stats[key])}</span>)}
+              {t('flow.stat.' + key)} · {fmtInt(stats.current[key])}</span>)}
+        </div>
+        <p className="dim">{t('flow.windowDays', { days: stats.recent.windowDays })}</p>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }} data-testid="flow-recent-stats">
+          {(['issued', 'rejected'] as const).map(key =>
+            <span key={key} className="badge" data-testid={`flow-stat-${key}`}>
+              {t('flow.stat.' + key)} · {fmtInt(stats.recent[key])}</span>)}
         </div>
       </Panel>}
       <Panel pad={false} title={t('flow.resolvedRecently')}>

@@ -1294,5 +1294,6 @@
   "flow.stat.held": "قيد المراجعة",
   "flow.stat.rejected": "مرفوض",
   "flow.stat.safeguarded": "محمي",
-  "flow.windowDays": "آخر {{days}} يومًا"
+  "flow.windowDays": "آخر {{days}} يومًا",
+  "flow.current": "الآن"
 }

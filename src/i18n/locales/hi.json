@@ -1294,5 +1294,6 @@
   "flow.stat.held": "समीक्षा में",
   "flow.stat.rejected": "अस्वीकृत",
   "flow.stat.safeguarded": "सुरक्षित",
-  "flow.windowDays": "पिछले {{days}} दिन"
+  "flow.windowDays": "पिछले {{days}} दिन",
+  "flow.current": "अभी"
 }

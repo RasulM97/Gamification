@@ -1294,5 +1294,6 @@
   "flow.stat.held": "검토 보류",
   "flow.stat.rejected": "거절됨",
   "flow.stat.safeguarded": "보호됨",
-  "flow.windowDays": "최근 {{days}}일"
+  "flow.windowDays": "최근 {{days}}일",
+  "flow.current": "현재"
 }

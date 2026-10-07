@@ -18,12 +18,10 @@ export interface AttentionItem {
 }
 
 export interface IncentiveFlow {
-  issued: number
-  pending: number
-  held: number
-  rejected: number
-  safeguarded: number
-  windowDays: number
+  /* CURRENT state — true right now, no time cutoff. */
+  current: { pending: number; held: number; safeguarded: number }
+  /* RECENT flow — what happened inside the fixed window. */
+  recent: { issued: number; rejected: number; windowDays: number }
 }
 
 export interface AttentionFlow {

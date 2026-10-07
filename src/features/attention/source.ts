@@ -145,10 +145,19 @@ function demoFlowCounts(me: AttentionActor, units: OrgUnit[],
   const visible = (candidateId: string) => manages(units, me, candidateScope(candidateId))
   const issued = effects.filter(e =>
     e.status === 'ISSUED' && e.createdAt >= now - FLOW_WINDOW && visible(e.candidateId)).length
-  const safeguarded = safety.filter(s =>
-    s.outcome === 'SUPPRESS_INCENTIVE' && s.createdAt >= now - FLOW_WINDOW && visible(s.candidateId)).length
-  return { issued, pending: pending.length, held: pending.filter(a => a.safetyEvaluationId).length,
-           rejected: rejectedCount, safeguarded, windowDays: 30 }
+  /* CURRENT safeguarded mirrors the server's SafetyHead read: only the
+     latest evaluation per candidate decides; superseded rows never count. */
+  const headByCandidate = new Map<string, { outcome: string; createdAt: number }>()
+  for (const row of safety) {
+    const prior = headByCandidate.get(row.candidateId)
+    if (!prior || row.createdAt >= prior.createdAt) headByCandidate.set(row.candidateId, row)
+  }
+  const safeguarded = [...headByCandidate.entries()]
+    .filter(([candidateId, row]) => row.outcome === 'SUPPRESS_INCENTIVE' && visible(candidateId)).length
+  return {
+    current: { pending: pending.length, held: pending.filter(a => a.safetyEvaluationId).length, safeguarded },
+    recent: { issued, rejected: rejectedCount, windowDays: 30 },
+  }
 }
 
 async function demoTeamFlow(me: AttentionActor): Promise<AttentionFlow> {

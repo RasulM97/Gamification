@@ -123,6 +123,32 @@ def my_incentives(db: Session, actor: User, *, offset: int = 0):
                 hasMore=len(merged) > offset + PAGE)
 
 
+def my_outcomes(db: Session, actor: User, *, limit: int = 500):
+    """Internal read projection for WS3 attention: the caller's non-payout
+    outcome stream with a safe `statusAt` per item.
+
+    Same derivation, same visibility, same order as the non-payout family of
+    my_incentives() — this reuses `_outcome_stream` directly instead of the
+    merged public page, so a payout-heavy Wallet history can never push a
+    still-relevant PENDING_REVIEW / NOT_APPROVED / SAFEGUARDED state out of
+    reach, and payout rows are never loaded here at all. The scan is bounded
+    (chunked generator, at most `limit` visible items).
+
+    `statusAt` is the time the CURRENT business state took effect — rejection
+    time, current safety evaluation time, policy decision time, or the start
+    of the applicable waiting state — never the candidate's creation time and
+    never an internal id or safety evidence. The public /me payload is
+    unchanged; attention is the only consumer."""
+    if type(limit) is not int or not 1 <= limit <= 5000:
+        raise DomainError('VALIDATION', 'Invalid outcome scan limit')
+    collected = []
+    for _key, status_at, item in _outcome_stream(db, actor.company_id, actor.id):
+        collected.append(dict(item, statusAt=int(status_at)))
+        if len(collected) >= limit:
+            break
+    return collected
+
+
 def _payout_stream(db, company_id, user_id):
     """Executed effects for the caller, chunked, (createdAt, id) descending."""
     base = 0
@@ -190,7 +216,7 @@ def _outcome_stream(db, company_id, user_id):
             outcome = _non_payout_outcome(db, company_id, candidate.id)
             if outcome is None:
                 continue
-            status, decision, rejected = outcome
+            status, decision, rejected, status_at = outcome
             item = dict(
                 ledgerTransactionId=None, effectId=None, amount=None,
                 status=status, createdAt=candidate.created_at,
@@ -199,7 +225,7 @@ def _outcome_stream(db, company_id, user_id):
                 decidedAt=rejected.decided_at if rejected else None,
                 reversal=None,
             )
-            yield (candidate.created_at, candidate.id), None, item
+            yield (candidate.created_at, candidate.id), status_at, item
         if len(rows) < CHUNK:
             return
         base += CHUNK
@@ -233,8 +259,12 @@ def _current_safety(db, company_id, candidate_id):
 def _non_payout_outcome(db, company_id, candidate_id):
     """Derive the business status of a candidate with no economic effect,
     mirroring is_candidate_economically_processable() exactly — never a
-    second governance engine. Returns (status, decision, rejected_decision)
-    or None when the state must stay invisible to employees.
+    second governance engine. Returns (status, decision, rejected_decision,
+    status_at) or None when the state must stay invisible to employees.
+
+    `status_at` is the time the current state took effect (resolution or the
+    start of the applicable waiting state) — an ms timestamp only, never an
+    internal id or safety evidence.
 
     Derivation order (execution semantics are the authority):
     1. no PolicyDecision                → invisible
@@ -255,15 +285,15 @@ def _non_payout_outcome(db, company_id, candidate_id):
         return None
     safety = _current_safety(db, company_id, candidate_id)
     if safety is not None and safety.outcome == 'SUPPRESS_INCENTIVE':
-        return 'SAFEGUARDED', decision, None
+        return 'SAFEGUARDED', decision, None, safety.created_at
     if decision.effective_decision == 'BLOCK':
-        return 'NOT_AUTHORIZED', decision, None
+        return 'NOT_AUTHORIZED', decision, None, decision.created_at
     if decision.effective_decision == 'REQUIRE_APPROVAL':
         return _approval_outcome(db, company_id, decision, safety_evaluation_id=None)
     if decision.effective_decision == 'ALLOW':
         if safety is not None and safety.outcome == 'REQUIRE_REVIEW':
             return _approval_outcome(db, company_id, decision, safety_evaluation_id=safety.id)
-        return 'AUTHORIZED_PENDING', decision, None
+        return 'AUTHORIZED_PENDING', decision, None, decision.created_at
     return None
 
 
@@ -280,10 +310,11 @@ def _approval_outcome(db, company_id, decision, *, safety_evaluation_id):
     decided = _row(db, ApprovalDecision, company_id,
                    approval_request_id=request.id) if request is not None else None
     if decided is None:
-        return 'PENDING_REVIEW', decision, None
+        waiting_since = request.requested_at if request is not None else decision.created_at
+        return 'PENDING_REVIEW', decision, None, waiting_since
     if decided.decision == 'REJECTED':
-        return 'NOT_APPROVED', decision, decided
-    return 'AUTHORIZED_PENDING', decision, None
+        return 'NOT_APPROVED', decision, decided, decided.decided_at
+    return 'AUTHORIZED_PENDING', decision, None, decided.decided_at
 
 
 def approval_context(db: Session, actor: User, request_id: str):

@@ -121,9 +121,11 @@ it('team flow: waiting decisions, escalated help, aggregate incentive counts', a
   /* help-2 confirmed 4d ago → resolvedRecently; company scope visible. */
   expect(flow.resolvedRecently.map(i => i.kind)).toContain('help.resolved')
   /* Fixtures: ee-pr-412 (proj-northstar, managed) + ee-help-1 (company) issued
-     within 30d; ee-thanks-old REVERSED never counts as issued. */
+     within 30d; ee-thanks-old REVERSED never counts as issued. Current state
+     (pending/held/safeguarded) carries no window; recent flow covers 30 days. */
   expect(flow.incentiveFlow).toEqual({
-    issued: 2, pending: 1, held: 0, rejected: 0, safeguarded: 0, windowDays: 30,
+    current: { pending: 1, held: 0, safeguarded: 0 },
+    recent: { issued: 2, rejected: 0, windowDays: 30 },
   })
 })
 

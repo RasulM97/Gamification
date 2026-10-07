@@ -1294,5 +1294,6 @@
   "flow.stat.held": "در بازبینی",
   "flow.stat.rejected": "ردشده",
   "flow.stat.safeguarded": "محافظت‌شده",
-  "flow.windowDays": "{{days}} روز گذشته"
+  "flow.windowDays": "{{days}} روز گذشته",
+  "flow.current": "اکنون"
 }

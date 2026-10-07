@@ -1294,5 +1294,6 @@
   "flow.stat.held": "İncelemede",
   "flow.stat.rejected": "Reddedildi",
   "flow.stat.safeguarded": "Korundu",
-  "flow.windowDays": "Son {{days}} gün"
+  "flow.windowDays": "Son {{days}} gün",
+  "flow.current": "Şu an"
 }

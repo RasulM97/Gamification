@@ -1294,5 +1294,6 @@
   "flow.stat.held": "Held for review",
   "flow.stat.rejected": "Rejected",
   "flow.stat.safeguarded": "Safeguarded",
-  "flow.windowDays": "Last {{days}} days"
+  "flow.windowDays": "Last {{days}} days",
+  "flow.current": "Right now"
 }
