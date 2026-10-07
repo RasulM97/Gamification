@@ -38,6 +38,15 @@ async function start(page: Page, server: boolean, locale: Locale = 'en', actorId
       state = clearTestWorkspace(state, actorId); return json(state)
     }
     if (path === '/api/dev/reseed') { state = seed(); return json(state) }
+    /* WS3: the Attention page composes server-side domains in server mode.
+       Contract-shaped fixture: the admin's two actionable items (pending
+       approval + escalated help), matching the demo composition. */
+    if (path === '/api/attention/me') return json({ items: [
+      { id: 'approval.decide.ap-pr-87', category: 'ACTION_REQUIRED', kind: 'approval.decide', title: null,
+        state: 'MANAGER_OR_ADMIN', occurredAt: Date.now(), nextAction: 'decide', nav: { view: 'incentives' } },
+      { id: 'help.accept.help-1', category: 'ACTION_REQUIRED', kind: 'help.accept', title: 'ERP export access',
+        state: 'ESCALATED', occurredAt: Date.now(), nextAction: 'accept', nav: { view: 'people' } },
+    ] })
     if (path === '/api/tasks/t-recount/reassign') {
       const task = state.tasks.find(t => t.id === 't-recount')!
       task.assigneeId = route.request().postDataJSON().assigneeId
@@ -106,13 +115,18 @@ export function n61Cases(server: boolean) {
     initial.activity.push({ ...initial.activity[0], id: 'n61-return', eventType: 'TASK_RETURNED', taskId: task.id })
     await start(page, server, 'en', 'u-dana', initial)
     await expect(page.locator('[data-dashboard-module="attention"] .dashboard-number')).toHaveText('1')
-    await nav(page, en['nav.needsAttention']); await expect(page.getByTestId('attention-count')).toHaveText('1')
-    await expect(page.getByTestId('attention-queue').locator('.att-row')).toHaveCount(1)
+    /* WS3: the Attention page is no longer task-only — for the admin it also
+       composes the pending incentive approval and the escalated help request
+       from the demo governance fixtures (2 server-composed items + 1 task).
+       The dashboard module stays task-scoped; the page badge counts all
+       actionable items. Task rows render first. */
+    await nav(page, en['nav.needsAttention']); await expect(page.getByTestId('attention-count')).toHaveText('3')
+    await expect(page.getByTestId('attention-queue').locator('.att-row')).toHaveCount(3)
     await expect(page.getByTestId('attention-queue')).not.toContainText(en['attention.recentDeclines'])
-    await page.getByTestId('attention-queue').locator('.att-row').click()
+    await page.getByTestId('attention-queue').locator('.att-row').first().click()
     await page.getByLabel(en['accessibility.reassignTask']).selectOption('u-aisha')
     await page.keyboard.press('Escape')
-    await expect(page.getByTestId('attention-count')).toHaveText('0')
+    await expect(page.getByTestId('attention-count')).toHaveText('2')
     await nav(page, en['common.overview'])
     await expect(page.locator('[data-dashboard-module="attention"] .dashboard-number')).toHaveText('0')
     await nav(page, en['common.activity'])

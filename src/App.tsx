@@ -16,7 +16,8 @@ import { setPage } from './uat'
 import { Overview } from './views/Overview'
 import { TasksView } from './views/Tasks'
 import { ReviewsView } from './views/Reviews'
-import { AttentionView } from './views/Attention'
+import { MyAttentionView } from './features/attention/MyAttentionView'
+import { FlowView } from './features/attention/FlowView'
 import { RewardsView } from './views/Rewards'
 import { RedemptionsView } from './views/Redemptions'
 import { WalletView } from './views/Wallet'
@@ -31,7 +32,7 @@ import { TaskDrawer } from './components/TaskDrawer'
 import { CreateTaskModal } from './components/CreateTask'
 
 type View =
-  | 'overview' | 'tasks' | 'mywork' | 'available' | 'reviews' | 'attention'
+  | 'overview' | 'tasks' | 'mywork' | 'available' | 'reviews' | 'attention' | 'flow'
   | 'rewards' | 'redemptions' | 'wallet' | 'notifications' | 'activity' | 'admin'
   | 'people' | 'incentives' | 'integrations'
   | 'testlab'
@@ -44,6 +45,7 @@ const TITLE_KEYS: Record<View, [string, string]> = {
   available: ['nav.availableWork', 'page.availableWork.subtitle'],
   reviews: ['common.reviews', 'page.reviews.subtitle'],
   attention: ['nav.needsAttention', 'page.attention.subtitle'],
+  flow: ['nav.teamFlow', 'page.flow.subtitle'],
   rewards: ['common.rewards', 'page.rewards.subtitle'],
   redemptions: ['common.redemptions', 'page.redemptions.subtitle'],
   wallet: ['common.wallet', 'page.wallet.subtitle'],
@@ -71,7 +73,9 @@ function Shell() {
   const githubEnabled = IS_DEMO || state.capabilities?.GITHUB_CONNECTOR === true
   const slackEnabled = IS_DEMO || state.capabilities?.SLACK_CONNECTOR === true
   const integrationsEnabled = githubEnabled || slackEnabled
-  const taskViews: View[] = ['tasks', 'mywork', 'available', 'reviews', 'attention']
+  /* WS3: My Attention composes server-side domains too — it is not gated on
+     the TASK_LITE capability; only its task section is. */
+  const taskViews: View[] = ['tasks', 'mywork', 'available', 'reviews']
 
   const [view, setView] = useState<View>('overview')
   useEffect(() => {
@@ -172,6 +176,9 @@ function Shell() {
           { v: 'tasks', labelKey: 'common.tasks', icon: '▤' },
           { v: 'reviews', labelKey: 'common.reviews', icon: '▣', badge: reviewCount },
           { v: 'attention', labelKey: 'nav.needsAttention', icon: '▲', badge: attentionCount },
+          /* WS3: Team/Company Flow is manager/admin only — interventions,
+             blockers, waiting decisions; never per-person monitoring. */
+          { v: 'flow', labelKey: 'nav.teamFlow', icon: '◭' },
         ],
       },
       /* People group follows the collaboration capabilities — a company with
@@ -220,6 +227,8 @@ function Shell() {
     : [{
         groupKey: 'common.work', items: [
           { v: 'overview', labelKey: 'nav.overview', icon: '◧' },
+          /* WS3: My Attention is the employee's primary "what needs me" surface. */
+          { v: 'attention', labelKey: 'nav.needsAttention', icon: '▲', badge: attentionCount },
           { v: 'mywork', labelKey: 'nav.myWork', icon: '▤' },
           { v: 'available', labelKey: 'nav.availableWork', icon: '◫', badge: state.tasks.filter(t => t.status === 'OPEN' && canSeeTask(t, me) && (t.assignMode === 'ALL_EMPLOYEES' || t.assigneeId === me.id)).length },
         ],
@@ -397,7 +406,8 @@ function Shell() {
           {tasksEnabled && view === 'mywork' && !isAdmin && <TasksView scope="mine" onOpen={setTaskId} onCreate={() => setCreateOpen(true)} />}
           {tasksEnabled && view === 'available' && <TasksView scope="available" onOpen={setTaskId} onCreate={() => setCreateOpen(true)} />}
           {tasksEnabled && view === 'reviews' && <ReviewsView openId={reviewId} onOpen={setReviewId} onClose={() => setReviewId(null)} />}
-          {tasksEnabled && view === 'attention' && <AttentionView onOpen={setTaskId} />}
+          {view === 'attention' && <MyAttentionView tasksEnabled={tasksEnabled} onOpenTask={setTaskId} onNavigate={go} />}
+          {view === 'flow' && isMgr && <FlowView onNavigate={go} />}
           {view === 'rewards' && <RewardsView />}
           {view === 'redemptions' && <RedemptionsView />}
           {view === 'wallet' && <WalletView />}
