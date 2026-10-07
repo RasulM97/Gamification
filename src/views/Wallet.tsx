@@ -171,7 +171,9 @@ export function WalletView() {
           </table>
         </div>
       </Panel>
-      {!company && targetId === me.id && outcomes.length > 0 && (
+      {/* Pagination stays reachable whenever the visible stream has more
+          history — even while zero non-payout outcomes are loaded. */}
+      {!company && targetId === me.id && (outcomes.length > 0 || hasMore) && (
         <Panel pad={false} title={t('wallet.outcomes')}>
           {outcomes.map((item, index) => (
             <div className="aitem" key={index}>
