@@ -96,6 +96,24 @@ it('provenance is strictly own rows — unrelated users see nothing', async () =
   expect((await governance.myIncentives('u-dana')).items).toEqual([])
 })
 
+it('demo source pages the visible stream with truthful hasMore', async () => {
+  const first = await governance.myIncentives('u-priya', 0)
+  expect(first.items.length).toBe(2)               // payout + blocked outcome
+  expect(first.hasMore).toBe(false)
+  const rest = await governance.myIncentives('u-priya', 1)
+  expect(rest.items).toHaveLength(1)               // stable slice of the same stream
+  expect(rest.items[0].createdAt).toBeLessThanOrEqual(first.items[1].createdAt)
+  expect(rest.hasMore).toBe(false)
+})
+
+it('approved policy approval becomes authorized-pending in demo too', async () => {
+  await governance.decideApproval('ap-pr-87', 'APPROVED', 'MERIT')
+  const { items } = await governance.myIncentives('u-jonas')
+  const outcome = items.find(i => i.ledgerTransactionId === null)!
+  expect(outcome.status).toBe('AUTHORIZED_PENDING')
+  expect(outcome.ruleName).toBe('Merged pull request')
+})
+
 it('manager approval context: why needed, evidence, authority, consequence inputs', async () => {
   const { approval, context } = await governance.getApprovalContext('ap-pr-87')
   expect(approval.status).toBe('PENDING')

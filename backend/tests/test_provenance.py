@@ -329,3 +329,177 @@ def test_chain_partial_provenance_is_honest(approval_db, client):
     assert body['summary']['ruleName'] and body['summary']['proposedReward'] == 5
     assert body['summary']['policyDecision'] is None and body['summary']['safetyOutcome'] is None
     assert body['decision'] is None and body['effects'] == [] and body['approvals'] == []
+
+
+# ======================= WS2 closure-fix (review round 2) =======================
+
+from app.approvals.service import create_request, decide  # noqa: E402
+
+
+def _statuses(client, db, user='ap-employee'):
+    return [item['status'] for item in
+            client.get('/api/provenance/me', headers=headers(db, user)).json()['items']]
+
+
+def _safety_review(db, source, revision, *, decision=None):
+    """A CURRENT REQUIRE_REVIEW evaluation plus (optionally) its decided,
+    safety-bound approval request."""
+    evaluation = safety(db, source, outcome='REQUIRE_REVIEW', revision=revision)
+    request = create_request(db, db.get(User, 'gold-admin-a'),
+                             source['decision']['decisionId'], safety_evaluation_id=evaluation.id)
+    db.commit()
+    if decision is not None:
+        decide(db, db.get(User, 'ap-other'), request['id'], {'decision': decision})
+        db.commit()
+    return evaluation
+
+
+def bulk_candidates(db, subject, count, *, decision, start_ms, name='Bulk entry'):
+    """Direct-insert candidates with a terminal policy decision — pagination
+    fixtures without running the full evaluation pipeline per row."""
+    import hashlib
+    from app.models import new_id
+    from app.canonical_events.model import CanonicalEvent
+    from app.rules.model import RuleCandidate
+    from app.policies.model import PolicyDecision
+    from app.rules.service import create_rule
+    from tests.test_rule_evaluator import rule
+    admin = db.get(User, 'gold-admin-a')
+    kind = f'synthetic.bulk.{decision.lower()}'
+    rv = create_rule(db, admin, rule(eventType=kind, conditions=[],
+                                     outcome={'kind': 'INCENTIVE', 'data': {'proposedReward': 1}}))
+    db.commit()
+    events, candidates, rows = [], [], []
+    for i in range(count):
+        ts = start_ms + i
+        events.append(CanonicalEvent(
+            id=new_id('ce'), company_id='gold-a', type=kind, schema_version=1,
+            source_kind='MANUAL', source_id=admin.id, source_event_id=f'bulk-{decision}-{i}',
+            actor_id=admin.id, subject_id=subject,
+            occurred_at=ts, received_at=ts, created_at=ts, payload={},
+            dedupe_key=hashlib.sha256(f'bulk-event-{decision}-{i}'.encode()).hexdigest()))
+        candidates.append(RuleCandidate(
+            id=new_id('rc'), company_id='gold-a', canonical_event_id=events[-1].id,
+            rule_id=rv['id'], rule_version=1, kind='INCENTIVE', data={'proposedReward': 1},
+            rule_snapshot={'name': name}, status='PROPOSED', created_at=ts))
+        rows.append(PolicyDecision(
+            id=new_id('pd'), company_id='gold-a', candidate_id=candidates[-1].id,
+            policy_set_fingerprint=hashlib.sha256(f'bulk-fp-{decision}-{i}'.encode()).hexdigest(),
+            effective_decision=decision, matched_policies=[], evaluated_policies=[],
+            explanation={'reason': 'MATCHED_POLICY'}, created_at=ts))
+    # Bare FK columns carry no relationship info — flush in dependency order.
+    db.add_all(events)
+    db.flush()
+    db.add_all(candidates)
+    db.flush()
+    db.add_all(rows)
+    db.commit()
+
+
+# ------------------------------------ P1: SHADOW_ONLY stays invisible
+
+@pytest.mark.parametrize('outcome', ['CLEAR', 'OBSERVE', 'REQUIRE_REVIEW', 'SUPPRESS_INCENTIVE'])
+def test_shadow_only_is_invisible_with_any_safety(approval_db, client, outcome):
+    """SHADOW_ONLY is admin observability: no SafetyEvaluation state may ever
+    make the candidate employee-visible."""
+    db = approval_db
+    source = economic_chain(db, subject='ap-employee', governance='SHADOW_ONLY')
+    safety(db, source, outcome=outcome)
+    body = client.get('/api/provenance/me', headers=headers(db, 'ap-employee')).json()
+    assert body['items'] == [] and body['hasMore'] is False
+
+
+# --------------------------- P2: approved governance is not "in review"
+
+def test_approved_governance_is_authorized_pending_then_issuable(approval_db, client):
+    """REQUIRE_APPROVAL + APPROVED + no effect: the employee sees
+    AUTHORIZED_PENDING — and authoritative issuance agrees."""
+    db = approval_db
+    source = economic_chain(db, subject='ap-employee', amount=25,
+                            governance='REQUIRE_APPROVAL', approval='APPROVED')
+    assert _statuses(client, db) == ['AUTHORIZED_PENDING']
+    effect = issue(db, db.get(User, 'gold-admin-a'), source['decision']['decisionId'])
+    db.commit()
+    assert effect['status'] == 'ISSUED'   # no further governance transition needed
+    assert _statuses(client, db) == ['ISSUED']
+
+
+# --------------------- P2: stale safety-review approvals never decide
+
+def test_stale_safety_rejection_does_not_override_current_clear(approval_db, client):
+    """A rejected review of a SUPERSEDED evaluation must not decide current
+    status — eligibility binds approvals to the current SafetyEvaluation."""
+    db = approval_db
+    source = economic_chain(db, subject='ap-employee', amount=25)  # ALLOW
+    _safety_review(db, source, 1, decision='REJECTED')
+    assert _statuses(client, db) == ['NOT_APPROVED']   # while that evaluation is current
+    safety(db, source, outcome='CLEAR', revision=2)    # head moves on
+    assert _statuses(client, db) == ['AUTHORIZED_PENDING']
+    effect = issue(db, db.get(User, 'gold-admin-a'), source['decision']['decisionId'])
+    db.commit()
+    assert effect['status'] == 'ISSUED'
+
+
+def test_only_current_evaluation_approval_decides(approval_db, client):
+    """Old rejected review + NEW current REQUIRE_REVIEW: only the approval
+    bound to the current evaluation counts."""
+    db = approval_db
+    source = economic_chain(db, subject='ap-employee', amount=25)
+    _safety_review(db, source, 1, decision='REJECTED')   # superseded
+    assert _statuses(client, db) == ['NOT_APPROVED']
+    _safety_review(db, source, 2)                        # new current review, still open
+    assert _statuses(client, db) == ['PENDING_REVIEW']
+
+
+def test_current_safety_review_states(approval_db, client):
+    """Current REQUIRE_REVIEW: missing → open → approved approval, with
+    execution agreeing at the end."""
+    db = approval_db
+    source = economic_chain(db, subject='ap-employee', amount=25)
+    evaluation = safety(db, source, outcome='REQUIRE_REVIEW', revision=1)
+    assert _statuses(client, db) == ['PENDING_REVIEW']   # no request yet
+    request = create_request(db, db.get(User, 'gold-admin-a'),
+                             source['decision']['decisionId'], safety_evaluation_id=evaluation.id)
+    db.commit()
+    assert _statuses(client, db) == ['PENDING_REVIEW']   # open request
+    decide(db, db.get(User, 'ap-other'), request['id'], {'decision': 'APPROVED'})
+    db.commit()
+    assert _statuses(client, db) == ['AUTHORIZED_PENDING']
+    effect = issue(db, db.get(User, 'gold-admin-a'), source['decision']['decisionId'])
+    db.commit()
+    assert effect['status'] == 'ISSUED'
+
+
+# ------------------------- P2: history pagination never drops outcomes
+
+def test_newer_invisible_candidates_cannot_hide_older_block(approval_db, client):
+    db = approval_db
+    economic_chain(db, subject='ap-employee', governance='BLOCK')   # older, visible
+    bulk_candidates(db, 'ap-employee', 550, decision='SHADOW_ONLY', start_ms=1750000001000)
+    body = client.get('/api/provenance/me?offset=0', headers=headers(db, 'ap-employee')).json()
+    assert [item['status'] for item in body['items']] == ['NOT_AUTHORIZED']
+    assert body['hasMore'] is False
+
+
+def test_newer_invisible_candidates_cannot_hide_older_rejection(approval_db, client):
+    db = approval_db
+    economic_chain(db, subject='ap-employee', governance='REQUIRE_APPROVAL', approval='REJECTED')
+    bulk_candidates(db, 'ap-employee', 550, decision='SHADOW_ONLY', start_ms=1750000001000)
+    body = client.get('/api/provenance/me?offset=0', headers=headers(db, 'ap-employee')).json()
+    assert [item['status'] for item in body['items']] == ['NOT_APPROVED']
+
+
+def test_visible_stream_paginates_truthfully(approval_db, client):
+    """Pagination applies to the employee-visible stream: stable deterministic
+    order, truthful offset, no duplicates, bounded pages."""
+    db = approval_db
+    bulk_candidates(db, 'ap-employee', 120, decision='BLOCK', start_ms=1750000000000)
+    first = client.get('/api/provenance/me?offset=0', headers=headers(db, 'ap-employee')).json()
+    second = client.get('/api/provenance/me?offset=100', headers=headers(db, 'ap-employee')).json()
+    assert len(first['items']) == 100 and first['hasMore'] is True
+    assert len(second['items']) == 20 and second['hasMore'] is False
+    stamps = [item['createdAt'] for item in first['items'] + second['items']]
+    assert len(set(stamps)) == 120                     # stable, non-duplicated
+    assert stamps == sorted(stamps, reverse=True)      # deterministic order
+    beyond = client.get('/api/provenance/me?offset=120', headers=headers(db, 'ap-employee')).json()
+    assert beyond['items'] == [] and beyond['hasMore'] is False

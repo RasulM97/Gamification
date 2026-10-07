@@ -6,7 +6,7 @@ import { useGovData } from '../features/governance/hooks'
 import { governance } from '../features/governance/source'
 import type { IncentiveProvenanceItem } from '../features/governance/types'
 import type { LedgerEntry } from '../domain/model'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore, useMe } from '../store'
 import { balanceOf } from '../domain/engine'
 import { Avatar, Coin, LedgerBadge, Panel, ago, coins, downloadCsv } from '../ui'
@@ -32,15 +32,37 @@ export function WalletView() {
   const rows = state.ledger.filter(l => company || l.userId === targetId)
   const user = (id: string) => state.users.find(u => u.id === id)
 
-  /* WS2 review: one role-scoped read feeds both the "why" drawer and the
-     non-payout incentive outcomes section (own wallet only). */
+  /* WS2 review: role-scoped reads feed both the "why" drawer and the
+     non-payout incentive outcomes section (own wallet only). Later pages of
+     the employee-visible stream load on demand — for history paging and for
+     resolving an older ledger row's provenance. */
   const incentives = useGovData(
     () => (!company && targetId === me.id) ? governance.myIncentives(me.id) : Promise.resolve(null),
     [company, targetId, me.id])
-  const whyItem = !whyFor ? null
-    : whyFor.item ?? incentives.data?.items.find(i =>
-        i.ledgerTransactionId === whyFor.entry?.id || whyFor.entry?.ref === 'economic-reversal:' + i.effectId) ?? null
-  const outcomes = (incentives.data?.items ?? []).filter(i => i.ledgerTransactionId === null)
+  const [extraPages, setExtraPages] = useState<IncentiveProvenanceItem[]>([])
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  useEffect(() => { setExtraPages([]); setHasMore(!!incentives.data?.hasMore) }, [incentives.data])
+  const items = [...(incentives.data?.items ?? []), ...extraPages]
+  const loadMore = async () => {
+    if (loadingMore) return
+    setLoadingMore(true)
+    try {
+      const next = await governance.myIncentives(me.id, items.length)
+      setExtraPages(prev => [...prev, ...next.items])
+      setHasMore(!!next.hasMore)
+    } finally { setLoadingMore(false) }
+  }
+  const whyMatch = (i: IncentiveProvenanceItem) =>
+    i.ledgerTransactionId === whyFor?.entry?.id || whyFor.entry?.ref === 'economic-reversal:' + i.effectId
+  /* An older ledger row can live beyond page 1: page forward until its item
+     appears (bounded by the caller's own visible history). */
+  useEffect(() => {
+    if (!whyFor?.entry || !incentives.data || items.some(whyMatch) || !hasMore || loadingMore) return
+    void loadMore()
+  }, [whyFor, items, hasMore, loadingMore, incentives.data])
+  const whyItem = !whyFor ? null : whyFor.item ?? items.find(whyMatch) ?? null
+  const outcomes = items.filter(i => i.ledgerTransactionId === null)
 
   const earned = rows.filter(l => l.amount > 0 && l.userId === targetId).reduce((a, l) => a + l.amount, 0)
   const spent = rows.filter(l => l.amount < 0 && l.userId === targetId).reduce((a, l) => a - l.amount, 0)
@@ -165,6 +187,12 @@ export function WalletView() {
                 onClick={() => setWhyFor({ item })}>{t('provenance.walletWhy')}</button>
             </div>
           ))}
+          {hasMore && (
+            <div style={{ padding: 12 }}>
+              <button className="btn" disabled={loadingMore}
+                onClick={() => void loadMore()}>{t('common.showMore')}</button>
+            </div>
+          )}
         </Panel>
       )}
       <MyIncentiveDrawer item={whyItem} open={!!whyFor} loading={incentives.loading} onClose={() => setWhyFor(null)} />

@@ -122,10 +122,10 @@ const server: GovernanceSource = {
   },
   /* WS2-A provenance reads — backend composes and authorizes per role.
      The demo-only actorId parameter is ignored: the session is authoritative. */
-  async myIncentives() {
-    const r = await api.get<{ items: IncentiveProvenanceItem[]; offset: number; limit: number }>(
-      '/provenance/me?offset=0')
-    return page(r.items, r.offset, r.limit)
+  async myIncentives(_actorId?: string, offset?: number) {
+    const r = await api.get<{ items: IncentiveProvenanceItem[]; offset: number; limit: number; hasMore: boolean }>(
+      `/provenance/me?offset=${offset ?? 0}`)
+    return { ...page(r.items, r.offset, r.limit), hasMore: r.hasMore }
   },
   getApprovalContext: id => api.get<ApprovalContext>(`/provenance/approvals/${id}`),
   getChain: id => api.get<ChainDetail>(`/provenance/chain/${id}`),
@@ -273,7 +273,7 @@ const demoSource: GovernanceSource = {
   listOrgUnits: async () => demo_state().orgUnits,
   /* WS2-A demo provenance — the same projections, composed locally from the
      deterministic fixtures. Never calls the network. */
-  myIncentives: async actorId => {
+  myIncentives: async (actorId, offset = 0) => {
     const s = demo_state()
     /* Same minimized employee shape as the server projection: payout rows
        plus non-payout governance outcomes, no engine internals. */
@@ -304,30 +304,42 @@ const demoSource: GovernanceSource = {
       if (((event?.subjectId ?? event?.actorId) ?? null) !== actorId) return []
       if (s.effects.some(e => e.candidateId === c.id)) return []
       const decision = s.decisions.find(d => d.candidateId === c.id) ?? null
+      /* Same derivation as the server projection — execution semantics are
+         the authority; SHADOW_ONLY is always invisible. */
+      if (!decision || decision.effectiveDecision === 'SHADOW_ONLY') return []
       const safety = s.safety.find(x => x.candidateId === c.id) ?? null
-      const rejected = s.approvals.find(a => a.candidateId === c.id && a.finalDecision?.decision === 'REJECTED')?.finalDecision ?? null
-      const pending = s.approvals.some(a => a.candidateId === c.id && a.status === 'PENDING')
-      let status: IncentiveStatus | null = null
-      if (safety?.outcome === 'SUPPRESS_INCENTIVE') status = 'SAFEGUARDED'
-      else if (rejected) status = 'NOT_APPROVED'
-      else if (decision?.effectiveDecision === 'BLOCK') status = 'NOT_AUTHORIZED'
-      else if (pending || decision?.effectiveDecision === 'REQUIRE_APPROVAL' || safety?.outcome === 'REQUIRE_REVIEW')
-        status = 'PENDING_REVIEW'
-      else if (decision?.effectiveDecision === 'ALLOW') status = 'AUTHORIZED_PENDING'
-      if (!status) return []   // SHADOW_ONLY / unevaluated: never employee-facing
-      return [{
+      const applicable = (safetyReview: boolean) => {
+        const request = s.approvals.find(a => a.candidateId === c.id
+          && a.policyDecisionId === decision.decisionId
+          && (safetyReview ? a.safetyEvaluationId === safety?.id : !a.safetyEvaluationId))
+        return request?.finalDecision ?? null
+      }
+      const build = (status: IncentiveStatus, rejected: { decidedBy: string; decidedAt: number } | null) => [{
         ledgerTransactionId: null, effectId: null, amount: null, status,
-        createdAt: rejected?.decidedAt ?? decision?.createdAt ?? c.createdAt,
+        createdAt: c.createdAt,
         eventType: event?.type ?? null, occurredAt: event?.occurredAt ?? null,
         ruleName: (c.ruleSnapshot?.name as string) ?? null,
         policyReason: policyReason(decision),
         decidedBy: rejected?.decidedBy ?? null, decidedAt: rejected?.decidedAt ?? null,
         reversal: null,
       }]
+      if (safety?.outcome === 'SUPPRESS_INCENTIVE') return build('SAFEGUARDED', null)
+      if (decision.effectiveDecision === 'BLOCK') return build('NOT_AUTHORIZED', null)
+      if (decision.effectiveDecision === 'REQUIRE_APPROVAL') {
+        const fd = applicable(false)
+        if (!fd) return build('PENDING_REVIEW', null)
+        return fd.decision === 'REJECTED' ? build('NOT_APPROVED', fd) : build('AUTHORIZED_PENDING', null)
+      }
+      if (safety?.outcome === 'REQUIRE_REVIEW') {
+        const fd = applicable(true)
+        if (!fd) return build('PENDING_REVIEW', null)
+        return fd.decision === 'REJECTED' ? build('NOT_APPROVED', fd) : build('AUTHORIZED_PENDING', null)
+      }
+      return build('AUTHORIZED_PENDING', null)
     })
     const items = [...payouts, ...outcomes].sort((a, b) =>
       b.createdAt - a.createdAt || (b.ledgerTransactionId ?? '').localeCompare(a.ledgerTransactionId ?? ''))
-    return page(items, 0)
+    return { ...page(items.slice(offset, offset + 100), offset), hasMore: items.length > offset + 100 }
   },
   async getApprovalContext(requestId) {
     const s = demo_state()

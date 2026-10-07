@@ -158,8 +158,9 @@ export interface OrgUnit {
 
 /* One paged list contract for the UI regardless of the wire shape (B2):
    server envelopes ({rules}, {approvals, offset, limit}, bare lists) are
-   normalized by the source implementation, never by the views. */
-export interface Page<T> { items: T[]; offset: number; limit: number }
+   normalized by the source implementation, never by the views. hasMore is
+   present only where the backend computes it from the visible stream. */
+export interface Page<T> { items: T[]; offset: number; limit: number; hasMore?: boolean }
 
 export interface GovernanceSource {
   listEvents(offset?: number): Promise<Page<EventItem>>
@@ -205,9 +206,10 @@ export interface GovernanceSource {
   helpAction(id: string, action: 'accept' | 'finish' | 'confirm', actorId?: string): Promise<void>
   /* Organization (D1/F3) */
   listOrgUnits(): Promise<OrgUnit[]>
-  /* WS2-A provenance (role-scoped, read-only). actorId is demo-only: the
-     server derives the caller from the session. */
-  myIncentives(actorId?: string): Promise<Page<IncentiveProvenanceItem>>
+  /* WS2-A provenance reads (role-scoped, read-only). actorId is demo-only: the
+     server derives the caller from the session. Offset pages the
+     employee-visible outcome stream. */
+  myIncentives(actorId?: string, offset?: number): Promise<Page<IncentiveProvenanceItem>>
   getApprovalContext(requestId: string): Promise<ApprovalContext>
   getChain(candidateId: string): Promise<ChainDetail>
 }
