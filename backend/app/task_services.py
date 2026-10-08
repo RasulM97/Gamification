@@ -32,7 +32,7 @@ from .service_common import (
     snap, reward_snapshot, act, note, notes, ledger, _attach, _close_pending_submission,
     _current_cycle, _is_mgmt, _reset_live_submission_slots, _own_notice, mark_read,
     mark_all_read, archive_notice, archive_all_read, toggle_notif_mute, update_settings,
-    active_count,
+    active_count, check_pct, check_task_fields,
 )
 
 @guarded
@@ -43,6 +43,8 @@ def create_task(db: Session, actor: User, *, title: str, description: str,
                 files: Sequence[StoredFile] = (), context=None) -> Task:
     if not _is_mgmt(actor):
         raise DomainError('FORBIDDEN', 'Creating work is a management act')
+    check_task_fields(title=title, priority=priority, audience=audience,
+                      assign_mode=assign_mode, reward=reward)
     if audience == 'PRIVATE' and not assignee_id:
         raise DomainError('VALIDATION', 'A private task needs a specific assignee')
     context=admit(db,actor,context,manager=True,participants=[assignee_id] if assignee_id else [])
@@ -56,7 +58,7 @@ def create_task(db: Session, actor: User, *, title: str, description: str,
             raise DomainError('FORBIDDEN', 'The chosen person is not eligible for this audience')
     if eff_assignee:
         require_capacity(db, cid, eff_assignee, audience)
-    t = Task(**fields(context),company_id=cid, title=title, description=description,
+    t = Task(**fields(context),company_id=cid, title=title.strip(), description=description,
              priority=priority, deadline=_dl(deadline), reward=reward,
              audience=audience, assign_mode=eff_mode, assignee_id=eff_assignee,
              status='OPEN', owner_id=None, cycle=1, verified=0, reported=0, paid=0,
@@ -159,6 +161,7 @@ def edit_task(db: Session, actor: User, task_id: str, *, title=None, description
               priority=None, deadline=..., reward=None) -> Task:
     if not _is_mgmt(actor):
         raise DomainError('FORBIDDEN', 'Editing work is a management act')
+    check_task_fields(title=title, priority=priority, reward=reward)
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
     admit(db,actor,scope(t),manager=actor.role=='MANAGER')
@@ -235,6 +238,7 @@ def reassign(db: Session, actor: User, task_id: str, assignee_id: Optional[str],
 @guarded
 @requires("TASK_LITE")
 def report_progress(db: Session, actor: User, task_id: str, pct: float) -> Task:
+    check_pct(pct)
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
     admit(db,actor,scope(t),manager=actor.role=='MANAGER')
@@ -252,6 +256,8 @@ def report_progress(db: Session, actor: User, task_id: str, pct: float) -> Task:
 @requires("TASK_LITE")
 def submit_work(db: Session, actor: User, task_id: str, *, note_text: str,
                 files: Sequence[StoredFile] = (), pct: Optional[float] = None) -> Task:
+    if pct is not None:
+        check_pct(pct)
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
     admit(db,actor,scope(t),manager=actor.role=='MANAGER')
@@ -368,6 +374,10 @@ def handoff(db: Session, actor: User, task_id: str, *, accepted_pct: float,
             sensitivity_confirmed: bool = False, files: Sequence[StoredFile] = ()) -> Task:
     if not _is_mgmt(actor):
         raise DomainError('FORBIDDEN', 'Review decisions are management acts')
+    if next_kind not in ('EMPLOYEE', 'AVAILABLE'):
+        raise DomainError('VALIDATION', 'Invalid handoff target')
+    check_pct(accepted_pct)
+    check_task_fields(priority=priority, reward=remaining_reward)
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
     admit(db,actor,scope(t),manager=actor.role=='MANAGER')

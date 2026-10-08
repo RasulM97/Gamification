@@ -23,8 +23,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .domain import (
-    MUTABLE_LEVELS, ACTIVE_TASK_STATUSES, CAPACITY_POLICY, DomainError, claim_penalty, normalize_deadline,
-    partial_payout, role_fits,
+    MUTABLE_LEVELS, ACTIVE_TASK_STATUSES, ASSIGN_MODES, AUDIENCES, CAPACITY_POLICY, PRIORITIES,
+    DomainError, claim_penalty, normalize_deadline, partial_payout, role_fits,
 )
 from .models import (
     Activity, Attachment, CompanySettings, Contribution, LedgerTransaction,
@@ -56,6 +56,32 @@ def _round(x: float) -> int:
 
 def _clamp_pct(x: float) -> int:
     return max(0, min(100, _round(x)))
+
+
+def check_pct(value):
+    """WS4 fail-closed: a percentage must be a finite real number. NaN/inf
+    would otherwise crash _round (ValueError → 500) or corrupt payout math."""
+    if type(value) not in (int, float) or isinstance(value, bool) or not math.isfinite(value):
+        raise DomainError('VALIDATION', 'Invalid percentage')
+
+
+def check_task_fields(*, title=None, priority=None, audience=None, assign_mode=None, reward=None):
+    """WS4 fail-closed validation of client-supplied task fields. The demo
+    engine's TS types constrain these at compile time; the public API must
+    enforce the same envelope at runtime — a bogus priority later crashes
+    claim_penalty, a NaN/negative reward corrupts the append-only ledger,
+    and an oversized title overflows the database column."""
+    if title is not None and (type(title) is not str or not 1 <= len(title.strip()) <= 300):
+        raise DomainError('VALIDATION', 'Invalid task title')
+    if priority is not None and priority not in PRIORITIES:
+        raise DomainError('VALIDATION', 'Invalid task priority')
+    if audience is not None and audience not in AUDIENCES:
+        raise DomainError('VALIDATION', 'Invalid task audience')
+    if assign_mode is not None and assign_mode not in ASSIGN_MODES:
+        raise DomainError('VALIDATION', 'Invalid task assign mode')
+    if reward is not None and (type(reward) not in (int, float) or isinstance(reward, bool)
+                               or not math.isfinite(reward) or reward < 0):
+        raise DomainError('VALIDATION', 'Invalid task reward')
 
 
 def _dl(s: str | None) -> Optional[date]:

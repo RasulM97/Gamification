@@ -31,7 +31,7 @@ from .service_common import (
     snap, reward_snapshot, act, note, ledger, _attach, _close_pending_submission,
     _current_cycle, _is_mgmt, _reset_live_submission_slots, _own_notice, mark_read,
     mark_all_read, archive_notice, archive_all_read, toggle_notif_mute, update_settings,
-    active_count,
+    active_count, check_pct,
 )
 
 def _new_cycle_reset(db: Session, actor: User, t: Task, *, description=None,
@@ -109,6 +109,8 @@ def cancel_task(db: Session, actor: User, task_id: str, *, reason: str,
                 accepted_pct: Optional[float] = None) -> Task:
     if not _is_mgmt(actor):
         raise DomainError('FORBIDDEN', 'Cancelling work is a management act')
+    if accepted_pct is not None:
+        check_pct(accepted_pct)
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
     admit(db,actor,scope(t),manager=actor.role=='MANAGER')
