@@ -12,8 +12,16 @@ export function canSeeTask(t: Task, u: User): boolean {
 export function canReviewTask(s: Pick<State, 'users'>, t: Task, u: User): boolean {
   if (!canSeeTask(t, u) || t.ownerId === u.id) return false
   if (u.role === 'ADMIN') return true
+  if (u.role !== 'MANAGER') return false
+  /* WS4 round-3 parity with backend admit_review/can_review: on COMPANY-scope
+     tasks (server projection omits `scope`) a manager reviews ONLY with an
+     explicit per-task reviewerIds grant — role alone never grants company-wide
+     review authority. On TEAM/PROJECT tasks the server bootstrap has already
+     filtered visibility to legitimate managed-scope managers, so the existing
+     owner-employee-or-grant semantics apply unchanged. */
+  if (!t.scope) return !!t.reviewerIds?.includes(u.id)
   const owner = s.users.find(x => x.id === t.ownerId)
-  return u.role === 'MANAGER' && !!owner && (owner.role === 'EMPLOYEE' || !!t.reviewerIds?.includes(u.id))
+  return !!owner && (owner.role === 'EMPLOYEE' || !!t.reviewerIds?.includes(u.id))
 }
 
 export function needsSensitivityConfirmation(t: Task, audience: Audience, target?: User | null) {

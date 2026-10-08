@@ -38,6 +38,8 @@ it('return at zero preserves full penalty, later rewards offset it and old ledge
   expect(coinsInCirculation(s)).toBe(0)
   s = reducer(s, { type: 'CLAIM_TASK', taskId: id, userId: worker })
   s = reducer(s, { type: 'SUBMIT_WORK', taskId: id, userId: worker, note: 'Done', attachments: [] })
+  // WS4 round 3: COMPANY-scope manager review requires the explicit grant (admin-authored task → payout pre-authorized)
+  s = reducer(s, { type: 'SET_TASK_ACCESS', taskId: id, by: admin, viewerIds: [], reviewerIds: [manager] })
   s = reducer(s, { type: 'APPROVE', taskId: id, managerId: manager })
   expect(balanceOf(s, worker)).toBe(15); expect(coinDebtOf(s, worker)).toBe(0)
   expect(s.ledger.find(l => l.id === penalty.id)).toEqual(penalty)

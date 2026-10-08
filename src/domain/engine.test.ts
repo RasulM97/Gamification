@@ -23,6 +23,11 @@ function freshTask(s: State, reward = 20): State {
 }
 const newest = (s: State) => s.tasks[0]
 
+/* WS4 round 3: on COMPANY-scope tasks a manager reviews only with an explicit
+   per-task reviewer grant (backend admit_review parity) — the admin grants it. */
+const grantReview = (s: State, taskId: string): State =>
+  reducer(s, { type: 'SET_TASK_ACCESS', by: ADMIN, taskId, viewerIds: task(s, taskId).viewerIds ?? [], reviewerIds: [MGR] })
+
 describe('partial reward formula (canonical baseline §12)', () => {
   it.each([
     [37, 40, 15], [37, 30, 11.5], [10, 51, 5.5], [10, 56, 6],
@@ -116,6 +121,7 @@ describe('decline vs return vs reject (§8)', () => {
     s = reducer(s, { type: 'CLAIM_TASK', taskId: id, userId: PRIYA })
     s = reducer(s, { type: 'SUBMIT_WORK', taskId: id, userId: PRIYA, note: 'done', attachments: [] })
     expect(task(s, id).status).toBe('SUBMITTED')
+    s = grantReview(s, id)
     s = reducer(s, { type: 'REJECT', taskId: id, managerId: MGR, reason: 'Missing evidence' })
     expect(task(s, id).status).toBe('REJECTED')
     expect(task(s, id).rejectionReason).toBe('Missing evidence')
@@ -133,14 +139,14 @@ describe('approve economy (§11–12, §15)', () => {
     s = reducer(s, { type: 'CLAIM_TASK', taskId: id, userId: PRIYA })
     s = reducer(s, { type: 'SUBMIT_WORK', taskId: id, userId: PRIYA, note: 'x', attachments: [] })
     const bal = balanceOf(s, PRIYA)
-    s = reducer(s, { type: 'APPROVE', taskId: id, managerId: MGR })
+    s = reducer(s, { type: 'APPROVE', taskId: id, managerId: ADMIN }) // admin: manager-authored task, positive payout
     expect(task(s, id).status).toBe('APPROVED')
     expect(task(s, id).verified).toBe(100)
     expect(balanceOf(s, PRIYA)).toBe(bal + 30)
     expect(s.ledger[0]).toMatchObject({ type: 'TASK_REWARD', amount: 30, userId: PRIYA })
     // double-approve is a no-op: idempotent, no duplicate reward
     const ids = ledgerIds(s)
-    s = reducer(s, { type: 'APPROVE', taskId: id, managerId: MGR })
+    s = reducer(s, { type: 'APPROVE', taskId: id, managerId: ADMIN })
     expect(balanceOf(s, PRIYA)).toBe(bal + 30)
     expect(ledgerIds(s)).toBe(ids)
   })
@@ -153,7 +159,7 @@ describe('handoff (§13)', () => {
     s = reducer(s, { type: 'CLAIM_TASK', taskId: id, userId: PRIYA })
     const bal = balanceOf(s, PRIYA)
     s = reducer(s, {
-      type: 'HANDOFF', taskId: id, managerId: MGR, acceptedPct: 40,
+      type: 'HANDOFF', taskId: id, managerId: ADMIN, acceptedPct: 40, // admin: manager-authored task, positive payout
       reason: 'Pulled to escalation', next: { kind: 'EMPLOYEE', id: AISHA },
     })
     const t = task(s, id)
@@ -174,6 +180,7 @@ describe('handoff (§13)', () => {
     const id = newest(s).id
     s = reducer(s, { type: 'CLAIM_TASK', taskId: id, userId: PRIYA })
     const rows = s.ledger.length
+    s = grantReview(s, id)
     s = reducer(s, {
       type: 'HANDOFF', taskId: id, managerId: MGR, acceptedPct: 0,
       reason: 'No usable output', next: { kind: 'AVAILABLE' },
@@ -189,7 +196,7 @@ describe('handoff (§13)', () => {
 
   it('caps payout at the remaining reward budget', () => {
     // t-commission: reward 30, already paid 6, verified 20 → cap at 24
-    let s = seed()
+    let s = grantReview(seed(), 't-commission')
     // put it into review-ready handoff state: it is IN_PROGRESS owned by Jonas
     s = reducer(s, {
       type: 'HANDOFF', taskId: 't-commission', managerId: MGR, acceptedPct: 80,
@@ -202,7 +209,7 @@ describe('handoff (§13)', () => {
   })
 
   it('cannot exceed 100% verified progress', () => {
-    let s = seed()
+    let s = grantReview(seed(), 't-commission')
     s = reducer(s, {
       type: 'HANDOFF', taskId: 't-commission', managerId: MGR, acceptedPct: 80,
       reason: 'x', next: { kind: 'AVAILABLE' },
@@ -537,7 +544,7 @@ describe('decline after assignment / handoff (post-acceptance decline)', () => {
   })
 
   it('handoff target can decline after accepting (duties may change)', () => {
-    let s = seed()
+    let s = grantReview(seed(), 't-commission')
     s = reducer(s, { // hand t-commission (owned by Jonas) off to Priya
       type: 'HANDOFF', taskId: 't-commission', managerId: MGR, acceptedPct: 10,
       reason: 'rebalance', next: { kind: 'EMPLOYEE', id: PRIYA },
@@ -566,6 +573,7 @@ describe('decline after assignment / handoff (post-acceptance decline)', () => {
     const id = newest(s).id
     s = reducer(s, { type: 'CLAIM_TASK', taskId: id, userId: PRIYA }) // Jonas is at DEFAULT_MAX_ACTIVE_TASKS in the seed
     s = reducer(s, { type: 'SUBMIT_WORK', taskId: id, userId: PRIYA, note: 'done-ish', attachments: [] })
+    s = grantReview(s, id)
     s = reducer(s, { type: 'REJECT', taskId: id, managerId: MGR, reason: 'Not enough' })
     expect(task(s, id).status).toBe('REJECTED')
     const bal = balanceOf(s, PRIYA)
@@ -748,7 +756,7 @@ describe('task editing (EDIT_TASK)', () => {
 
 describe('handoff instructions & remaining-reward override', () => {
   it('the handoff reason becomes prominent instructions for the next owner', () => {
-    let s = seed()
+    let s = grantReview(seed(), 't-commission')
     s = reducer(s, {
       type: 'HANDOFF', taskId: 't-commission', managerId: MGR, acceptedPct: 10,
       reason: 'Jonas pulled onto an escalation', next: { kind: 'AVAILABLE' },
@@ -760,7 +768,7 @@ describe('handoff instructions & remaining-reward override', () => {
   })
 
   it('clears instructions once the task is approved', () => {
-    let s = seed()
+    let s = grantReview(seed(), 't-commission')
     s = reducer(s, {
       type: 'HANDOFF', taskId: 't-commission', managerId: MGR, acceptedPct: 0,
       reason: 'Reassigning', next: { kind: 'EMPLOYEE', id: PRIYA },
@@ -772,7 +780,7 @@ describe('handoff instructions & remaining-reward override', () => {
   })
 
   it('an override without an audited explanation is refused before any mutation', () => {
-    const s0 = seed()
+    const s0 = grantReview(seed(), 't-commission')
     const s = reducer(s0, {
       type: 'HANDOFF', taskId: 't-commission', managerId: MGR, acceptedPct: 0,
       reason: 'Reassigning', next: { kind: 'AVAILABLE' }, remainingReward: 5, // suggested is 24
@@ -782,7 +790,7 @@ describe('handoff instructions & remaining-reward override', () => {
   })
 
   it('a negative remaining reward is refused', () => {
-    const s = reducer(seed(), {
+    const s = reducer(grantReview(seed(), 't-commission'), {
       type: 'HANDOFF', taskId: 't-commission', managerId: MGR, acceptedPct: 0,
       reason: 'Reassigning', next: { kind: 'AVAILABLE' }, remainingReward: -1, overrideReason: 'x',
     })
@@ -790,7 +798,7 @@ describe('handoff instructions & remaining-reward override', () => {
   })
 
   it('a justified override re-prices the remaining work and is audited', () => {
-    let s = seed()
+    let s = grantReview(seed(), 't-commission')
     s = reducer(s, {
       type: 'HANDOFF', taskId: 't-commission', managerId: MGR, acceptedPct: 10, // payout 3 → paid 9
       reason: 'Scope grew', next: { kind: 'AVAILABLE' },
@@ -804,7 +812,7 @@ describe('handoff instructions & remaining-reward override', () => {
   })
 
   it('a matching value is not treated as an override (no explanation needed)', () => {
-    let s = seed()
+    let s = grantReview(seed(), 't-commission')
     s = reducer(s, {
       type: 'HANDOFF', taskId: 't-commission', managerId: MGR, acceptedPct: 0,
       reason: 'Reassigning', next: { kind: 'AVAILABLE' }, remainingReward: 24, // = suggested
@@ -872,7 +880,7 @@ describe('immutable submission history', () => {
   })
 
   it('handoff keeps the previous owner files and closes the record as HANDED_OFF', () => {
-    let s = seed()
+    let s = grantReview(seed(), 't-recount')
     s = reducer(s, { type: 'CLAIM_TASK', taskId: 't-recount', userId: AISHA })
     s = reducer(s, { type: 'SUBMIT_WORK', taskId: 't-recount', userId: AISHA, note: 'Half done', attachments: [{ name: 'evidence.pdf', size: 100, type: 'application/pdf' }] })
     s = reducer(s, {
@@ -893,12 +901,13 @@ describe('immutable submission history', () => {
     const id = newest(s).id
     s = reducer(s, { type: 'CLAIM_TASK', taskId: id, userId: PRIYA })
     s = reducer(s, { type: 'SUBMIT_WORK', taskId: id, userId: PRIYA, note: 'v1', attachments: [] })
+    s = grantReview(s, id)
     s = reducer(s, { type: 'REJECT', taskId: id, managerId: MGR, reason: 'Missing section 2' })
     expect(task(s, id).submissions.at(-1)!.outcome).toBe('REJECTED')
     expect(task(s, id).submissions.at(-1)!.reviewNote).toBe('Missing section 2')
     s = reducer(s, { type: 'RESUME_WORK', taskId: id, userId: PRIYA })
     s = reducer(s, { type: 'SUBMIT_WORK', taskId: id, userId: PRIYA, note: 'v2 complete', attachments: [] })
-    s = reducer(s, { type: 'APPROVE', taskId: id, managerId: MGR })
+    s = reducer(s, { type: 'APPROVE', taskId: id, managerId: ADMIN }) // admin: manager-authored task, positive payout
     const recs = task(s, id).submissions
     expect(recs).toHaveLength(2) // both attempts kept
     expect(recs.at(-1)!.outcome).toBe('APPROVED')
@@ -943,7 +952,7 @@ describe('brief files (create + handoff attachments)', () => {
   })
 
   it('handoff attachments join the brief', () => {
-    const s = reducer(seed(), {
+    const s = reducer(grantReview(seed(), 't-commission'), {
       type: 'HANDOFF', taskId: 't-commission', managerId: MGR, acceptedPct: 0,
       reason: 'Reassigning', next: { kind: 'AVAILABLE' },
       attachments: [{ name: 'field-instructions.pdf', size: 100, type: 'application/pdf' }],
@@ -1087,6 +1096,7 @@ describe('private tasks can target managers', () => {
     const id = newest(s).id
     s = reducer(s, { type: 'CLAIM_TASK', taskId: id, userId: PRIYA })
     s = reducer(s, { type: 'SUBMIT_WORK', taskId: id, userId: PRIYA, note: 'n', attachments: [] })
+    s = grantReview(s, id)
     s = reducer(s, {
       type: 'HANDOFF', taskId: id, managerId: MGR, acceptedPct: 0,
       reason: 'x', next: { kind: 'AVAILABLE' },
@@ -1097,7 +1107,7 @@ describe('private tasks can target managers', () => {
 
 describe('handoff re-decides the audience (like create)', () => {
   it('manager can hand an employee task to a manager by switching audience', () => {
-    const s = reducer(seed(), {
+    const s = reducer(grantReview(seed(), 't-commission'), {
       type: 'HANDOFF', taskId: 't-commission', managerId: MGR, acceptedPct: 0,
       reason: 'escalate to team lead', next: { kind: 'EMPLOYEE', id: MGR },
       audience: 'MANAGEMENT',
@@ -1119,7 +1129,7 @@ describe('handoff re-decides the audience (like create)', () => {
   })
 
   it('audience EMPLOYEES with a manager target is refused for non-admin', () => {
-    const s = reducer(seed(), {
+    const s = reducer(grantReview(seed(), 't-commission'), {
       type: 'HANDOFF', taskId: 't-commission', managerId: MGR, acceptedPct: 0,
       reason: 'x', next: { kind: 'EMPLOYEE', id: MGR }, audience: 'EMPLOYEES',
     })
@@ -1192,7 +1202,7 @@ describe('canonical deadline representation (M0-B)', () => {
   })
 
   it('handoff deadline change stores date-only', () => {
-    let s = seed()
+    let s = grantReview(seed(), 't-pricing')
     s = reducer(s, { type: 'CLAIM_TASK', taskId: 't-pricing', userId: AISHA })
     s = reducer(s, {
       type: 'HANDOFF', taskId: 't-pricing', managerId: MGR, acceptedPct: 0, reason: 'moving on',
@@ -1301,7 +1311,7 @@ describe('domain-level role enforcement (M0-B)', () => {
   })
 
   it('management handoff by a manager still works (regression)', () => {
-    let s = seed()
+    let s = grantReview(seed(), 't-recount')
     s = reducer(s, { type: 'CLAIM_TASK', taskId: 't-recount', userId: PRIYA })
     s = reducer(s, {
       type: 'HANDOFF', taskId: 't-recount', managerId: MGR, acceptedPct: 10, reason: 'partial',

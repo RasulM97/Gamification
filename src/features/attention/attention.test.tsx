@@ -174,8 +174,9 @@ it('My Attention merges task rework as actionable rows opening the task drawer',
 
 it('manager sees an authorized submitted review exactly once and opens the task surface', async () => {
   mock.me = { id: 'u-marcus', role: 'MANAGER' }
+  /* round-3 parity: COMPANY-scope review requires the explicit per-task grant */
   mock.tasks = [{ id: 't-9', title: 'Onboarding pack', status: 'SUBMITTED', ownerId: 'u-priya',
-    audience: 'EMPLOYEES', assignMode: 'ALL_EMPLOYEES', assigneeId: null }]
+    audience: 'EMPLOYEES', assignMode: 'ALL_EMPLOYEES', assigneeId: null, reviewerIds: ['u-marcus'] }]
   const opened: string[] = []
   await render(<MyAttentionView tasksEnabled={true} onOpenTask={id => opened.push(id)} onNavigate={() => {}} />)
   const rows = host.querySelectorAll('[data-testid="attention-task-review"]')
@@ -195,6 +196,15 @@ it('admin sees the same submitted review row; employees never do', async () => {
     audience: 'EMPLOYEES', assignMode: 'ALL_EMPLOYEES', assigneeId: null }]
   await render(<MyAttentionView tasksEnabled={true} onOpenTask={() => {}} onNavigate={() => {}} />)
   expect(host.querySelectorAll('[data-testid="attention-task-review"]')).toHaveLength(1)
+})
+
+it('manager WITHOUT the reviewer grant gets no company-scope review row (no false work)', async () => {
+  mock.me = { id: 'u-marcus', role: 'MANAGER' }
+  mock.tasks = [{ id: 't-9', title: 'Onboarding pack', status: 'SUBMITTED', ownerId: 'u-priya',
+    audience: 'EMPLOYEES', assignMode: 'ALL_EMPLOYEES', assigneeId: null }]
+  await render(<MyAttentionView tasksEnabled={true} onOpenTask={() => {}} onNavigate={() => {}} />)
+  expect(host.querySelector('[data-testid="attention-task-review"]')).toBeNull()
+  expect(host.querySelector('[data-testid="attention-count"]')!.textContent).toBe('1') // approval.decide only
 })
 
 it('self-review never produces a review row', async () => {

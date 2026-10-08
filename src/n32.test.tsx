@@ -19,7 +19,9 @@ afterEach(()=>{setActiveLocale('en');vi.restoreAllMocks()})
    cross-runtime parity with backend/tests/fixtures/n32-parity.json. */
 const approve=()=>reducer(seed(),{type:'APPROVE',taskId:'t-northstar',managerId:'u-dana'})
 const approval=()=>approve().activity[0]
-const handoff=()=>reducer(seed(),{type:'HANDOFF',taskId:'t-commission',managerId:'u-marcus',acceptedPct:20,reason:'Keep example.com and file.py unchanged — دلیل',next:{kind:'AVAILABLE'}})
+/* WS4 round 3: COMPANY-scope handoff with payout is executed by admin u-dana,
+   keeping cross-runtime parity with backend test_n32_events.py. */
+const handoff=()=>reducer(seed(),{type:'HANDOFF',taskId:'t-commission',managerId:'u-dana',acceptedPct:20,reason:'Keep example.com and file.py unchanged — دلیل',next:{kind:'AVAILABLE'}})
 const approvedRedemption=()=>reducer(seed(),{type:'APPROVE_REDEMPTION',id:'r2',by:'u-marcus'})
 const fulfilled=()=>reducer(approvedRedemption(),{type:'FULFILL_REDEMPTION',id:'r2',by:'u-jonas',reference:'track.example.com',note:'Delivered exactly'})
 
@@ -87,7 +89,7 @@ it('authored placeholders and HTML remain literal, with natural direction and sa
 })
 it('events append without rewriting prior records',()=>{
   const before=seed(),serialized=JSON.stringify(before.activity)
-  const next=reducer(before,{type:'APPROVE',taskId:'t-northstar',managerId:'u-marcus'})
+  const next=reducer(before,{type:'APPROVE',taskId:'t-northstar',managerId:'u-dana'})
   expect(JSON.stringify(before.activity)).toBe(serialized)
   expect(next.activity.slice(1)).toEqual(before.activity)
 })

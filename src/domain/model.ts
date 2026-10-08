@@ -112,6 +112,11 @@ export interface SubmissionRecord {
 }
 export interface Task {
   viewerIds?: string[]; reviewerIds?: string[]; restrictedAudiences?: Audience[]; privateWorkerRole?: string | null
+  /* WS4 parity: exact server projection — present only for TEAM/PROJECT-scoped
+     tasks; COMPANY tasks omit it (backend `_task()` emits scope the same way).
+     Review authority derives from it in canReviewTask; never invent membership
+     state client-side. */
+  scope?: { kind: 'TEAM' | 'PROJECT'; id: string }
   id: string; title: string; description: string
   priority: Priority; deadline: string | null; reward: number
   audience: Audience; assignMode: AssignMode; assigneeId: string | null

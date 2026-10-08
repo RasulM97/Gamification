@@ -72,11 +72,30 @@ describe('selectNeedsAttention — WS4 task matrix', () => {
     expect(r.total).toBe(2)
   })
 
-  it('manager: authorized submitted review appears exactly once', () => {
+  it('manager: COMPANY-scope submitted work needs the explicit reviewer grant', () => {
+    /* Round-3 parity with backend admit_review: on tasks without `scope`
+       (COMPANY projection) role alone never grants review authority. */
     const submitted = task({ status: 'SUBMITTED', ownerId: 'u-emp' })
-    const r = select([submitted], manager)
-    expect(r.reviews.map(t => t.id)).toEqual([submitted.id])
+    expect(select([submitted], manager).reviews).toEqual([]) // no grant → no row
+    expect(select([submitted], manager).total).toBe(0)
+    const granted = { ...submitted, reviewerIds: ['u-mgr'] } as Task
+    const r = select([granted], manager)
+    expect(r.reviews.map(t => t.id)).toEqual([granted.id])   // exactly one row with the grant
     expect(r.total).toBe(1)
+    const revoked = { ...granted, reviewerIds: [] } as Task
+    expect(select([revoked], manager).reviews).toEqual([])   // grant removed → row gone again
+  })
+
+  it('manager: TEAM/PROJECT-scoped tasks keep the existing review semantics (no grant needed)', () => {
+    /* The server bootstrap already filters scoped visibility to legitimate
+       managed-scope managers; the helper must not invent membership state. */
+    const scoped = task({ status: 'SUBMITTED', ownerId: 'u-emp', scope: { kind: 'TEAM', id: 'team-1' } })
+    expect(select([scoped], manager).reviews.map(t => t.id)).toEqual([scoped.id])
+    const scopedMgrOwned = task({ status: 'SUBMITTED', ownerId: otherMgr.id, scope: { kind: 'PROJECT', id: 'p-1' } })
+    expect(select([scopedMgrOwned], manager).reviews).toEqual([]) // manager-owned still needs the grant
+    const granted = { ...scopedMgrOwned, reviewerIds: ['u-mgr'] } as Task
+    expect(select([granted], manager).reviews.map(t => t.id)).toEqual([granted.id])
+    expect(select([scoped], employee).reviews).toEqual([])        // employees never review
   })
 
   it('manager: self-review and manager-owned submissions are absent', () => {
@@ -112,7 +131,7 @@ describe('selectNeedsAttention — WS4 task matrix', () => {
   })
 
   it('review rows vanish the moment the review resolves', () => {
-    const submitted = task({ status: 'SUBMITTED', ownerId: 'u-emp' })
+    const submitted = task({ status: 'SUBMITTED', ownerId: 'u-emp', reviewerIds: ['u-mgr'] })
     expect(select([submitted], manager).total).toBe(1)
     const decided = { ...submitted, status: 'APPROVED' } as Task
     expect(select([decided], manager).total).toBe(0)
@@ -122,7 +141,7 @@ describe('selectNeedsAttention — WS4 task matrix', () => {
   })
 
   it('no duplicate rows: one task contributes at most one attention row', () => {
-    const submitted = task({ status: 'SUBMITTED', ownerId: 'u-emp' })
+    const submitted = task({ status: 'SUBMITTED', ownerId: 'u-emp', reviewerIds: ['u-mgr'] })
     const assigned = task({ assignMode: 'SPECIFIC_EMPLOYEE', assigneeId: 'u-mgr',
                             audience: 'MANAGEMENT' })
     const r = select([submitted, assigned], manager)

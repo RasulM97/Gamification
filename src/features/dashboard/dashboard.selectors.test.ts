@@ -7,7 +7,8 @@ function fixture(): State {
   const s = seed(), task = s.tasks[0], reward = s.rewards[0]
   s.tasks = [
     { ...task, id: 'working', ownerId: 'u-priya', status: 'IN_PROGRESS' },
-    { ...task, id: 'review', ownerId: 'u-priya', status: 'SUBMITTED', submittedAt: 10 },
+    /* round-3 parity: COMPANY-scope manager review needs the explicit grant */
+    { ...task, id: 'review', ownerId: 'u-priya', status: 'SUBMITTED', submittedAt: 10, reviewerIds: ['u-marcus'] },
     { ...task, id: 'manager-review', audience: 'MANAGEMENT', ownerId: 'u-marcus', status: 'SUBMITTED', submittedAt: 20 },
     { ...task, id: 'rework', ownerId: 'u-aisha', status: 'REJECTED' },
     { ...task, id: 'reassign', ownerId: null, status: 'OPEN', assignMode: 'SPECIFIC_EMPLOYEE', assigneeId: null },

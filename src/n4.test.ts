@@ -46,7 +46,7 @@ it('claim and acceptance check the final slot on every transition',()=>{
   expect(capacityRefusal(s,claim('open-1'))).toEqual({code:'CAPACITY_REACHED',active:2,limit:2,targetUserId:worker})
 })
 it('completion frees capacity; submissions keep it occupied',()=>{
-  let s=base(2); s.tasks[0].status='SUBMITTED'
+  let s=base(2); s.tasks[0].status='SUBMITTED'; s.tasks[0].reviewerIds=[manager] // WS4 round 3: company-scope grant
   expect(reducer(s,claim())).toBe(s)
   s=reducer(s,{type:'APPROVE',taskId:'owned-0',managerId:manager})
   expect(activeOwnedTaskCount(reducer(s,claim()),worker)).toBe(2)
@@ -68,7 +68,7 @@ const routing: Action[] = [
   {type:'REACTIVATE',by:manager,taskId:'open-0',assigneeId:worker,reason:'Restart'},
 ]
 describe.each(routing)('$type capacity routing',action=>{
-  function setup(n:number){const s=base(n); const t=s.tasks.find(t=>t.id==='open-0')!;t.status=action.type==='HANDOFF'?'SUBMITTED':action.type==='REOPEN'?'APPROVED':action.type==='REACTIVATE'?'CANCELLED':'OPEN';t.ownerId=action.type==='HANDOFF'?'u-jonas':null;return s}
+  function setup(n:number){const s=base(n); const t=s.tasks.find(t=>t.id==='open-0')!;t.status=action.type==='HANDOFF'?'SUBMITTED':action.type==='REOPEN'?'APPROVED':action.type==='REACTIVATE'?'CANCELLED':'OPEN';t.ownerId=action.type==='HANDOFF'?'u-jonas':null;if(action.type==='HANDOFF')t.reviewerIds=[manager]/* WS4 round 3: company-scope grant */;return s}
   it('refuses atomically at capacity',()=>{const s=setup(2);expect(reducer(s,action)).toBe(s)})
   it('offers without acquiring; acceptance rechecks',()=>{const s=setup(1);const n=reducer(s,action);expect(n).not.toBe(s);expect(activeOwnedTaskCount(n,worker)).toBe(1);const assigned=n.tasks.find(t=>t.assigneeId===worker)!;expect(assigned.status).toBe('OPEN');const full=reducer(n,claim('open-1'));expect(reducer(full,claim(assigned.id))).toBe(full)})
 })

@@ -133,6 +133,8 @@ export function reducer(prev: State, a: Action): State {
       const t: Task = {
         id: nid('t'), title: a.title, description: a.description,
         priority: a.priority, deadline: normalizeDeadline(a.deadline), reward: a.reward,
+        /* WS4 parity: persist the server-shaped scope projection (COMPANY omits it). */
+        ...(a.scope && a.scope.kind !== 'COMPANY' ? { scope: { kind: a.scope.kind, id: a.scope.id } } : {}),
         audience: a.audience,
         restrictedAudiences: a.audience === 'EMPLOYEES' ? [] : [a.audience],
         privateWorkerRole: a.audience === 'PRIVATE' && a.assigneeId ? user(a.assigneeId).role : null,
@@ -288,8 +290,10 @@ export function reducer(prev: State, a: Action): State {
         outcome: 'PENDING', reviewerId: null, reviewNote: null,
       })
       act(a.userId, 'TASK_SUBMITTED', snap(t,{}))
-      /* A submitting manager (management-scoped task) never reviews themselves. */
-      managers().filter(m => m.id !== a.userId)
+      /* WS4 round-3 parity with backend submit_work: only users who actually
+         hold review authority over this task are notified — a manager without
+         the company-scope reviewer grant is never told "this needs you". */
+      managers().filter(m => canReviewTask(s, t, m))
         .forEach(m => note(m.id, 'ACTION_REQUIRED', 'Reviews', 'TASK_SUBMITTED', snap(t,{})))
       break
     }

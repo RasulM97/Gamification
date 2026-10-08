@@ -106,8 +106,11 @@ describe('linkify: user-generated task text', () => {
 
 /* ── 4–6 · manager handoff routing ─────────────────────────────────────── */
 describe('manager handoff routes per the chosen audience', () => {
+  /* WS4 round 3: COMPANY-scope review/handoff by a manager needs the explicit
+     per-task reviewer grant — the admin grants it (backend admit_review parity). */
+  const granted = () => reducer(seed(), { type: 'SET_TASK_ACCESS', by: 'u-dana', taskId: 't-commission', viewerIds: [], reviewerIds: ['u-marcus'] })
   it('manager handoff → employee works (demo engine)', () => {
-    const s = reducer(seed(), {
+    const s = reducer(granted(), {
       type: 'HANDOFF', taskId: 't-commission', managerId: 'u-marcus', acceptedPct: 0,
       reason: 'route to specialist', next: { kind: 'EMPLOYEE', id: 'u-aisha' }, audience: 'EMPLOYEES',
     })
@@ -120,7 +123,7 @@ describe('manager handoff routes per the chosen audience', () => {
   it('manager handoff → manager still works (management audience)', () => {
     // the seed has one manager, so the target is the management POOL with an
     // explicit MANAGEMENT audience — the canonical manager → manager route
-    const s = reducer(seed(), {
+    const s = reducer(granted(), {
       type: 'HANDOFF', taskId: 't-commission', managerId: 'u-marcus', acceptedPct: 0,
       reason: 'needs a finance lead', next: { kind: 'AVAILABLE' }, audience: 'MANAGEMENT',
     })
@@ -128,7 +131,7 @@ describe('manager handoff routes per the chosen audience', () => {
     expect(t.assignMode).toBe('ALL_EMPLOYEES')
     expect(t.audience).toBe('MANAGEMENT')
     // and a specific manager target with an explicit audience works too
-    let s2 = reducer(seed(), {
+    let s2 = reducer(granted(), {
       type: 'HANDOFF', taskId: 't-commission', managerId: 'u-marcus', acceptedPct: 0,
       reason: 'escalate to team lead', next: { kind: 'EMPLOYEE', id: 'u-marcus' }, audience: 'MANAGEMENT',
     })
