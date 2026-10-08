@@ -1,7 +1,7 @@
 # Repository intelligence (E0.1)
 
 Current system navigation starts at [documentation index](README.md) and
-[current verified status](STATUS.md). The E0.1 measurements and future-event investigation
+[current verified status](PRODUCT.md#status). The E0.1 measurements and future-event investigation
 examples below are historical. Canonical Events and E1–E11 consumers now exist;
 refresh/query the current graph and inspect source before relying on old examples.
 
@@ -125,8 +125,7 @@ they are candidate discovery, not exhaustive dependency analysis. Follow with
 | Future Canonical Event subsystem | Graph candidates: `service_common.py::act/note`, task/reward/cycle services, `models.py`, `routes.py`, `serializers.py`, `src/domain/events.ts`, `model.ts`, `reducer.ts` and `components/EventText.tsx`. Direct source review additionally requires `backend/alembic/versions/` and migration/parity tests. This is an inferred investigation list, not an implemented subsystem or definitive impact plan. |
 
 No graph can discover a subsystem that does not exist. N3.2 event records are
-existing activity/notification presentation contracts, not the future canonical
-event core. AST edges miss dynamic dispatch and do not prove authorization,
+activity/notification presentation contracts, distinct from the implemented canonical event core. The future-event examples above are retained E0.1 navigation history. AST edges miss dynamic dispatch and do not prove authorization,
 transaction correctness or migration compatibility. Documentation and unsupported
 formats are intentionally not semantically indexed.
 

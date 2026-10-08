@@ -2,7 +2,7 @@
 
 Current status note: the accepted deployment constraint remains in force. The
 E0.1 scope and audit below are historical; the Canonical Event foundation and
-E1–E11 capabilities are now implemented. See [current architecture](../ARCHITECTURE.md).
+E1–E11 capabilities are now implemented. See [current architecture](../ARCHITECTURE.md#contract-architecture).
 
 Status: Accepted (permanent architecture constraint)
 Date: 2026-09-24
@@ -46,7 +46,7 @@ CanonicalEvent, event tables/ingestion, policy/rule/approval engines, an event-t
 ledger bridge, recognition, connectors, Shadow Mode, capability discovery, or a
 new headless API. No database or Task/Reward/Ledger behavior changes are authorized
 by this ADR. At acceptance, E1.1 had not started. The subsequent
-[E1.1 contract](../events/CANONICAL_EVENT_CONTRACT.md) implements only the canonical
+[E1.1 contract](../ARCHITECTURE.md#contract-events-canonical-event-contract) implements only the canonical
 event persistence foundation under these deployment constraints.
 
 ## Focused static coupling audit
@@ -66,7 +66,7 @@ values. `deploy/Dockerfile.pilot` supplies container paths, not founder paths.
 
 **WARNING:** Domain implementations exist in both `src/domain/` and
 `backend/app/domain.py` plus services. Preserve parity; do not grow independent
-semantics. The old `docs/ENGINEERING_RULES.md` rule freeze predates later signed
+semantics. The historical M0-B rule freeze (summarized in [DECISIONS](../DECISIONS.md#superseded-rules)) predates later signed
 ledger/economic-position behavior. Read current code, migrations and newer
 integrity tests together; the graph cannot reconcile historical requirements.
 

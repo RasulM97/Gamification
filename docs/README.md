@@ -1,49 +1,31 @@
 # Documentation index
 
-The current implemented baseline includes [Minimal Organization + Project Context](STATUS.md). Read
-[architecture](ARCHITECTURE.md), [roadmap](ROADMAP.md), and
-[testing evidence](testing/README.md) together. Code, migrations and tests are
-authoritative; Graphify is navigation, not a specification.
+Code baseline: `f1600b580a540b55fbb8e62e1e7caa47962c313a`. **WS1–WS4 FINAL CLOSED; WS5 not started.**
+Authority order: **Source Code → DB/Migrations → Explicit Contracts → Graphify**. If prose conflicts with implementation, inspect and correct the prose; this cleanup does not authorize source changes. Graphify is navigation only.
 
-## Current contracts
-
-| Area | Documentation |
+| Read for | Canonical document |
 | --- | --- |
-| Company availability | [Capability controls](capabilities/CAPABILITY_CONTROLS_V1.md), [acceptance](capabilities/ACCEPTANCE.md) |
-| Deployment and operation | [One core, three modes](adr/ADR-CORE-DEPLOYMENT-MODEL.md), [runtime](RUNTIME.md), [local backend](EXTERNAL_POSTGRESQL_RUN.md), [pilot runbook](PILOT_RUNBOOK.md) |
-| Event foundation | [Canonical Events](events/CANONICAL_EVENT_CONTRACT.md), [internal observation](events/INTERNAL_EVENT_CATALOG.md), [ingestion](events/INGESTION_CONTRACT.md) |
-| Decisions | [Rules](rules/RULE_ENGINE_V1.md), [Policy](policies/POLICY_ENGINE_V1.md), [Governance Approval](approvals/GOVERNANCE_APPROVAL_V1.md) |
-| Economics | [Economic Effects](economic-effects/ECONOMIC_EFFECTS_V1.md), [source authority](economic-effects/TRUSTED_SOURCE_AUTHORITY.md) |
-| Producers | [Thanks, Recognition, Help](collaboration/E8_COLLABORATION.md), [GitHub](connectors/GITHUB_V1.md) |
-| Observation and safety | [Shadow](shadow/SHADOW_V1.md), [Incentive Safety](incentive_safety/SAFETY_V1.md) |
-| Notifications and work | [Notifications](NOTIFICATION_ARCHITECTURE.md), [capacity](N4-USER-CAPACITY.md), [workspace attention](N6.1-WORKSPACE-ATTENTION.md) |
-| Engineering | [Repository intelligence](REPOSITORY_INTELLIGENCE.md), [localization](localization/README.md), [UAT backlog](BACKLOG.md) |
+| Product principles, current status, next authorized boundary | [PRODUCT](PRODUCT.md) |
+| Core, events, notifications, migrations, transaction/lock boundaries | [ARCHITECTURE](ARCHITECTURE.md) |
+| Team/Project scope, membership, company capabilities | [ORGANIZATION](ORGANIZATION.md) |
+| Task fallback, lifecycle, management/review/payout authority | [TASK_LITE](TASK_LITE.md) |
+| Thanks/Recognition/Help and hybrid routing | [RECOGNITION_HELP](RECOGNITION_HELP.md) |
+| Rules, Policy, Safety, Approval, Effects, Shadow | [INCENTIVES_GOVERNANCE](INCENTIVES_GOVERNANCE.md) |
+| Ingress, GitHub, Slack, provider boundaries | [INTEGRATIONS](INTEGRATIONS.md) |
+| Demo/server, pilot, delivery and operator procedures | [OPERATIONS](OPERATIONS.md) |
+| Test commands, dataset contracts, historical measurements | [TESTING_ACCEPTANCE](TESTING_ACCEPTANCE.md) |
+| Accepted/rejected/superseded decisions and invariants | [DECISIONS](DECISIONS.md) |
+| Phase closure summaries, debt, old filenames and Git recovery | [HISTORY](HISTORY.md) |
+| This sweep's review report and Kimi-ready next step | [HANDOFF_WS5](HANDOFF_WS5.md) |
 
-## Organization context
+Technical contracts are consolidated by topic; their phase measurements remain explicitly historical. Full old reports are recoverable from the baseline Git commit using HISTORY's mapping. Never treat a historical PENDING/STOP or no-UI statement as current status.
 
-[Minimal Team/Project context](organization/CONTEXT_V1.md) is CLOSED / PASS, with
-[executed acceptance evidence](organization/IMPLEMENTATION_ACCEPTANCE.md).
-The separately published [validation](organization/VALIDATION.md) and its
-14-gap inventory remain historical evidence, not the implementation specification.
+## Deliberately retained specialized files
 
-## System Integration / Maturity Gate
+- [Core deployment ADR](adr/ADR-CORE-DEPLOYMENT-MODEL.md) and [repository intelligence](REPOSITORY_INTELLIGENCE.md): stable AGENTS/Graphify instruction paths.
+- [External PostgreSQL setup](EXTERNAL_POSTGRESQL_RUN.md): referenced by migrations and Login source; kept at its path.
+- [Localization](localization/README.md): active translation workflow and approved terminology; evidence/manifest JSON retained.
+- [UAT kit](uat/UAT_PLAN.md): plans, participant templates and metrics preserved, not falsely closed.
+- Phase evidence JSON under capabilities, organization, maturity, shadow and incentive_safety; WS1 capture harness/raw outputs; optional Graphify MCP template. These are specialized evidence/configuration, not competing canonical narratives.
 
-CLOSED / PASS: [acceptance](maturity/ACCEPTANCE.md), [measured evidence](maturity/EVIDENCE.json),
-[dependencies and transaction boundaries](maturity/DEPENDENCIES_AND_TRANSACTIONS.md),
-[execution log](maturity/RUN_LOG.md), [Cohesion backlog](maturity/COHESION_BACKLOG.md).
-Three clean mixed runs and full regressions passed after the documented task-lock fix.
-Cohesion Sweep, UAT, WSE and AI have not started.
-
-## Historical evidence
-
-Phase acceptance reports retain their original counts, dates and scope. Current
-regression counts are indexed in [testing](testing/README.md), not retroactively
-substituted into old reports. The E9 report retains a stale publication-time
-PENDING marker; its closure and later regression evidence are explained in
-[current status](STATUS.md).
-
-[September 2 handoff](Project_Handoff_CVE.md), [M1-D handoff](CVE-Handoff-M1D.md),
-and [M0-B rule freeze](ENGINEERING_RULES.md) are historical snapshots, not the
-current architecture or roadmap. N-series reports likewise describe their
-individual phase baselines. Local `app_log/`, founder reports, runtime files,
-credentials and raw diagnostic logs are not distributable documentation.
+Local founder instructions, app logs, uploads, databases, environment files and secrets are preserved outside this sweep's commit. Generated Graphify output is private and ignored.

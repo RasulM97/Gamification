@@ -1,9 +1,9 @@
 # Running the CVE Backend Externally (Windows + PostgreSQL)
 
 This guide runs the current FastAPI backend (`backend/`) on Windows with
-PostgreSQL. The verified implementation is E11; see [current status](STATUS.md).
+PostgreSQL. The implementation baseline includes WS1–WS4; see [current status](PRODUCT.md#status).
 Standalone demo mode needs none of these services. For pilot deployment, use
-the [Pilot Runbook](PILOT_RUNBOOK.md) instead of development seeding.
+the [Pilot Runbook](OPERATIONS.md#contract-pilot-runbook) instead of development seeding.
 
 ## 1. Prerequisites
 
@@ -92,7 +92,7 @@ Only an empty development database should be seeded. The current fixture is
 maintained in `backend/app/seed.py`; do not call `run()` without its required
 Session or use seed/reset commands against founder or pilot data. Development
 accounts are test identities, not production credentials. For a real pilot,
-use the provisioning workflow in [Pilot Runbook](PILOT_RUNBOOK.md).
+use the provisioning workflow in [Pilot Runbook](OPERATIONS.md#contract-pilot-runbook).
 
 ## 7. Run the backend test suite
 
@@ -103,7 +103,7 @@ python -m pytest tests/ -v
 
 This runs the backend suite against the disposable `CVE_TEST_DATABASE_URL`.
 The latest recorded E11 result is 985 unique passing checks (982 full-suite
-checks plus 3 workload cases run separately). See [testing](testing/README.md)
+checks plus 3 workload cases run separately). See [testing](TESTING_ACCEPTANCE.md#contract-testing-readme)
 for the exact recorded split and additional dedicated runners.
 
 ## 8. Concurrency tests only
@@ -144,8 +144,8 @@ python scripts/run_dev.py
   http://localhost:8000 (override with `$env:CVE_API_PROXY_TARGET`), so no
   other frontend configuration is needed. Sign in with a seeded account
   (using the development seed only), or use the account menu's
-  **Switch test account** dev tool, which performs real logins through
-  `/api/auth/login`. The switcher exists only in this dev mode — never in
+  **Switch test account** dev tool, which exchanges the authenticated development session through
+  `/api/dev/switch/{user_id}`. The switcher exists only in this dev mode — never in
   demo mode, never without `VITE_CVE_DEV_TOOLS=true`, never in any
   production build.
 - Server-mode attachments: task/review chips download the real stored bytes
@@ -160,7 +160,7 @@ python scripts/run_dev.py
   outside development.
 - The M0-B rule freeze is historical. Current behavior is defined by source,
   migrations and tests, including later approved capacity, visibility and signed
-  ledger rules. See [architecture](ARCHITECTURE.md) and [testing](testing/README.md).
+  ledger rules. See [architecture](ARCHITECTURE.md#contract-architecture) and [testing](TESTING_ACCEPTANCE.md#contract-testing-readme).
 - The root `.venv` belongs to Graphify; preserve it and use `backend/.venv`.
 - Automated fixtures truncate data. Use a dedicated disposable test database,
   never founder or pilot data. Do not commit local environment files or secrets.

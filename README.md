@@ -1,34 +1,9 @@
-# CVE / Gamification
+# Corporate Virtual Economy
 
-CVE is a corporate virtual economy with a React/TypeScript demo and an
-authoritative FastAPI/PostgreSQL backend. The implemented baseline now includes
-**System Integration / Maturity Gate — CLOSED / PASS** on top of explicit
-Organization/Project context, E11 and company capability controls. See the
-[acceptance report](docs/maturity/ACCEPTANCE.md) for executed verification.
+CVE is a background incentive operating layer around existing company work, with an authenticated FastAPI/PostgreSQL backend and React web/demo surfaces. WS1–WS4 are FINAL CLOSED at `f1600b580a540b55fbb8e62e1e7caa47962c313a`; WS5 is not implemented by this documentation sweep.
 
-## Start here
+Start with the [documentation index](docs/README.md), [product/status](docs/PRODUCT.md), [architecture](docs/ARCHITECTURE.md), [operations](docs/OPERATIONS.md) and [testing](docs/TESTING_ACCEPTANCE.md). Historical evidence, superseded decisions and original report recovery are indexed in [history](docs/HISTORY.md). The [review and Kimi handoff](docs/HANDOFF_WS5.md) records this sweep.
 
-- [Documentation index](docs/README.md)
-- [Current status and completed phases](docs/STATUS.md)
-- [Current architecture and invariants](docs/ARCHITECTURE.md)
-- [Roadmap and WSE deferral gate](docs/ROADMAP.md)
-- [Verified testing results and commands](docs/testing/README.md)
-- [Runtime modes](docs/RUNTIME.md), [local backend setup](docs/EXTERNAL_POSTGRESQL_RUN.md),
-  and [pilot operations](docs/PILOT_RUNBOOK.md)
-- [Repository intelligence / Graphify](docs/REPOSITORY_INTELLIGENCE.md)
+Source Code → DB/Migrations → Explicit Contracts → Graphify. Use [AGENTS.md](AGENTS.md) and [repository intelligence](docs/REPOSITORY_INTELLIGENCE.md) for development navigation. Managed, self-hosted and headless deployment share [one Core](docs/adr/ADR-CORE-DEPLOYMENT-MODEL.md).
 
-For the standalone demo, run `npm ci`, then `npm run dev` from the repository
-root. For the server, follow the linked backend setup, then run `npm run dev:server`.
-The backend working directory is `backend/`; its entrypoint is `app.main:app`.
-Demo mode does not implement the full E7–E11 API capabilities in browser state.
-
-The incentive path is Event → Rule → Candidate → Policy → Safety → Approval
-where required → Economic Effect → Ledger. Stages are explicitly invoked;
-webhook receipt does not automatically issue a reward. Shadow creates no real
-economics. Wallet values are derived from the append-only signed ledger.
-
-**Next boundary:** System Cohesion Sweep, not started. See the
-[boundary map](docs/maturity/DEPENDENCIES_AND_TRANSACTIONS.md),
-[execution log](docs/maturity/RUN_LOG.md) and
-[Cohesion backlog](docs/maturity/COHESION_BACKLOG.md). The maturity gate is PASS.
-Cohesion Sweep, UAT, WSE and AI have not started.
+Run `npm run dev` for the browser demo or follow [PostgreSQL setup](docs/EXTERNAL_POSTGRESQL_RUN.md) and `npm run dev:server` for authenticated server mode. Dependencies must already be installed from package.json; the baseline has no committed npm lockfile. Preserve local runtime data and secrets.
