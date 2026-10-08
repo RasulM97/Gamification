@@ -35,3 +35,15 @@ export function routingAudience(t: Task, target?: User, audience?: Audience): Au
   return audience ?? (target && t.audience !== 'PRIVATE'
     ? target.role === 'EMPLOYEE' ? 'EMPLOYEES' : 'MANAGEMENT' : t.audience)
 }
+
+/* WS4 round-4 demo parity with backend require_payout_authority: a positive
+   task payout is executed by an ADMIN, or by an authorized manager reviewer
+   when the task's creator is an admin (the payout was pre-authorized at
+   authoring). Non-positive payouts need no economic authority. Fails closed
+   when the creator cannot be resolved. */
+export function canExecuteTaskPayout(s: Pick<State, 'users'>, t: Task, u: User, payout: number): boolean {
+  if (payout <= 0) return true
+  if (u.role === 'ADMIN') return true
+  const creator = s.users.find(x => x.id === t.createdBy)
+  return !!creator && creator.role === 'ADMIN'
+}

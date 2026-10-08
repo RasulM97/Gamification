@@ -94,9 +94,12 @@ describe('A1 — manager cannot edit/cancel admin-created tasks', () => {
     expect(s.tasks.find(t => t.id === 't-recount')!.title).toBe('Urgent inventory recount')
     s = reducer(s, { type: 'CANCEL_TASK', taskId: 't-recount', by: 'u-dana', reason: 'Postponed' })
     expect(s.tasks.find(t => t.id === 't-recount')!.status).toBe('CANCELLED')
-    // a manager keeps authority over tasks THEY created (t-pricing is u-marcus)
+    // WS4 round 4: demo management is admin-only — even the manager who created
+    // the task cannot cancel it; only an admin can
     s = seed()
-    s = reducer(s, { type: 'CANCEL_TASK', taskId: 't-pricing', by: 'u-marcus', reason: 'Deprioritized' })
+    const refusedOwn = reducer(s, { type: 'CANCEL_TASK', taskId: 't-pricing', by: 'u-marcus', reason: 'Deprioritized' })
+    expect(refusedOwn).toBe(s)
+    s = reducer(s, { type: 'CANCEL_TASK', taskId: 't-pricing', by: 'u-dana', reason: 'Deprioritized' })
     expect(s.tasks.find(t => t.id === 't-pricing')!.status).toBe('CANCELLED')
   })
 
@@ -132,8 +135,17 @@ describe('A1 — manager cannot edit/cancel admin-created tasks', () => {
     expect(refused.tasks.find(x => x.id === t.id)!.status).toBe('OPEN')
   })
 
-  it('1+3 (UI) · manager keeps Edit/Cancel on their own task', async () => {
+  it('1+3 (UI) · demo manager sees no Edit/Cancel affordance, even on their own task', async () => {
+    /* WS4 round 4: demo management is admin-only, so the drawer never offers a
+       manager no-op management buttons — not even on tasks they created. */
     persona('u-marcus')
+    await render(h(TaskDrawer, { taskId: 't-pricing', onClose: () => {}, onGo: () => {} }))
+    expect(buttons()).not.toContain('Edit task…')
+    expect(buttons()).not.toContain('Cancel task')
+  })
+
+  it('1+3 (UI) · admin keeps Edit/Cancel on a manager-created task', async () => {
+    persona('u-dana')
     await render(h(TaskDrawer, { taskId: 't-pricing', onClose: () => {}, onGo: () => {} }))
     expect(buttons()).toContain('Edit task…')
     expect(buttons()).toContain('Cancel task')

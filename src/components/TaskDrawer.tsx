@@ -5,6 +5,7 @@ import { canSeeTask, canReviewTask } from '../domain/taskAccess'
 import { ActivityEvent } from './EventText'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
+import { IS_DEMO } from '../runtime'
 import { capacityLimit, activeCount, roleFits } from '../domain/engine'
 import type { Task } from '../domain/engine'
 import { rowProps, cycleOutcome, localizedHist } from '../ui'
@@ -57,7 +58,10 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
   /* N2.1-A1: cancel is a canonical-ownership act — creator or admin only.
      A manager must never see a cancel affordance on an admin-created task;
      the engine and the backend refuse it too (403), the UI must not offer it. */
-  const canCancel = isMgr && !['APPROVED', 'CANCELLED'].includes(t.status) && !isOwner
+  /* WS4 round 4: demo management acts are admin-only in the reducer (no org
+     membership state) — demo managers get no management affordances at all. */
+  const canManage = isMgr && (me.role === 'ADMIN' || !IS_DEMO)
+  const canCancel = canManage && !['APPROVED', 'CANCELLED'].includes(t.status) && !isOwner
     && (me.role === 'ADMIN' || t.createdBy === me.id)
 
   return (
@@ -177,18 +181,18 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
             </span>
           )}
           {canHandoff ? <button className="btn" onClick={() => setModal('handoff')}>{tr('task.action.handoff')}</button> : null}
-          {isMgr && t.status === 'OPEN' && (
+          {canManage && t.status === 'OPEN' && (
             <ReassignInline taskId={t.id} assigneeId={t.assigneeId} assignMode={t.assignMode} audience={t.audience} />
           )}
-          {isMgr && t.status === 'APPROVED' && (
+          {canManage && t.status === 'APPROVED' && (
             <button className="btn" onClick={() => setModal('reopen')}>{tr('task.action.reopen')}</button>
           )}
-          {isMgr && t.status === 'CANCELLED' && (
+          {canManage && t.status === 'CANCELLED' && (
             <button className="btn" onClick={() => setModal('reactivate')}>{tr('task.action.reactivate')}</button>
           )}
           {/* Edit is creator-or-admin only (M1-C A2) — mirrors the domain
               rule; a non-creator manager sees no affordance at all. */}
-          {isMgr && !['APPROVED', 'CANCELLED'].includes(t.status) && (me.role === 'ADMIN' || t.createdBy === me.id) && (
+          {canManage && !['APPROVED', 'CANCELLED'].includes(t.status) && (me.role === 'ADMIN' || t.createdBy === me.id) && (
             <button className="btn" onClick={() => setModal('edit')}>{tr('task.action.edit')}</button>
           )}
           {canCancel && (

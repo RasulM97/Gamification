@@ -16,7 +16,7 @@ const ledgerIds = (s: State) => s.ledger.map(l => l.id).sort().join(',')
 /** Build a fresh OPEN task owned by nobody, available to all. */
 function freshTask(s: State, reward = 20): State {
   return reducer(s, {
-    type: 'CREATE_TASK', by: MGR, title: 'Test work', description: 'desc',
+    type: 'CREATE_TASK', by: ADMIN, title: 'Test work', description: 'desc',
     priority: 'NORMAL', deadline: null, reward,
     assignMode: 'ALL_EMPLOYEES', assigneeId: null, audience: 'EMPLOYEES',
   })
@@ -73,7 +73,7 @@ describe('claim semantics (§9)', () => {
 
   it('specific assignment is claimable only by the assignee', () => {
     let s = reducer(seed(), {
-      type: 'CREATE_TASK', by: MGR, title: 'Direct', description: 'd',
+      type: 'CREATE_TASK', by: ADMIN, title: 'Direct', description: 'd',
       priority: 'NORMAL', deadline: null, reward: 10,
       assignMode: 'SPECIFIC_EMPLOYEE', audience: 'EMPLOYEES', assigneeId: AISHA,
     })
@@ -88,7 +88,7 @@ describe('claim semantics (§9)', () => {
 describe('decline vs return vs reject (§8)', () => {
   it('decline: reason recorded, no penalty, back to unassigned', () => {
     let s = reducer(seed(), {
-      type: 'CREATE_TASK', by: MGR, title: 'Policy doc', description: 'd',
+      type: 'CREATE_TASK', by: ADMIN, title: 'Policy doc', description: 'd',
       priority: 'IMPORTANT', deadline: null, reward: 10,
       assignMode: 'SPECIFIC_EMPLOYEE', audience: 'EMPLOYEES', assigneeId: PRIYA,
     })
@@ -226,7 +226,7 @@ describe('task cycles (§14)', () => {
     const cyclesBefore = structuredClone(before.cycles)
     const paidBefore = before.cycles.map(c => c.paid)
     const ledgerBefore = s.ledger.length
-    s = reducer(s, { type: 'REOPEN', taskId: 't-audit', by: MGR })
+    s = reducer(s, { type: 'REOPEN', taskId: 't-audit', by: ADMIN })
     const t = task(s, 't-audit')
     expect(t.cycle).toBe(3)
     expect(t.status).toBe('OPEN')
@@ -244,12 +244,12 @@ describe('task cycles (§14)', () => {
 
   it('cancel → reactivate starts a new cycle; double cancel refused', () => {
     let s = seed()
-    s = reducer(s, { type: 'CANCEL_TASK', taskId: 't-pricing', by: MGR, reason: 'Deprioritized' })
+    s = reducer(s, { type: 'CANCEL_TASK', taskId: 't-pricing', by: ADMIN, reason: 'Deprioritized' })
     expect(task(s, 't-pricing').status).toBe('CANCELLED')
     const rows = s.ledger.length
-    s = reducer(s, { type: 'CANCEL_TASK', taskId: 't-pricing', by: MGR, reason: 'again' })
+    s = reducer(s, { type: 'CANCEL_TASK', taskId: 't-pricing', by: ADMIN, reason: 'again' })
     expect(s.ledger.length).toBe(rows)
-    s = reducer(s, { type: 'REACTIVATE', taskId: 't-pricing', by: MGR, reason: 'Scope still needed' })
+    s = reducer(s, { type: 'REACTIVATE', taskId: 't-pricing', by: ADMIN, reason: 'Scope still needed' })
     const t = task(s, 't-pricing')
     expect(t.status).toBe('OPEN')
     expect(t.cycle).toBe(2)
@@ -446,7 +446,7 @@ describe('notification settings basics (N-B)', () => {
 describe('wrong-claim penalty policy (L.2-A)', () => {
   const openPublic = (s: State, priority: 'URGENT' | 'IMPORTANT' | 'NORMAL' | 'NONE', reward = 20) =>
     reducer(s, {
-      type: 'CREATE_TASK', by: MGR, title: `${priority} work`, description: 'd',
+      type: 'CREATE_TASK', by: ADMIN, title: `${priority} work`, description: 'd',
       priority, deadline: null, reward, assignMode: 'ALL_EMPLOYEES', assigneeId: null, audience: 'EMPLOYEES',
     })
 
@@ -479,7 +479,7 @@ describe('wrong-claim penalty policy (L.2-A)', () => {
 describe('priority-aware notifications (L.2-C)', () => {
   it('public URGENT/IMPORTANT tasks notify all employees, not managers', () => {
     const s = reducer(seed(), {
-      type: 'CREATE_TASK', by: MGR, title: 'Fire drill', description: 'd',
+      type: 'CREATE_TASK', by: ADMIN, title: 'Fire drill', description: 'd',
       priority: 'URGENT', deadline: null, reward: 10, assignMode: 'ALL_EMPLOYEES', assigneeId: null, audience: 'EMPLOYEES',
     })
     const fresh = s.notices.filter(n => n.taskId === newest(s).id)
@@ -489,8 +489,8 @@ describe('priority-aware notifications (L.2-C)', () => {
 
   it('orders unread by criticality then task priority, read by recency', () => {
     let s = seed()
-    s = reducer(s, { type: 'CREATE_TASK', by: MGR, title: 'Normal pub', description: 'd', priority: 'NORMAL', deadline: null, reward: 5, assignMode: 'ALL_EMPLOYEES', assigneeId: null, audience: 'EMPLOYEES' })
-    s = reducer(s, { type: 'CREATE_TASK', by: MGR, title: 'Urgent pub', description: 'd', priority: 'URGENT', deadline: null, reward: 5, assignMode: 'ALL_EMPLOYEES', assigneeId: null, audience: 'EMPLOYEES' })
+    s = reducer(s, { type: 'CREATE_TASK', by: ADMIN, title: 'Normal pub', description: 'd', priority: 'NORMAL', deadline: null, reward: 5, assignMode: 'ALL_EMPLOYEES', assigneeId: null, audience: 'EMPLOYEES' })
+    s = reducer(s, { type: 'CREATE_TASK', by: ADMIN, title: 'Urgent pub', description: 'd', priority: 'URGENT', deadline: null, reward: 5, assignMode: 'ALL_EMPLOYEES', assigneeId: null, audience: 'EMPLOYEES' })
     const ordered = sortNotices(visibleNotices(s, PRIYA))
     const unread = ordered.filter(n => !n.read)
     // ACTION_REQUIRED (if any) first; URGENT before NORMAL among unread task notes
@@ -505,7 +505,7 @@ describe('priority-aware notifications (L.2-C)', () => {
   it('archive all read keeps unread and audit history intact', () => {
     let s = seed()
     s = reducer(s, { type: 'MARK_ALL_READ', userId: PRIYA })
-    s = reducer(s, { type: 'CREATE_TASK', by: MGR, title: 'Unread one', description: 'd', priority: 'URGENT', deadline: null, reward: 5, assignMode: 'ALL_EMPLOYEES', assigneeId: null, audience: 'EMPLOYEES' })
+    s = reducer(s, { type: 'CREATE_TASK', by: ADMIN, title: 'Unread one', description: 'd', priority: 'URGENT', deadline: null, reward: 5, assignMode: 'ALL_EMPLOYEES', assigneeId: null, audience: 'EMPLOYEES' })
     const totalBefore = s.notices.filter(n => n.userId === PRIYA).length
     s = reducer(s, { type: 'ARCHIVE_ALL_READ', userId: PRIYA })
     const mine = s.notices.filter(n => n.userId === PRIYA)
@@ -615,7 +615,7 @@ describe('mid-work cancel with partial credit', () => {
 
   it('ignores credit when the task has no current owner', () => {
     const len = seed().ledger.length
-    const s = reducer(seed(), { type: 'CANCEL_TASK', taskId: 't-pricing', by: MGR, reason: 'Deprioritized', acceptedPct: 50 })
+    const s = reducer(seed(), { type: 'CANCEL_TASK', taskId: 't-pricing', by: ADMIN, reason: 'Deprioritized', acceptedPct: 50 })
     expect(task(s, 't-pricing').status).toBe('CANCELLED')
     expect(s.ledger.length).toBe(len) // no payout rows
     expect(task(s, 't-pricing').contributions).toEqual([])
@@ -720,36 +720,39 @@ describe('task editing (EDIT_TASK)', () => {
   })
 
   it('never lets the reward drop below what is already paid', () => {
-    const s = reducer(seed(), { type: 'EDIT_TASK', taskId: 't-commission', by: MGR, reward: 5 }) // paid = 6
+    const s = reducer(seed(), { type: 'EDIT_TASK', taskId: 't-commission', by: ADMIN, reward: 5 }) // paid = 6
     expect(task(s, 't-commission').reward).toBe(30) // unchanged
   })
 
   it('terminal tasks are immutable', () => {
-    const s = reducer(seed(), { type: 'EDIT_TASK', taskId: 't-audit', by: MGR, title: 'Hacked' })
+    const s = reducer(seed(), { type: 'EDIT_TASK', taskId: 't-audit', by: ADMIN, title: 'Hacked' })
     expect(task(s, 't-audit').title).toBe('Q3 inventory audit')
   })
 
-  it('a manager who did NOT create the task cannot edit it (M1-C A2)', () => {
+  it('manager edits are refused in the demo engine (fail closed); admin edits apply', () => {
     /* t-commission is admin-created; Marcus (manager, non-creator) must be refused. */
     const s = reducer(seed(), { type: 'EDIT_TASK', taskId: 't-commission', by: MGR, title: 'Hacked by manager' })
     expect(task(s, 't-commission').title).toBe('Quarterly commission reconciliation')
-    /* …and a manager may edit their OWN created task (t-commission is
-       admin-created; use a manager-created live task instead). Build one. */
-    let s2 = seed()
-    s2 = reducer(s2, {
+    /* WS4 round 4: the demo State carries no organization membership, so demo
+       management is admin-only — even on a task the manager created. This
+       mirrors backend admit_management on COMPANY scope. */
+    const s2 = seed()
+    const mgrCreate = reducer(s2, {
       type: 'CREATE_TASK', by: MGR, title: 'Manager self task', description: 'd',
       priority: 'NORMAL', reward: 10, audience: 'EMPLOYEES', assignMode: 'ALL_EMPLOYEES',
       deadline: null, assigneeId: null,
     })
-    const ownId = s2.tasks[0].id
-    const own = reducer(s2, { type: 'EDIT_TASK', taskId: ownId, by: MGR, title: 'Manager self task — v2' })
-    expect(task(own, ownId).title).toBe('Manager self task — v2')
+    expect(mgrCreate).toBe(s2) // refused totally
+    const mgrEdit = reducer(s2, { type: 'EDIT_TASK', taskId: 't-northstar', by: MGR, title: 'Manager self task — v2' })
+    expect(mgrEdit).toBe(s2) // refused even on the manager-authored t-northstar
+    const own = reducer(s2, { type: 'EDIT_TASK', taskId: 't-northstar', by: ADMIN, title: 'Client onboarding pack — Northstar Labs (v2)' })
+    expect(task(own, 't-northstar').title).toBe('Client onboarding pack — Northstar Labs (v2)')
   })
 
   it('a no-op edit records nothing', () => {
     const s0 = seed()
     const nActs = s0.activity.length
-    const s = reducer(s0, { type: 'EDIT_TASK', taskId: 't-commission', by: MGR, title: task(s0, 't-commission').title })
+    const s = reducer(s0, { type: 'EDIT_TASK', taskId: 't-commission', by: ADMIN, title: task(s0, 't-commission').title })
     expect(s.activity.length).toBe(nActs)
   })
 })
@@ -842,7 +845,7 @@ describe('submission completion estimate', () => {
 
 describe('reactivation reason', () => {
   it('is recorded in history and the manager notice', () => {
-    let s = reducer(seed(), { type: 'CANCEL_TASK', taskId: 't-pricing', by: MGR, reason: 'Deprioritized' })
+    let s = reducer(seed(), { type: 'CANCEL_TASK', taskId: 't-pricing', by: ADMIN, reason: 'Deprioritized' })
     s = reducer(s, { type: 'REACTIVATE', taskId: 't-pricing', by: ADMIN, reason: 'Pricing refresh still needed' })
     expect(task(s, 't-pricing').status).toBe('OPEN')
     expect(s.activity.some(a => a.taskId === 't-pricing' && a.params?.reason === 'Pricing refresh still needed')).toBe(true)
@@ -936,14 +939,14 @@ describe('immutable submission history', () => {
 describe('brief files (create + handoff attachments)', () => {
   it('creation stores brief files and validates them', () => {
     const s = reducer(seed(), {
-      type: 'CREATE_TASK', by: MGR, title: 'With brief', description: 'd',
+      type: 'CREATE_TASK', by: ADMIN, title: 'With brief', description: 'd',
       priority: 'NORMAL', deadline: null, reward: 10, audience: 'EMPLOYEES',
       assignMode: 'ALL_EMPLOYEES', assigneeId: null,
       attachments: [{ name: 'spec.pdf', size: 100, type: 'application/pdf' }],
     })
     expect(newest(s).briefFiles[0].name).toBe('spec.pdf')
     const bad = reducer(seed(), {
-      type: 'CREATE_TASK', by: MGR, title: 'Evil', description: 'd',
+      type: 'CREATE_TASK', by: ADMIN, title: 'Evil', description: 'd',
       priority: 'NORMAL', deadline: null, reward: 10, audience: 'EMPLOYEES',
       assignMode: 'ALL_EMPLOYEES', assigneeId: null,
       attachments: [{ name: 'virus.exe', size: 100, type: '' }],
@@ -963,14 +966,14 @@ describe('brief files (create + handoff attachments)', () => {
 
 describe('private tasks', () => {
   const priv = (s: State) => reducer(s, {
-    type: 'CREATE_TASK', by: MGR, title: 'Disciplinary review', description: 'd',
+    type: 'CREATE_TASK', by: ADMIN, title: 'Disciplinary review', description: 'd',
     priority: 'NORMAL', deadline: null, reward: 15, audience: 'PRIVATE',
     assignMode: 'SPECIFIC_EMPLOYEE', assigneeId: AISHA,
   })
 
   it('requires a specific assignee and forces SPECIFIC mode', () => {
     const noAssignee = reducer(seed(), {
-      type: 'CREATE_TASK', by: MGR, title: 'Private w/o assignee', description: 'd',
+      type: 'CREATE_TASK', by: ADMIN, title: 'Private w/o assignee', description: 'd',
       priority: 'NORMAL', deadline: null, reward: 15, audience: 'PRIVATE',
       assignMode: 'ALL_EMPLOYEES', assigneeId: null,
     })
@@ -981,15 +984,19 @@ describe('private tasks', () => {
     expect(t.assigneeId).toBe(AISHA)
   })
 
-  it('is invisible to other employees, visible to the assignee and management', () => {
+  it('is invisible to other employees and ungranted managers, visible to the assignee and admin', () => {
+    /* WS4 round 4: the creator is the admin (demo creation is admin-only), so a
+       manager sees a PRIVATE task only with an explicit viewer/reviewer grant. */
     const s = priv(seed())
     const t = newest(s)
     const priya = s.users.find(u => u.id === PRIYA)!
     const aisha = s.users.find(u => u.id === AISHA)!
     const marcus = s.users.find(u => u.id === MGR)!
+    const dana = s.users.find(u => u.id === ADMIN)!
     expect(canSeeTask(t, priya)).toBe(false)
     expect(canSeeTask(t, aisha)).toBe(true)
-    expect(canSeeTask(t, marcus)).toBe(true)
+    expect(canSeeTask(t, marcus)).toBe(false)
+    expect(canSeeTask(t, dana)).toBe(true)
   })
 
   it('never fans out notifications to other employees', () => {
@@ -1041,7 +1048,7 @@ describe('the admin never owns work', () => {
 
   it('creating a task assigned to the admin is refused', () => {
     const s = reducer(seed(), {
-      type: 'CREATE_TASK', by: MGR, title: 'For dana', description: 'd',
+      type: 'CREATE_TASK', by: ADMIN, title: 'For dana', description: 'd',
       priority: 'NORMAL', deadline: null, reward: 10, audience: 'MANAGEMENT',
       assignMode: 'SPECIFIC_EMPLOYEE', assigneeId: ADMIN,
     })
@@ -1184,7 +1191,7 @@ describe('reopen & reactivate brief refresh', () => {
 describe('canonical deadline representation (M0-B)', () => {
   it('create stores date-only, coercing legacy ISO', () => {
     const s = reducer(seed(), {
-      type: 'CREATE_TASK', by: MGR, title: 'Dated', description: 'd',
+      type: 'CREATE_TASK', by: ADMIN, title: 'Dated', description: 'd',
       priority: 'NORMAL', deadline: '2026-10-01T17:00:00.000Z', reward: 5,
       assignMode: 'ALL_EMPLOYEES', assigneeId: null, audience: 'EMPLOYEES',
     })

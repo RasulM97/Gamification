@@ -172,9 +172,9 @@ describe('N1-B — notification tabs', () => {
 
 describe('N1-A — task vs reward management separation', () => {
   it('8 · Tasks repository contains no Reward management UI', async () => {
-    persona('u-marcus')
+    persona('u-dana')
     await render(h(TasksView, { scope: 'all', onOpen: () => {}, onCreate: () => {} }))
-    expect(text()).toContain('Create task') // task management is present…
+    expect(text()).toContain('Create task') // task management is present (admin in demo)…
     expect(text()).not.toContain('New reward')
     expect(text()).not.toContain('Manage reward')
     expect(text()).not.toContain('Redeem')

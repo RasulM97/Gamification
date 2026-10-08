@@ -61,14 +61,14 @@ it('decreasing capacity preserves work, history and ledger, and raising it takes
   expect(activeOwnedTaskCount(reducer(n,claim()),worker)).toBe(2)
 })
 const routing: Action[] = [
-  {type:'CREATE_TASK',by:manager,title:'New',description:'Brief',priority:'NORMAL',deadline:null,reward:10,audience:'EMPLOYEES',assignMode:'SPECIFIC_EMPLOYEE',assigneeId:worker},
-  {type:'REASSIGN',by:manager,taskId:'open-0',assigneeId:worker},
-  {type:'HANDOFF',managerId:manager,taskId:'open-0',acceptedPct:20,reason:'Transfer',next:{kind:'EMPLOYEE',id:worker}},
-  {type:'REOPEN',by:manager,taskId:'open-0',assigneeId:worker},
-  {type:'REACTIVATE',by:manager,taskId:'open-0',assigneeId:worker,reason:'Restart'},
+  {type:'CREATE_TASK',by:admin,title:'New',description:'Brief',priority:'NORMAL',deadline:null,reward:10,audience:'EMPLOYEES',assignMode:'SPECIFIC_EMPLOYEE',assigneeId:worker},
+  {type:'REASSIGN',by:admin,taskId:'open-0',assigneeId:worker},
+  {type:'HANDOFF',managerId:admin,taskId:'open-0',acceptedPct:20,reason:'Transfer',next:{kind:'EMPLOYEE',id:worker}}, // WS4 round 4: positive payout on manager-authored seed task is admin-executed
+  {type:'REOPEN',by:admin,taskId:'open-0',assigneeId:worker},
+  {type:'REACTIVATE',by:admin,taskId:'open-0',assigneeId:worker,reason:'Restart'},
 ]
 describe.each(routing)('$type capacity routing',action=>{
-  function setup(n:number){const s=base(n); const t=s.tasks.find(t=>t.id==='open-0')!;t.status=action.type==='HANDOFF'?'SUBMITTED':action.type==='REOPEN'?'APPROVED':action.type==='REACTIVATE'?'CANCELLED':'OPEN';t.ownerId=action.type==='HANDOFF'?'u-jonas':null;if(action.type==='HANDOFF')t.reviewerIds=[manager]/* WS4 round 3: company-scope grant */;return s}
+  function setup(n:number){const s=base(n); const t=s.tasks.find(t=>t.id==='open-0')!;t.status=action.type==='HANDOFF'?'SUBMITTED':action.type==='REOPEN'?'APPROVED':action.type==='REACTIVATE'?'CANCELLED':'OPEN';t.ownerId=action.type==='HANDOFF'?'u-jonas':null;return s}
   it('refuses atomically at capacity',()=>{const s=setup(2);expect(reducer(s,action)).toBe(s)})
   it('offers without acquiring; acceptance rechecks',()=>{const s=setup(1);const n=reducer(s,action);expect(n).not.toBe(s);expect(activeOwnedTaskCount(n,worker)).toBe(1);const assigned=n.tasks.find(t=>t.assigneeId===worker)!;expect(assigned.status).toBe('OPEN');const full=reducer(n,claim('open-1'));expect(reducer(full,claim(assigned.id))).toBe(full)})
 })

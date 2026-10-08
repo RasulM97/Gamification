@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { IS_DEMO } from '../runtime'
 import { useStore, useMe } from '../store'
 import { canonicalSort, activeCount, canSeeTask, roleFits, capacityLimit } from '../domain/engine'
 import type { Priority, Task } from '../domain/engine'
@@ -68,7 +69,9 @@ export function TasksView({ scope, onOpen, onCreate }: {
   return (
     <Panel pad={false}
       title={scope === 'mine' ? t('nav.myWork') : scope === 'available' ? t('nav.availableWork') : t('common.tasks')}
-      right={isMgr && scope === 'all' && <button className="btn primary" onClick={onCreate}>+ {t('task.action.create')}</button>}>
+      /* WS4 round 4: demo managers hold no company-scope management authority
+         (reducer fails closed) — never offer a create button that no-ops. */
+      right={isMgr && scope === 'all' && (me.role === 'ADMIN' || !IS_DEMO) && <button className="btn primary" onClick={onCreate}>+ {t('task.action.create')}</button>}>
         <div className="toolbar tasks-toolbar">
           <input dir={q ? 'auto' : undefined} type="search" value={q} onChange={e => setQ(e.target.value)}
             placeholder={t('search.tasks')} style={{ width: 170 }} aria-label={t('accessibility.searchTasks')} />

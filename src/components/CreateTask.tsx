@@ -56,9 +56,12 @@ export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () 
       : audience === 'MANAGEMENT' ? u.role === 'MANAGER'
       : u.role !== 'ADMIN') && u.id !== me.id)
     .filter(u => !scopeMembers || scopeMembers.has(u.id))
+  /* WS4 round 4: no IS_DEMO bypass — the demo reducer also refuses manager
+     company-scope creation, so the form must not advertise it. A demo manager
+     has no selectable scope (no org units exist in demo state) → disabled. */
   const valid = title.trim().length > 0 && desc.trim().length > 0
     && (audience === 'PRIVATE' ? !!assignee : mode === 'all' || assignee) && +reward > 0
-    && (IS_DEMO || me.role !== 'MANAGER' || scope.kind !== 'COMPANY')
+    && (me.role !== 'MANAGER' || scope.kind !== 'COMPANY')
 
   const create = () => {
     dispatch({

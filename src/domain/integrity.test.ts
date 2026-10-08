@@ -15,15 +15,19 @@ function create(s: State, audience: Audience = 'EMPLOYEES', assigneeId: string |
     priority: 'NORMAL', deadline: null, reward: 20, audience, assigneeId, assignMode: assigneeId ? 'SPECIFIC_EMPLOYEE' : 'ALL_EMPLOYEES' })
 }
 
-it('Manager cancellation credit requires review delegation even for the creator', () => {
-  let s = create(clean(), 'MANAGEMENT', other, manager)
+it('Manager cancel is refused on company scope even with a reviewer grant; admin executes the credit', () => {
+  /* WS4 round 4: demo management is admin-only (fail closed — no org membership
+     state), mirroring backend COMPANY-scope admit_management. The reviewer grant
+     is review-only and never unlocks management acts. */
+  let s = create(clean(), 'MANAGEMENT', other)
   const taskId = s.tasks[0].id
   s = reducer(s, {type:'CLAIM_TASK', taskId, userId:other})
   const action = {type:'CANCEL_TASK' as const, taskId, by:manager, reason:'Partial delivery', acceptedPct:50}
-  expect(integrityRefusal(s, action)).toBe('REVIEW_AUTHORITY_REQUIRED')
+  expect(integrityRefusal(s, action)).toBe('FORBIDDEN')
   expect(reducer(s, action)).toBe(s)
   s = reducer(s, {type:'SET_TASK_ACCESS', taskId, by:admin, viewerIds:[], reviewerIds:[manager]})
-  expect(reducer(s, action).tasks[0].status).toBe('CANCELLED')
+  expect(reducer(s, action)).toBe(s) // grant does not create management authority
+  expect(reducer(s, {...action, by:admin}).tasks[0].status).toBe('CANCELLED')
 })
 
 it.each([[-8,0,8],[-8+20,12,0],[-20+8,0,12]])('signed ledger position %i yields balance %i / debt %i', (net,balance,debt) => {
@@ -52,10 +56,12 @@ it('negative and positive admin adjustments net debt; redemption cannot use debt
   s = reducer(s, { type: 'REDEEM', userId: worker, rewardId: s.rewards[0].id })
   expect(s).toEqual(old)
 })
-it('private employee task is visible to creator, selected employee and Admin, not unrelated managers', () => {
-  const s = create(clean(), 'PRIVATE', worker, manager), task = s.tasks[0]
-  for (const id of [admin, manager, worker]) expect(canSeeTask(task, s.users.find(u => u.id === id)!)).toBe(true)
-  expect(canSeeTask(task, s.users.find(u => u.id === other)!)).toBe(false)
+it('private employee task is visible to the admin creator and selected employee, not managers', () => {
+  /* WS4 round 4: demo creation is admin-only, so the creator is the admin;
+     managers see a PRIVATE task only with an explicit viewer/reviewer grant. */
+  const s = create(clean(), 'PRIVATE', worker), task = s.tasks[0]
+  for (const id of [admin, worker]) expect(canSeeTask(task, s.users.find(u => u.id === id)!)).toBe(true)
+  for (const id of [manager, other]) expect(canSeeTask(task, s.users.find(u => u.id === id)!)).toBe(false)
   const a = { type: 'REASSIGN' as const, taskId: task.id, by: other, assigneeId: worker }
   expect(integrityRefusal(s, a)).toBe('NOT_FOUND'); expect(reducer(s, a)).toEqual(s)
 })
@@ -75,7 +81,7 @@ it('viewing manager work is not review authority; delegation is scoped, revocabl
 })
 it('sensitive management rerouting and reactivation require explicit consent without erasing history', () => {
   let s = create(clean(), 'MANAGEMENT'), id = s.tasks[0].id
-  const route = { type: 'REASSIGN' as const, taskId: id, by: manager, assigneeId: worker }
+  const route = { type: 'REASSIGN' as const, taskId: id, by: admin, assigneeId: worker } // WS4 round 4: management acts are admin-only in demo
   expect(integrityRefusal(s, route)).toBe('SENSITIVITY_CONFIRMATION_REQUIRED')
   expect(reducer(s, route)).toEqual(s)
   s = reducer(s, { ...route, sensitivityConfirmed: true })
