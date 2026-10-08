@@ -14,6 +14,7 @@ import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { Root } from 'react-dom/client'
 import { StoreProvider } from '../../store'
+import { governance } from '../governance/source'
 import { IntegrationsView } from './IntegrationsView'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
@@ -136,5 +137,39 @@ describe('WS5 integrations configuration (demo)', () => {
     await click(button(row, 'Remove'))
     expect(panel.textContent).not.toContain('881001')
     expect(panel.textContent).toContain('881002')
+  })
+
+  it('demo GitHub sources are isolated: mappings and attributions never cross sources', async () => {
+    // Adapter-level proof of the WS5-closure demo contract (UI drives these
+    // exact calls per panel; server behavior is source-scoped and the demo
+    // adapter must mirror it).
+    const sourceA = (await governance.listGithubSources())[0]
+    const idsA0 = await governance.listGithubIdentities(sourceA.id)
+    const attrA0 = await governance.listGithubAttributions(sourceA.id)
+    expect(idsA0.length).toBeGreaterThan(0) // original source keeps its data
+    expect(attrA0.length).toBeGreaterThan(0)
+
+    const sourceB = await governance.createGithubSource('aster-dynamics/second', '990002')
+    expect(await governance.listGithubIdentities(sourceB.id)).toEqual([])
+    expect(await governance.listGithubAttributions(sourceB.id)).toEqual([])
+
+    // Mapping on B never appears on A; deleting on B never touches A.
+    await governance.mapGithubIdentity(sourceB.id, '777001', 'u-priya')
+    expect((await governance.listGithubIdentities(sourceB.id)).map(m => m.externalUserId)).toEqual(['777001'])
+    expect((await governance.listGithubIdentities(sourceA.id)).map(m => m.externalUserId)).not.toContain('777001')
+    await governance.deleteGithubIdentity(sourceB.id, '777001')
+    expect(await governance.listGithubIdentities(sourceB.id)).toEqual([])
+    expect((await governance.listGithubIdentities(sourceA.id)).length).toBe(idsA0.length)
+
+    // Attribution on B never appears on A; A's changes never touch B.
+    await governance.assignGithubResource(sourceB.id, 'issue', '555', 'proj-northstar')
+    expect((await governance.listGithubAttributions(sourceB.id)).length).toBe(1)
+    expect((await governance.listGithubAttributions(sourceA.id)).length).toBe(attrA0.length)
+    const attrB = await governance.listGithubAttributions(sourceB.id)
+    await governance.assignGithubResource(sourceA.id, 'issue', '412', null)
+    expect(await governance.listGithubAttributions(sourceB.id)).toEqual(attrB)
+    // Wire items never leak the demo-internal sourceId.
+    for (const m of await governance.listGithubIdentities(sourceA.id)) expect(m).not.toHaveProperty('sourceId')
+    for (const a of await governance.listGithubAttributions(sourceA.id)) expect(a).not.toHaveProperty('sourceId')
   })
 })

@@ -197,17 +197,20 @@ export function demoGovernance(now = Date.now()) {
     { id: 'gh-1', provider: 'GITHUB', name: 'aster-dynamics/core-app', repositoryId: '770041',
       status: 'ACTIVE', webhookPath: '/api/webhooks/github/demo-source-key', createdAt: now - 21 * D, updatedAt: now - 21 * D },
   ]
-  const githubIdentities: GithubIdentityItem[] = [
-    { externalUserId: '881001', userId: 'u-priya' },
-    { externalUserId: '881002', userId: 'u-jonas' },
-    { externalUserId: '881003', userId: 'u-marcus' },
+  /* WS5 closure: demo GitHub mappings/attributions are stored source-scoped
+     (matching the server contract) — the public wire item types stay
+     unchanged; `sourceId` is demo-internal storage only. */
+  const githubIdentities: DemoGithubIdentity[] = [
+    { sourceId: 'gh-1', externalUserId: '881001', userId: 'u-priya' },
+    { sourceId: 'gh-1', externalUserId: '881002', userId: 'u-jonas' },
+    { sourceId: 'gh-1', externalUserId: '881003', userId: 'u-marcus' },
   ]
-  const githubAttributions: GithubAttributionItem[] = [
-    { id: 'ga-412', resourceKind: 'issue', resourceId: '412', projectId: 'proj-northstar',
+  const githubAttributions: DemoGithubAttribution[] = [
+    { id: 'ga-412', sourceId: 'gh-1', resourceKind: 'issue', resourceId: '412', projectId: 'proj-northstar',
       effectiveFrom: now - 12 * D, effectiveUntil: null },
-    { id: 'ga-87', resourceKind: 'pull_request', resourceId: '87', projectId: 'proj-northstar',
+    { id: 'ga-87', sourceId: 'gh-1', resourceKind: 'pull_request', resourceId: '87', projectId: 'proj-northstar',
       effectiveFrom: now - 8 * D, effectiveUntil: null },
-    { id: 'ga-388', resourceKind: 'issue', resourceId: '388', projectId: 'proj-q4',
+    { id: 'ga-388', sourceId: 'gh-1', resourceKind: 'issue', resourceId: '388', projectId: 'proj-q4',
       effectiveFrom: now - 30 * D, effectiveUntil: now - 10 * D },
   ]
 
@@ -256,5 +259,12 @@ export function demoGovernance(now = Date.now()) {
            effects, shadow, githubSources, githubIdentities, githubAttributions,
            slackWorkspaces, slackIdentities, webhookSources, thanks, recognition, help }
 }
+
+/* WS5 closure: demo-internal source-scoped storage for GitHub mappings and
+   attributions. The wire types (GithubIdentityItem/GithubAttributionItem) are
+   unchanged — the server never sends `sourceId` inside these items because
+   the listing path already scopes them. */
+export type DemoGithubIdentity = GithubIdentityItem & { sourceId: string }
+export type DemoGithubAttribution = GithubAttributionItem & { sourceId: string }
 
 export type DemoGovernance = ReturnType<typeof demoGovernance>

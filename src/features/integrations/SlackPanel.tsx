@@ -31,10 +31,13 @@ function WorkspacePanel({ workspace, locked, lockHint, onChanged }: {
   const [mapUser, setMapUser] = useState('')
   const name = (id: string) => state.users.find(u => u.id === id)?.name ?? id
 
+  /* run() reports success so the mapping modal closes/resets ONLY after a
+     successful mutation — a failure keeps the Admin's entered values and
+     shows the mapped, localized error inside the modal. */
   const run = async (work: () => Promise<unknown>) => {
     setBusy(true); setError(null)
-    try { await work(); identities.reload(); onChanged() }
-    catch (err) { setError(err) } finally { setBusy(false) }
+    try { await work(); identities.reload(); onChanged(); return true }
+    catch (err) { setError(err); return false } finally { setBusy(false) }
   }
   const toggle = () => run(() =>
     governance.setSlackWorkspaceStatus(workspace.id, workspace.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE'))
@@ -82,6 +85,7 @@ function WorkspacePanel({ workspace, locked, lockHint, onChanged }: {
       </div>
 
       <Modal open={mapOpen} onClose={() => setMapOpen(false)} title={t('integrations.mapIdentity')}>
+        {error != null && <p role="alert">{integrationErrorText(error)}</p>}
         <Field label={t('integrations.externalId')}>
           <input dir="ltr" value={externalId} autoFocus
             onChange={e => setExternalId(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} />
@@ -97,7 +101,7 @@ function WorkspacePanel({ workspace, locked, lockHint, onChanged }: {
           <button className="btn" onClick={() => setMapOpen(false)}>{t('common.cancel')}</button>
           <button className="btn primary" disabled={busy || !externalId || !mapUser} onClick={() =>
             run(() => governance.mapSlackIdentity(workspace.id, externalId, mapUser))
-              .then(ok => { setMapOpen(false); setExternalId(''); setMapUser(''); return ok })}>
+              .then(ok => { if (!ok) return; setMapOpen(false); setExternalId(''); setMapUser('') })}>
             {t('common.saveChanges')}</button>
         </div>
       </Modal>

@@ -230,27 +230,33 @@ const demoSource: GovernanceSource = {
     if (source) source.updatedAt = Date.now()
     return { ...(source as GithubSourceItem), secret: 'demo-signing-secret-rotated' }
   },
-  listGithubIdentities: async () => demo_state().githubIdentities,
-  async mapGithubIdentity(_sourceId, externalUserId, userId) {
+  /* WS5 closure: demo GitHub mappings/attributions are source-scoped like the
+     server; listings strip the demo-internal `sourceId` from wire items. */
+  listGithubIdentities: async sourceId =>
+    demo_state().githubIdentities.filter(m => m.sourceId === sourceId)
+      .map(({ externalUserId, userId }) => ({ externalUserId, userId })),
+  async mapGithubIdentity(sourceId, externalUserId, userId) {
     const s = demo_state()
-    const existing = s.githubIdentities.find(m => m.externalUserId === externalUserId)
+    const existing = s.githubIdentities.find(m => m.sourceId === sourceId && m.externalUserId === externalUserId)
     if (existing) existing.userId = userId
-    else s.githubIdentities.push({ externalUserId, userId })
+    else s.githubIdentities.push({ sourceId, externalUserId, userId })
   },
-  async deleteGithubIdentity(_sourceId, externalUserId) {
+  async deleteGithubIdentity(sourceId, externalUserId) {
     const s = demo_state()
-    s.githubIdentities = s.githubIdentities.filter(m => m.externalUserId !== externalUserId)
+    s.githubIdentities = s.githubIdentities.filter(m => !(m.sourceId === sourceId && m.externalUserId === externalUserId))
   },
-  listGithubAttributions: async () => demo_state().githubAttributions,
-  async assignGithubResource(_sourceId, kind, resourceId, projectId) {
+  listGithubAttributions: async sourceId =>
+    demo_state().githubAttributions.filter(a => a.sourceId === sourceId)
+      .map(({ sourceId: _internal, ...item }) => item),
+  async assignGithubResource(sourceId, kind, resourceId, projectId) {
     const s = demo_state()
     const now = Date.now()
     s.githubAttributions.forEach(a => {
-      if (a.resourceKind === kind && a.resourceId === resourceId && a.effectiveUntil === null)
+      if (a.sourceId === sourceId && a.resourceKind === kind && a.resourceId === resourceId && a.effectiveUntil === null)
         a.effectiveUntil = now
     })
     if (projectId)
-      s.githubAttributions.push({ id: `ga-${kind}-${resourceId}-${now}`, resourceKind: kind, resourceId,
+      s.githubAttributions.push({ id: `ga-${kind}-${resourceId}-${now}`, sourceId, resourceKind: kind, resourceId,
         projectId, effectiveFrom: now, effectiveUntil: null })
   },
   listSlackWorkspaces: async () => demo_state().slackWorkspaces,

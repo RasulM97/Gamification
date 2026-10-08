@@ -48,6 +48,29 @@ async function render(node: ReactNode) {
 const q = (sel: string) => host.querySelector(sel)
 const section = (id: string) => q(`[data-testid="${id}"]`) as HTMLElement
 const buttonsIn = (el: HTMLElement) => [...el.querySelectorAll('button')] as HTMLButtonElement[]
+const button = (scope: HTMLElement, label: string) =>
+  [...scope.querySelectorAll('button')].find(b => (b.textContent ?? '').includes(label))
+const click = async (el: Element | null | undefined) => {
+  expect(el, 'expected element to exist').toBeTruthy()
+  await act(async () => (el as HTMLElement).click())
+  await act(async () => { /* settle */ })
+}
+const type = async (el: Element | null | undefined, value: string) => {
+  expect(el, 'expected input to exist').toBeTruthy()
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+  await act(async () => {
+    setter.call(el, value)
+    el!.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+}
+const select = async (el: Element | null | undefined, value: string) => {
+  expect(el, 'expected select to exist').toBeTruthy()
+  const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!
+  await act(async () => {
+    setter.call(el, value)
+    el!.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
 
 const githubSource = {
   id: 'gh-1', provider: 'GITHUB', name: 'acme/core', repositoryId: '42', status: 'ACTIVE',
@@ -125,11 +148,11 @@ describe('WS5 integrations configuration (server)', () => {
     await render(h(IntegrationsView))
     const github = section('integrations-github')
     expect(github.textContent).toMatch(/Module capability:\s*Enabled/)
-    // 'Assign resource' stays disabled only because the stub has no projects —
-    // the capability itself locks nothing here.
-    const actionable = buttonsIn(github).filter(b => !b.textContent?.includes('Assign resource'))
-    expect(actionable.length).toBeGreaterThan(0)
-    expect(actionable.every(b => !b.disabled)).toBe(true)
+    // With the capability on, every action is available — including Assign
+    // resource with zero active Projects (Company-scope clear stays possible).
+    const all = buttonsIn(github)
+    expect(all.length).toBeGreaterThan(0)
+    expect(all.every(b => !b.disabled)).toBe(true)
   })
 
   it('a 409 CAPABILITY_DISABLED from the API becomes human guidance, not a raw code', async () => {
@@ -143,5 +166,119 @@ describe('WS5 integrations configuration (server)', () => {
     const github = section('integrations-github')
     expect(github.textContent).toContain('This module is disabled for the company')
     expect(github.textContent).not.toContain('CAPABILITY_DISABLED')
+  })
+
+  it('historical attribution shows the real Project identity, never a false Company scope', async () => {
+    stubState({ GITHUB_CONNECTOR: true, SLACK_CONNECTOR: true })
+    stubGovernance({
+      listOrgUnits: async () => [
+        { id: 'proj-a', kind: 'PROJECT', name: 'Alpha', status: 'ACTIVE', memberships: [] },
+      ],
+      listGithubAttributions: async () => [
+        { id: 'ga-1', resourceKind: 'issue', resourceId: '11', projectId: 'proj-a',
+          effectiveFrom: 1, effectiveUntil: null },
+        // Closed attribution to a Project that is no longer in the active list.
+        { id: 'ga-2', resourceKind: 'issue', resourceId: '22', projectId: 'proj-b',
+          effectiveFrom: 1, effectiveUntil: 2 },
+      ],
+    })
+    await render(h(IntegrationsView))
+    const github = section('integrations-github')
+    // Active attribution renders the Project name…
+    const rowFor = (mark: string) => {
+      const matches = [...github.querySelectorAll('div')].filter(d => d.textContent?.includes(mark))
+      return matches[matches.length - 1] as HTMLElement // deepest (row) match
+    }
+    expect(rowFor('#11').textContent).toContain('Alpha')
+    // …and the closed historical attribution renders its real Project identity
+    // (stable ID fallback), not a false "Whole company" claim.
+    const closedRow = rowFor('#22')
+    expect(closedRow.textContent).toContain('proj-b')
+    expect(closedRow.textContent).not.toContain('Whole company')
+  })
+
+  it('Company-scope clear stays possible with zero active Projects', async () => {
+    stubState({ GITHUB_CONNECTOR: true, SLACK_CONNECTOR: true })
+    const assignGithubResource = vi.fn(async () => {})
+    stubGovernance({
+      listOrgUnits: async () => [],
+      listGithubAttributions: async () => [
+        { id: 'ga-1', resourceKind: 'issue', resourceId: '11', projectId: 'proj-gone',
+          effectiveFrom: 1, effectiveUntil: null },
+      ],
+      assignGithubResource,
+    })
+    await render(h(IntegrationsView))
+    const github = section('integrations-github')
+    // No active Projects must NOT block the attribution action.
+    const assign = button(github, 'Assign resource') as HTMLButtonElement
+    expect(assign.disabled).toBe(false)
+    await click(assign)
+    const modal = q('.modal') as HTMLElement
+    expect(modal).toBeTruthy()
+    // Company scope is selectable; no project options exist.
+    const projectSelect = modal.querySelectorAll('select')[1] as HTMLSelectElement
+    expect(projectSelect.options.length).toBe(1)
+    expect(projectSelect.value).toBe('') // Company scope
+    await type(modal.querySelector('input'), '77')
+    await click(button(modal, 'Save changes'))
+    expect(assignGithubResource).toHaveBeenCalledWith('gh-1', 'pull_request', '77', null)
+    expect(q('.modal')).toBeNull() // success closes the modal
+  })
+
+  it('failed GitHub identity mapping keeps the modal open with the entered values', async () => {
+    stubState({ GITHUB_CONNECTOR: true, SLACK_CONNECTOR: true })
+    stubGovernance({
+      mapGithubIdentity: async () => { throw new ApiError(409, 'CAPABILITY_DISABLED', 'capability disabled') },
+    })
+    await render(h(IntegrationsView))
+    const github = section('integrations-github')
+    await click(button(github, 'Map identity'))
+    const modal = q('.modal') as HTMLElement
+    await type(modal.querySelector('input'), '991227')
+    await select(modal.querySelector('select'), 'u-priya')
+    await click(button(modal, 'Save changes'))
+    // Failure: modal stays open, input preserved, mapped error visible — no raw code.
+    const stillOpen = q('.modal') as HTMLElement
+    expect(stillOpen).toBeTruthy()
+    expect((stillOpen.querySelector('input') as HTMLInputElement).value).toBe('991227')
+    expect((stillOpen.querySelector('select') as HTMLSelectElement).value).toBe('u-priya')
+    expect(stillOpen.textContent).toContain('This module is disabled for the company')
+    expect(stillOpen.textContent).not.toContain('CAPABILITY_DISABLED')
+  })
+
+  it('failed GitHub resource attribution keeps the modal open with the entered values', async () => {
+    stubState({ GITHUB_CONNECTOR: true, SLACK_CONNECTOR: true })
+    stubGovernance({
+      assignGithubResource: async () => { throw new ApiError(404, 'NOT_FOUND', 'gone') },
+    })
+    await render(h(IntegrationsView))
+    const github = section('integrations-github')
+    await click(button(github, 'Assign resource'))
+    const modal = q('.modal') as HTMLElement
+    await type(modal.querySelector('input'), '313')
+    await click(button(modal, 'Save changes'))
+    const stillOpen = q('.modal') as HTMLElement
+    expect(stillOpen).toBeTruthy()
+    expect((stillOpen.querySelector('input') as HTMLInputElement).value).toBe('313')
+    expect(stillOpen.textContent).toContain('This connection no longer exists')
+  })
+
+  it('failed Slack identity mapping keeps the modal open with the entered values', async () => {
+    stubState({ GITHUB_CONNECTOR: true, SLACK_CONNECTOR: true })
+    stubGovernance({
+      mapSlackIdentity: async () => { throw new ApiError(403, 'FORBIDDEN', 'forbidden') },
+    })
+    await render(h(IntegrationsView))
+    const slack = section('integrations-slack')
+    await click(button(slack, 'Map identity'))
+    const modal = q('.modal') as HTMLElement
+    await type(modal.querySelector('input'), 'u0new')
+    await select(modal.querySelector('select'), 'u-priya')
+    await click(button(modal, 'Save changes'))
+    const stillOpen = q('.modal') as HTMLElement
+    expect(stillOpen).toBeTruthy()
+    expect((stillOpen.querySelector('input') as HTMLInputElement).value).toBe('U0NEW')
+    expect(stillOpen.textContent).toContain('Only an active Admin can manage integrations')
   })
 })

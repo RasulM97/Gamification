@@ -21,8 +21,8 @@ function SourcePanel({ source, onChanged }: { source: WebhookSourceItem; onChang
 
   const run = async (work: () => Promise<unknown>) => {
     setBusy(true); setError(null)
-    try { await work(); onChanged() }
-    catch (err) { setError(err) } finally { setBusy(false) }
+    try { await work(); onChanged(); return true }
+    catch (err) { setError(err); return false } finally { setBusy(false) }
   }
   const toggle = () => run(() => governance.setWebhookSourceActive(source.id, !source.active))
   const rotate = () => run(async () => {

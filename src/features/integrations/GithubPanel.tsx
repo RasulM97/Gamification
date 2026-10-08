@@ -37,10 +37,13 @@ function SourcePanel({ source, projects, locked, lockHint, onChanged }: {
   const projectName = (id: string | null) =>
     id === null ? t('integrations.companyScope') : (projects.find(p => p.id === id)?.name ?? id)
 
+  /* run() reports success so modals close/reset ONLY after a successful
+     mutation — a failed API call keeps the Admin's entered values and shows
+     the mapped, localized error inside the modal. */
   const run = async (work: () => Promise<unknown>) => {
     setBusy(true); setError(null)
-    try { await work(); identities.reload(); attributions.reload(); onChanged() }
-    catch (err) { setError(err) } finally { setBusy(false) }
+    try { await work(); identities.reload(); attributions.reload(); onChanged(); return true }
+    catch (err) { setError(err); return false } finally { setBusy(false) }
   }
   const toggle = () => run(() =>
     governance.setGithubSourceStatus(source.id, source.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE'))
@@ -94,18 +97,22 @@ function SourcePanel({ source, projects, locked, lockHint, onChanged }: {
         {attributions.data?.map(a => (
           <div key={a.id} style={{ display: 'flex', gap: 8, paddingBlock: 4, alignItems: 'center', flexWrap: 'wrap' }}>
             <span className="bd bd-none">{t('integrations.kind.' + a.resourceKind)}</span>
-            <code dir="ltr">#{a.resourceId}</code> → <b dir="auto">{projectName(a.effectiveUntil === null ? a.projectId : null)}</b>
+            <code dir="ltr">#{a.resourceId}</code> → <b dir="auto">{projectName(a.projectId)}</b>
             <span className="dim" style={{ fontSize: 11.5 }}>
               {ago(a.effectiveFrom)}{a.effectiveUntil !== null && <> – {ago(a.effectiveUntil)}</>}
             </span>
           </div>
         ))}
-        <button className="btn" style={{ marginTop: 8 }} disabled={projects.length === 0 || locked}
+        {/* Company scope (projectId: null) is always assignable — the button is
+            withheld only for real authority/capability reasons, never because
+            no active Project exists. */}
+        <button className="btn" style={{ marginTop: 8 }} disabled={locked}
           title={locked ? lockHint : ''}
           onClick={() => setAssignOpen(true)}>+ {t('integrations.assignResource')}</button>
       </div>
 
       <Modal open={mapOpen} onClose={() => setMapOpen(false)} title={t('integrations.mapIdentity')}>
+        {error != null && <p role="alert">{integrationErrorText(error)}</p>}
         <Field label={t('integrations.externalId')}>
           <input dir="ltr" inputMode="numeric" value={externalId} onChange={e => setExternalId(e.target.value.replace(/\D/g, ''))} autoFocus />
         </Field>
@@ -120,12 +127,13 @@ function SourcePanel({ source, projects, locked, lockHint, onChanged }: {
           <button className="btn" onClick={() => setMapOpen(false)}>{t('common.cancel')}</button>
           <button className="btn primary" disabled={busy || !externalId || !mapUser} onClick={() =>
             run(() => governance.mapGithubIdentity(source.id, externalId, mapUser))
-              .then(ok => { setMapOpen(false); setExternalId(''); setMapUser(''); return ok })}>
+              .then(ok => { if (!ok) return; setMapOpen(false); setExternalId(''); setMapUser('') })}>
             {t('common.saveChanges')}</button>
         </div>
       </Modal>
 
       <Modal open={assignOpen} onClose={() => setAssignOpen(false)} title={t('integrations.assignResource')}>
+        {error != null && <p role="alert">{integrationErrorText(error)}</p>}
         <Field label={t('common.type')}>
           <select value={kind} onChange={e => setKind(e.target.value as typeof kind)}>
             <option value="pull_request">{t('integrations.kind.pull_request')}</option>
@@ -145,7 +153,7 @@ function SourcePanel({ source, projects, locked, lockHint, onChanged }: {
           <button className="btn" onClick={() => setAssignOpen(false)}>{t('common.cancel')}</button>
           <button className="btn primary" disabled={busy || !resourceId} onClick={() =>
             run(() => governance.assignGithubResource(source.id, kind, resourceId, projectId || null))
-              .then(ok => { setAssignOpen(false); setResourceId(''); setProjectId(''); return ok })}>
+              .then(ok => { if (!ok) return; setAssignOpen(false); setResourceId(''); setProjectId('') })}>
             {t('common.saveChanges')}</button>
         </div>
       </Modal>
