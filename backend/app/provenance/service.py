@@ -123,7 +123,7 @@ def my_incentives(db: Session, actor: User, *, offset: int = 0):
                 hasMore=len(merged) > offset + PAGE)
 
 
-def my_outcomes(db: Session, actor: User, *, resolved_since: float, scan_limit: int = 10000):
+def my_outcomes(db: Session, actor: User, *, resolved_since: float, scan_limit: int = None):
     """Internal read projection for WS3 attention: the caller's non-payout
     outcome stream with a safe `statusAt` per item.
 
@@ -134,10 +134,16 @@ def my_outcomes(db: Session, actor: User, *, resolved_since: float, scan_limit: 
     Relevance is protected structurally, not by a cap: EVERY currently
     waiting outcome (PENDING_REVIEW / AUTHORIZED_PENDING) is collected
     regardless of age or position, while resolved outcomes are collected only
-    when their statusAt is at/after `resolved_since`. Newer resolved noise
-    can therefore never evict an older still-current waiting state.
-    `scan_limit` bounds scan work only — a safety net far above any realistic
-    per-person stream, never a relevance filter.
+    when their statusAt is at/after `resolved_since`; older resolved rows are
+    dropped during the scan and never retained. Newer resolved noise can
+    therefore never evict an older still-current waiting state.
+
+    The scan runs to logical exhaustion of the stream by default — there is
+    no truncation point at which a waiting state could be silently lost.
+    `scan_limit` is an optional explicit guard for callers that must bound
+    scan work: when it is set and the stream holds more rows than the guard,
+    the read FAILS CLOSED with OUTCOME_SCAN_LIMIT instead of returning a
+    silently truncated result.
 
     `statusAt` is the time the CURRENT business state took effect — rejection
     time, current safety evaluation time, policy decision time, or the start
@@ -146,18 +152,20 @@ def my_outcomes(db: Session, actor: User, *, resolved_since: float, scan_limit: 
     unchanged; attention is the only consumer."""
     if type(resolved_since) not in (int, float) or not 0 <= resolved_since:
         raise DomainError('VALIDATION', 'Invalid resolved-since timestamp')
-    if type(scan_limit) is not int or not 1 <= scan_limit <= 100000:
+    if scan_limit is not None and (type(scan_limit) is not int or not 1 <= scan_limit <= 100000):
         raise DomainError('VALIDATION', 'Invalid outcome scan limit')
     waiting, resolved = [], []
     scanned = 0
     for _key, status_at, item in _outcome_stream(db, actor.company_id, actor.id):
         scanned += 1
+        if scan_limit is not None and scanned > scan_limit:
+            raise DomainError('OUTCOME_SCAN_LIMIT',
+                              'Outcome stream exceeds the explicit scan guard; '
+                              'refusing to return a truncated result')
         if item['status'] in ('PENDING_REVIEW', 'AUTHORIZED_PENDING'):
             waiting.append(dict(item, statusAt=int(status_at)))
         elif status_at >= resolved_since:
             resolved.append(dict(item, statusAt=int(status_at)))
-        if scanned >= scan_limit:
-            break
     return waiting + resolved
 
 

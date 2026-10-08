@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.attention.service as attention_service
+import app.provenance.service as provenance_service
 import app.rules.service as rules_service
 from app.approvals.model import ApprovalDecision, ApprovalRequest
 from app.approvals.service import create_request, decide
@@ -18,6 +19,7 @@ from app.canonical_events.model import CanonicalEvent
 from app.canonical_events.store import PostgresEventStore
 from app.capabilities.service import update as capability_update
 from app.collaboration.model import HelpRequest, HelpRouting, PeerThanks
+from app.domain import DomainError
 from app.economic_effects.model import EconomicEffect
 from app.economic_effects.service import issue
 from app.incentive_safety.model import SafetyEvaluation
@@ -735,3 +737,67 @@ def test_current_pending_excludes_foreign_scope(teamed):
     admin_view = flow((client, db), 'gold-admin-a').json()
     assert admin_view['incentiveFlow']['current']['pending'] == 300
     assert flow((client, db), 'gold-admin-b').json()['incentiveFlow']['current']['pending'] == 0
+
+
+# ── Round 3: outcome scan has no silent truncation point ──────────────────
+
+def test_waiting_survives_beyond_guard_scale(attn, monkeypatch):
+    """Round 3: the default outcome scan runs to logical exhaustion across
+    chunks — a 45-day-old PENDING_REVIEW buried under 7 newer resolved rows
+    (beyond tiny-chunk boundaries) is still collected and still surfaces as
+    WAITING. Newer resolved noise can never evict an older waiting state."""
+    client, db = attn
+    monkeypatch.setattr(provenance_service, 'CHUNK', 3)
+    old = now_ms() - 45 * DAY
+    _aged_candidates(monkeypatch, old)
+    built = chain(db, identity='att_r3_buried', subject='ap-employee', hint='MANAGER')
+    candidate = db.scalar(sa.select(RuleCandidate).where(RuleCandidate.id == built['candidate']))
+    assert candidate.created_at == old  # fixture proof: the waiting row IS old
+    monkeypatch.undo()  # real clock for the newer resolved noise
+    for index in range(7):
+        chain(db, identity='att_r3_noise_%d' % index, subject='ap-employee', decision='BLOCK')
+    actor = db.get(User, 'ap-employee')
+    rows = provenance_service.my_outcomes(db, actor, resolved_since=0)
+    waiting = [row for row in rows if row['status'] == 'PENDING_REVIEW']
+    assert len(waiting) == 1 and waiting[0]['createdAt'] == old
+    items = me((client, db), 'ap-employee')
+    assert any(i['kind'] == 'incentive.waiting' and i['state'] == 'PENDING_REVIEW' for i in items)
+
+
+def test_scan_guard_fails_explicitly(attn):
+    """Round 3: an explicit scan guard never truncates silently — when the
+    stream holds more rows than the guard, the read fails closed with
+    OUTCOME_SCAN_LIMIT instead of returning a partial result."""
+    client, db = attn
+    for index in range(7):
+        chain(db, identity='att_r3_guard_%d' % index, subject='ap-employee', decision='BLOCK')
+    chain(db, identity='att_r3_guard_wait', subject='ap-employee', hint='MANAGER')
+    actor = db.get(User, 'ap-employee')
+    with pytest.raises(DomainError) as caught:
+        provenance_service.my_outcomes(db, actor, resolved_since=0, scan_limit=3)
+    assert caught.value.code == 'OUTCOME_SCAN_LIMIT'
+    # The unguarded default read of the same stream succeeds completely.
+    rows = provenance_service.my_outcomes(db, actor, resolved_since=0)
+    assert len(rows) == 8
+
+
+def test_authorized_pending_beyond_guard_scale(attn, monkeypatch):
+    """Round 3: AUTHORIZED_PENDING (approved-to-execute, awaiting the economic
+    effect) is a waiting state too — an old ALLOW outcome buried under newer
+    resolved noise survives the exhaustion scan and surfaces as WAITING."""
+    client, db = attn
+    monkeypatch.setattr(provenance_service, 'CHUNK', 3)
+    old = now_ms() - 45 * DAY
+    _aged_candidates(monkeypatch, old)
+    built = chain(db, identity='att_r3_allow', subject='ap-employee', decision='ALLOW')
+    candidate = db.scalar(sa.select(RuleCandidate).where(RuleCandidate.id == built['candidate']))
+    assert candidate.created_at == old  # fixture proof: the waiting row IS old
+    monkeypatch.undo()
+    for index in range(7):
+        chain(db, identity='att_r3_allow_noise_%d' % index, subject='ap-employee', decision='BLOCK')
+    actor = db.get(User, 'ap-employee')
+    rows = provenance_service.my_outcomes(db, actor, resolved_since=0)
+    waiting = [row for row in rows if row['status'] == 'AUTHORIZED_PENDING']
+    assert len(waiting) == 1 and waiting[0]['createdAt'] == old
+    items = me((client, db), 'ap-employee')
+    assert any(i['kind'] == 'incentive.waiting' and i['state'] == 'AUTHORIZED_PENDING' for i in items)

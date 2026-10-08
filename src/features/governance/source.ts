@@ -308,13 +308,18 @@ const demoSource: GovernanceSource = {
          the authority; SHADOW_ONLY is always invisible. */
       if (!decision || decision.effectiveDecision === 'SHADOW_ONLY') return []
       const safety = s.safety.find(x => x.candidateId === c.id) ?? null
-      const applicable = (safetyReview: boolean) => {
-        const request = s.approvals.find(a => a.candidateId === c.id
+      const applicable = (safetyReview: boolean) =>
+        s.approvals.find(a => a.candidateId === c.id
           && a.policyDecisionId === decision.decisionId
-          && (safetyReview ? a.safetyEvaluationId === safety?.id : !a.safetyEvaluationId))
-        return request?.finalDecision ?? null
-      }
-      const build = (status: IncentiveStatus, rejected: { decidedBy: string; decidedAt: number } | null) => [{
+          && (safetyReview ? a.safetyEvaluationId === safety?.id : !a.safetyEvaluationId)) ?? null
+      /* statusAt mirrors the server's derivation from the same fixture
+         timestamps: when the CURRENT state took effect — current safety
+         evaluation time, policy decision time, rejection/approval decision
+         time, or the start of the applicable waiting state — never the
+         candidate's creation time. Demo-only field; the server contract is
+         unchanged. */
+      const build = (status: IncentiveStatus, rejected: { decidedBy: string; decidedAt: number } | null,
+                     statusAt: number) => [{
         ledgerTransactionId: null, effectId: null, amount: null, status,
         createdAt: c.createdAt,
         eventType: event?.type ?? null, occurredAt: event?.occurredAt ?? null,
@@ -322,20 +327,25 @@ const demoSource: GovernanceSource = {
         policyReason: policyReason(decision),
         decidedBy: rejected?.decidedBy ?? null, decidedAt: rejected?.decidedAt ?? null,
         reversal: null,
+        statusAt,
       }]
-      if (safety?.outcome === 'SUPPRESS_INCENTIVE') return build('SAFEGUARDED', null)
-      if (decision.effectiveDecision === 'BLOCK') return build('NOT_AUTHORIZED', null)
+      if (safety?.outcome === 'SUPPRESS_INCENTIVE') return build('SAFEGUARDED', null, safety.createdAt)
+      if (decision.effectiveDecision === 'BLOCK') return build('NOT_AUTHORIZED', null, decision.createdAt)
       if (decision.effectiveDecision === 'REQUIRE_APPROVAL') {
-        const fd = applicable(false)
-        if (!fd) return build('PENDING_REVIEW', null)
-        return fd.decision === 'REJECTED' ? build('NOT_APPROVED', fd) : build('AUTHORIZED_PENDING', null)
+        const request = applicable(false)
+        const fd = request?.finalDecision ?? null
+        if (!fd) return build('PENDING_REVIEW', null, request?.requestedAt ?? decision.createdAt)
+        return fd.decision === 'REJECTED'
+          ? build('NOT_APPROVED', fd, fd.decidedAt) : build('AUTHORIZED_PENDING', null, fd.decidedAt)
       }
       if (safety?.outcome === 'REQUIRE_REVIEW') {
-        const fd = applicable(true)
-        if (!fd) return build('PENDING_REVIEW', null)
-        return fd.decision === 'REJECTED' ? build('NOT_APPROVED', fd) : build('AUTHORIZED_PENDING', null)
+        const request = applicable(true)
+        const fd = request?.finalDecision ?? null
+        if (!fd) return build('PENDING_REVIEW', null, request?.requestedAt ?? decision.createdAt)
+        return fd.decision === 'REJECTED'
+          ? build('NOT_APPROVED', fd, fd.decidedAt) : build('AUTHORIZED_PENDING', null, fd.decidedAt)
       }
-      return build('AUTHORIZED_PENDING', null)
+      return build('AUTHORIZED_PENDING', null, decision.createdAt)
     })
     const items = [...payouts, ...outcomes].sort((a, b) =>
       b.createdAt - a.createdAt || (b.ledgerTransactionId ?? '').localeCompare(a.ledgerTransactionId ?? ''))

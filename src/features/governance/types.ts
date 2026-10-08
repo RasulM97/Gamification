@@ -100,6 +100,11 @@ export interface IncentiveProvenanceItem {
   ruleName: string | null; policyReason: 'MATCHED_POLICY' | 'DEFAULT_GOVERNANCE' | null
   decidedBy: string | null; decidedAt: number | null
   reversal: null | { reasonCode: string; createdAt: number }
+  /* Demo-only: when the current state took effect (server statusAt mirror),
+     derived from the same fixture timestamps the server reads. The server
+     never sends this field on the public myIncentives page — the WS2
+     contract is unchanged; only the demo source populates it. */
+  statusAt?: number
 }
 
 export interface ApprovalContext {

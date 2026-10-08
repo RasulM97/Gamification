@@ -55,8 +55,9 @@ async function demoMyAttention(me: AttentionActor): Promise<AttentionItem[]> {
   /* Follow the paged public projection to exhaustion: a payout-heavy page 1
      must never hide an older still-waiting outcome — demo mirrors the server
      contract. Fixtures are tiny; the loop terminates on hasMore, never on a
-     relevance cap. Resolved recency uses decision time (decidedAt), falling
-     back to candidate creation — the demo mirror of the server's statusAt. */
+     relevance cap. Resolved recency uses the demo-only statusAt (the same
+     derivation the server applies), falling back to decision time then
+     candidate creation for rows built without it. */
   const outcomes: Awaited<ReturnType<typeof governance.myIncentives>>['items'] = []
   for (let offset = 0; ;) {
     const page = await governance.myIncentives(me.id, offset)
@@ -114,13 +115,17 @@ async function demoMyAttention(me: AttentionActor): Promise<AttentionItem[]> {
     if (row.ledgerTransactionId !== null) continue  // payout history stays in the Wallet
     sequence += 1
     const id = `incentive.${row.status}.${row.createdAt}.${sequence}`
+    /* statusAt is when the CURRENT state took effect (server statusAt
+       mirror); fall back to decision time then creation for rows without
+       it. Waiting states and the resolved window both key off it. */
+    const statusAt = row.statusAt ?? row.decidedAt ?? row.createdAt
     if (row.status === 'PENDING_REVIEW' || row.status === 'AUTHORIZED_PENDING')
       items.push({ id, category: 'WAITING', kind: 'incentive.waiting', title: row.ruleName, state: row.status,
-        occurredAt: row.createdAt, nextAction: null, nav: { view: 'wallet' } })
+        occurredAt: row.statusAt ?? row.createdAt, nextAction: null, nav: { view: 'wallet' } })
     else if ((row.status === 'NOT_APPROVED' || row.status === 'NOT_AUTHORIZED' || row.status === 'SAFEGUARDED')
-             && (row.decidedAt ?? row.createdAt) >= now - FLOW_WINDOW)
+             && statusAt >= now - FLOW_WINDOW)
       items.push({ id, category: 'RESOLVED_RECENTLY', kind: 'incentive.outcome', title: row.ruleName,
-        state: row.status, occurredAt: row.decidedAt ?? row.createdAt, nextAction: null, nav: { view: 'wallet' } })
+        state: row.status, occurredAt: statusAt, nextAction: null, nav: { view: 'wallet' } })
   }
   if (me.role === 'MANAGER' || me.role === 'ADMIN')
     items.push(...(await demoPendingDecisions(me)).items)
