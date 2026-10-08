@@ -31,6 +31,12 @@ WS4 closes Task Lite validation, authority and economic/UI parity. Server task a
 <a id="next-boundary"></a>
 ## Next boundary
 
-Independent review of this sweep → resolve documentation findings → approved publication → Kimi handoff for **WS5 Integration Configuration**. WS5 implementation is not part of this sweep. The old redesign plan described WS1–WS4 and is not a WS5 specification. Kimi must inspect existing integration configuration seams and present a bounded, source-grounded WS5 scope before implementing unspecified behavior. Do not infer authorization for new providers, WSE, AI, task-economy migration or Core refactoring.
+Documentation Consolidation Sweep independent review → resolve the final documentation-only findings → approved merge/publication → Kimi handoff for **WS5 — Integration Configuration / Secret Management**.
+
+WS5 implementation is not part of this sweep. The old redesign plan described WS1–WS4 and is not a WS5 specification. Kimi must inspect the actual current integration and credential-management seams and present a bounded, source-grounded WS5 scope before implementing unspecified behavior.
+
+WS5 must explicitly evaluate the existing distinction between integration configuration, connection state and credentials/secrets, including current provider authentication, one-time secret presentation, rotation, operator-controlled master-key implications, tenant/RBAC/capability boundaries and secret exposure risks. This does not authorize a new generic secret platform or a provider expansion.
+
+Do not infer authorization for new providers, WSE, AI, task-economy migration, Core refactoring, duplicate editable external work or a broader integration redesign.
 
 Real UAT resumption needs revised scripts for the hybrid model and explicit scheduling/participants; engineering and simulated-persona evidence do not substitute for it.
