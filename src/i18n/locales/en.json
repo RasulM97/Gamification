@@ -1298,5 +1298,8 @@
   "flow.stat.rejected": "Rejected",
   "flow.stat.safeguarded": "Safeguarded",
   "flow.windowDays": "Last {{days}} days",
-  "flow.current": "Right now"
+  "flow.current": "Right now",
+  "review.adminPayoutRequired": "Admin approval is required for this payout.",
+  "handoff.adminPayoutRequired": "Admin approval is required for a positive payout — set the accepted contribution to 0% or ask an admin.",
+  "task.cancelCreditAdminRequired": "Crediting {{name}} requires admin approval — you can still cancel without a payout."
 }

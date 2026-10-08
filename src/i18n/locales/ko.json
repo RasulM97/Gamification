@@ -1298,5 +1298,8 @@
   "flow.stat.rejected": "거절됨",
   "flow.stat.safeguarded": "보호됨",
   "flow.windowDays": "최근 {{days}}일",
-  "flow.current": "현재"
+  "flow.current": "현재",
+  "review.adminPayoutRequired": "이 지급에는 관리자 승인이 필요합니다.",
+  "handoff.adminPayoutRequired": "양수 지급에는 관리자 승인이 필요합니다. 수락된 기여도를 0%로 설정하거나 관리자에게 요청하세요.",
+  "task.cancelCreditAdminRequired": "{{name}}에게 크레딧을 지급하려면 관리자 승인이 필요합니다. 지급 없이 취소할 수는 있습니다."
 }

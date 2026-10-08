@@ -1298,5 +1298,8 @@
   "flow.stat.rejected": "已拒绝",
   "flow.stat.safeguarded": "已保护",
   "flow.windowDays": "最近 {{days}} 天",
-  "flow.current": "当前状态"
+  "flow.current": "当前状态",
+  "review.adminPayoutRequired": "此笔支付需要管理员批准。",
+  "handoff.adminPayoutRequired": "正向支付需要管理员批准——请将接受贡献设为 0% 或联系管理员。",
+  "task.cancelCreditAdminRequired": "向 {{name}} 计入报酬需要管理员批准——您仍可以取消但不支付。"
 }

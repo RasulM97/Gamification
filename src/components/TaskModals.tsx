@@ -1,5 +1,5 @@
 import { SensitivityGuard } from './SensitivityGuard'
-import { canReviewTask, needsSensitivityConfirmation } from '../domain/taskAccess'
+import { canExecuteTaskPayout, canReviewTask, needsSensitivityConfirmation } from '../domain/taskAccess'
 import { useEffect, useRef, useState } from 'react'
 import { useStore, useMe } from '../store'
 import { capacityLimit, activeCount, partialPayout, validateAttachments, claimPenalty, economicPosition, netPositionOf, balanceOf } from '../domain/engine'
@@ -143,9 +143,20 @@ export function CancelModal({ open, onClose, task }: { open: boolean; onClose: (
   const owner = state.users.find(u => u.id === task.ownerId)
   const maxPct = 100 - task.verified
   const payout = pct > 0 ? Math.min(partialPayout(task.reward, pct), Math.max(0, task.reward - task.paid)) : 0
+  /* WS4 final: review/cancel authority ≠ economic authority. A manager who may
+     cancel but lacks payout authority (task not authored by an admin) keeps
+     zero-credit cancellation, but a positive credit must never be selectable —
+     it would end in a backend 403 ECONOMIC_AUTHORITY_REQUIRED. */
+  const maxCredit = Math.min(partialPayout(task.reward, maxPct), Math.max(0, task.reward - task.paid))
+  const creditAllowed = canExecuteTaskPayout(state, task, me, maxCredit)
   return (
     <Modal open={open} onClose={onClose} title={<>{tr('task.action.cancel')}<small dir="auto">{tr('task.cancelSub', { title: task.title })}</small></>}>
-      {owner && maxPct > 0 && canReviewTask(state, task, me) && (
+      {owner && maxPct > 0 && canReviewTask(state, task, me) && !creditAllowed && (
+        <div className="faint" style={{ fontSize: 12, marginBottom: 10 }} data-testid="cancel-credit-admin-required">
+          🔒 {tr('task.cancelCreditAdminRequired', { name: owner.name })}
+        </div>
+      )}
+      {owner && maxPct > 0 && canReviewTask(state, task, me) && creditAllowed && (
         <Field label={tr('task.partialCredit', { name: owner.name })}
           hint={tr('task.partialCreditHint')}>
           <div className="range-row">
@@ -163,7 +174,9 @@ export function CancelModal({ open, onClose, task }: { open: boolean; onClose: (
       </Field>
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
         <button className="btn" onClick={onClose}>{tr('common.back')}</button>
-        <button className="btn primary" disabled={!reason.trim()} onClick={() => {
+        <button className="btn primary" disabled={!reason.trim() || (pct > 0 && !canExecuteTaskPayout(state, task, me, payout))}
+          title={pct > 0 && !canExecuteTaskPayout(state, task, me, payout) ? tr('task.cancelCreditAdminRequired', { name: owner?.name ?? '' }) : ''}
+          onClick={() => {
           dispatch({ type: 'CANCEL_TASK', taskId: task.id, by: me.id, reason: reason.trim(), acceptedPct: pct })
           onClose()
         }}>{pct > 0 ? tr('task.action.cancelCredit', { coins: coins(payout) }) : tr('task.action.cancel')}</button>

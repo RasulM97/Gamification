@@ -1298,5 +1298,8 @@
   "flow.stat.rejected": "Отклонено",
   "flow.stat.safeguarded": "Защищено",
   "flow.windowDays": "Последние {{days}} дней",
-  "flow.current": "Сейчас"
+  "flow.current": "Сейчас",
+  "review.adminPayoutRequired": "Для этой выплаты требуется одобрение администратора.",
+  "handoff.adminPayoutRequired": "Для положительной выплаты требуется одобрение администратора — установите принятый вклад 0% или обратитесь к администратору.",
+  "task.cancelCreditAdminRequired": "Начисление {{name}} требует одобрения администратора — отменить без выплаты по-прежнему можно."
 }

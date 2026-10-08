@@ -1298,5 +1298,8 @@
   "flow.stat.rejected": "Reddedildi",
   "flow.stat.safeguarded": "Korundu",
   "flow.windowDays": "Son {{days}} gün",
-  "flow.current": "Şu an"
+  "flow.current": "Şu an",
+  "review.adminPayoutRequired": "Bu ödeme için yönetici onayı gerekli.",
+  "handoff.adminPayoutRequired": "Pozitif ödeme için yönetici onayı gerekli — kabul edilen katkıyı %0 yapın veya bir yöneticiye sorun.",
+  "task.cancelCreditAdminRequired": "{{name}} adlı kişiye kredi vermek yönetici onayı gerektirir — ödeme yapmadan iptal edebilirsiniz."
 }

@@ -1298,5 +1298,8 @@
   "flow.stat.rejected": "却下",
   "flow.stat.safeguarded": "保護済み",
   "flow.windowDays": "過去 {{days}} 日",
-  "flow.current": "現在"
+  "flow.current": "現在",
+  "review.adminPayoutRequired": "この支払いには管理者の承認が必要です。",
+  "handoff.adminPayoutRequired": "プラスの支払いには管理者の承認が必要です。受理する貢献を0%にするか、管理者に依頼してください。",
+  "task.cancelCreditAdminRequired": "{{name}} へのクレジットには管理者の承認が必要です。支払いなしでキャンセルすることは可能です。"
 }

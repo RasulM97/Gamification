@@ -1,4 +1,5 @@
 import type { Audience, State, Task, User } from './model'
+import { IS_DEMO } from '../runtime'
 
 export function canSeeTask(t: Task, u: User): boolean {
   if (u.active === false) return false
@@ -46,4 +47,18 @@ export function canExecuteTaskPayout(s: Pick<State, 'users'>, t: Task, u: User, 
   if (u.role === 'ADMIN') return true
   const creator = s.users.find(x => x.id === t.createdBy)
   return !!creator && creator.role === 'ADMIN'
+}
+
+/* WS4 final UI parity with backend admit_management: an ADMIN may manage any
+   visible task. A MANAGER may manage only a SCOPED (TEAM/PROJECT) task, and
+   only in server mode — the server bootstrap has already filtered scoped
+   tasks by real organizational authority, so a visible scoped task is the
+   authoritative signal; COMPANY tasks (projection omits `scope`) are
+   admin-only. Demo mode fails closed: no manager management authority at all
+   (round 4). This is presentation parity — it intentionally does NOT recreate
+   org membership client-side, and it is a different question from review
+   authority (canReviewTask) and economic authority (canExecuteTaskPayout). */
+export function canManageTask(t: Task, u: User): boolean {
+  if (u.role === 'ADMIN') return true
+  return u.role === 'MANAGER' && !IS_DEMO && !!t.scope
 }

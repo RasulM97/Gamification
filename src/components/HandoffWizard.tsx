@@ -1,5 +1,5 @@
 import { SensitivityGuard } from './SensitivityGuard'
-import { needsSensitivityConfirmation } from '../domain/taskAccess'
+import { canExecuteTaskPayout, needsSensitivityConfirmation } from '../domain/taskAccess'
 import { useEffect, useState } from 'react'
 import { useStore, useMe } from '../store'
 import { partialPayout, activeCount, capacityLimit, capacityReached } from '../domain/engine'
@@ -67,6 +67,12 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
   const personLabel = audience === 'MANAGEMENT' ? tr('handoff.role.manager') : audience === 'PRIVATE' ? tr('handoff.role.person') : tr('handoff.role.employee')
   const maxPct = 100 - task.verified
   const payout = pct > 0 ? Math.min(partialPayout(task.reward, pct), Math.max(0, task.reward - task.paid)) : 0
+  /* WS4 final: review authority ≠ economic authority. A granted manager may
+     hand off with acceptedPct = 0, but a POSITIVE payout on a task not
+     authored by an admin requires an admin — the wizard must never confirm a
+     payout that ends in a backend 403 ECONOMIC_AUTHORITY_REQUIRED. The
+     restriction is payout-specific: the handoff capability itself stays. */
+  const economicBlocked = payout > 0 && !canExecuteTaskPayout(state, task, me, payout)
   const after = Math.min(100, task.verified + pct)
   const remaining = Math.max(0, task.reward - task.paid - payout)
   const effRemaining = rewardOverride ?? remaining
@@ -126,6 +132,11 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
             <div className="srow"><span dir="auto">{tr('handoff.payoutTo', { name: owner?.name ?? '' })} <span className="faint">{tr('task.payoutFormulaLong')}</span></span><Coin n={payout} /></div>
             <div className="srow"><span>{tr('handoff.verifiedAfter')}</span><b className="num">{fmtPct(task.verified)} → {fmtPct(after)}</b></div>
           </div>
+          {economicBlocked && (
+            <div className="neg" style={{ fontSize: 12, marginTop: 10 }} data-testid="handoff-admin-required">
+              🔒 {tr('handoff.adminPayoutRequired')}
+            </div>
+          )}
         </div>
       )}
 
@@ -222,6 +233,11 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
       )}
 
       {step === 4 && <SensitivityGuard required={sensitive} confirmed={confirmed} onConfirm={setConfirmed} />}
+      {step === 4 && economicBlocked && (
+        <div className="neg" style={{ fontSize: 12, marginBottom: 10 }} data-testid="handoff-admin-required">
+          🔒 {tr('handoff.adminPayoutRequired')}
+        </div>
+      )}
       {step === 4 && (
         <div className="summary">
           <div className="srow"><span>{tr('handoff.employeeReported')}</span><b className="num">{fmtPct(task.reported)}</b></div>
@@ -264,7 +280,9 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
         <div className="spacer" style={{ flex: 1 }} />
         {step < 4
           ? <button className="btn primary" disabled={!canNext} onClick={() => setStep(step + 1)}>{tr('handoff.continue')}</button>
-          : <button className="btn primary" disabled={sensitive && !confirmed} onClick={finish}>{tr('handoff.confirm')}</button>}
+          : <button className="btn primary" disabled={(sensitive && !confirmed) || economicBlocked}
+              title={economicBlocked ? tr('handoff.adminPayoutRequired') : ''}
+              onClick={finish}>{tr('handoff.confirm')}</button>}
       </div>
     </Modal>
   )

@@ -1,11 +1,10 @@
 import { CyclesHistory } from './TaskHistory'
 import { TaskAccess } from './TaskAccess'
 import { ReassignInline } from './TaskRouting'
-import { canSeeTask, canReviewTask } from '../domain/taskAccess'
+import { canSeeTask, canReviewTask, canManageTask } from '../domain/taskAccess'
 import { ActivityEvent } from './EventText'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
-import { IS_DEMO } from '../runtime'
 import { capacityLimit, activeCount, roleFits } from '../domain/engine'
 import type { Task } from '../domain/engine'
 import { rowProps, cycleOutcome, localizedHist } from '../ui'
@@ -58,9 +57,12 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
   /* N2.1-A1: cancel is a canonical-ownership act — creator or admin only.
      A manager must never see a cancel affordance on an admin-created task;
      the engine and the backend refuse it too (403), the UI must not offer it. */
-  /* WS4 round 4: demo management acts are admin-only in the reducer (no org
-     membership state) — demo managers get no management affordances at all. */
-  const canManage = isMgr && (me.role === 'ADMIN' || !IS_DEMO)
+  /* WS4 final UI parity: management affordances follow the one canonical
+     canManageTask — admin any visible task; server-mode manager only scoped
+     tasks the server projected to them; demo manager never (fail closed).
+     Company-scope managers no longer see Reassign/Edit/Cancel/Reopen/
+     Reactivate buttons the backend would reject with 403. */
+  const canManage = canManageTask(t, me)
   const canCancel = canManage && !['APPROVED', 'CANCELLED'].includes(t.status) && !isOwner
     && (me.role === 'ADMIN' || t.createdBy === me.id)
 

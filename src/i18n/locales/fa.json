@@ -1298,5 +1298,8 @@
   "flow.stat.rejected": "ردشده",
   "flow.stat.safeguarded": "محافظت‌شده",
   "flow.windowDays": "{{days}} روز گذشته",
-  "flow.current": "اکنون"
+  "flow.current": "اکنون",
+  "review.adminPayoutRequired": "پرداخت این مبلغ نیاز به تأیید ادمین دارد.",
+  "handoff.adminPayoutRequired": "پرداخت مبلغ مثبت نیاز به تأیید ادمین دارد — سهم پذیرفته‌شده را ۰٪ بگذارید یا از ادمین بخواهید.",
+  "task.cancelCreditAdminRequired": "اعتبار دادن به {{name}} نیاز به تأیید ادمین دارد — همچنان می‌توانید بدون پرداخت لغو کنید."
 }

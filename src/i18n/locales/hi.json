@@ -1298,5 +1298,8 @@
   "flow.stat.rejected": "अस्वीकृत",
   "flow.stat.safeguarded": "सुरक्षित",
   "flow.windowDays": "पिछले {{days}} दिन",
-  "flow.current": "अभी"
+  "flow.current": "अभी",
+  "review.adminPayoutRequired": "इस भुगतान के लिए एडमिन की स्वीकृति आवश्यक है।",
+  "handoff.adminPayoutRequired": "सकारात्मक भुगतान के लिए एडमिन स्वीकृति आवश्यक है — स्वीकृत योगदान 0% पर सेट करें या एडमिन से पूछें।",
+  "task.cancelCreditAdminRequired": "{{name}} को क्रेडित करने के लिए एडमिन स्वीकृति आवश्यक है — आप बिना भुगतान के भी रद्द कर सकते हैं।"
 }

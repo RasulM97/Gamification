@@ -1,4 +1,4 @@
-import { canReviewTask, canSeeTask } from '../domain/taskAccess'
+import { canReviewTask, canSeeTask, canExecuteTaskPayout, canManageTask } from '../domain/taskAccess'
 import { ActivityEvent } from '../components/EventText'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
@@ -61,6 +61,11 @@ function ReviewDrawer({ task: t, onClose }: { task: Task | null; onClose: () => 
   const remainingPct = 100 - t.verified
   /* Reviewing your own submission is refused by the engine — hide it too. */
   const selfReview = !canReviewTask(state, t, me)
+  /* WS4 final: review authority ≠ economic authority. A granted manager may
+     decide (reject / zero-payout handoff) but a POSITIVE payout on a task not
+     authored by an admin requires an admin — never offer an Approve button
+     that ends in a backend 403 ECONOMIC_AUTHORITY_REQUIRED. */
+  const canPay = canExecuteTaskPayout(state, t, me, remaining)
   /* M1-D D8: the reviewer must see HOW this task reached the submission —
      canonical business Activity for this task (created → assigned/claimed →
      progress → submission → reject/handoff/decline…), newest first, compact,
@@ -182,16 +187,31 @@ function ReviewDrawer({ task: t, onClose }: { task: Task | null; onClose: () => 
               placeholder={tr('review.placeholder.rejectReason')} />
           </Field>
           <div className="actions">
-            <button className="btn primary" onClick={() => {
-              dispatch({ type: 'APPROVE', taskId: t.id, managerId: me.id }); onClose()
-            }}>{tr('review.approve', { coins: coins(remaining) })}</button>
+            {canPay ? (
+              <button className="btn primary" onClick={() => {
+                dispatch({ type: 'APPROVE', taskId: t.id, managerId: me.id }); onClose()
+              }}>{tr('review.approve', { coins: coins(remaining) })}</button>
+            ) : (
+              <button className="btn primary" disabled data-testid="approve-admin-required"
+                title={tr('review.adminPayoutRequired')}>
+                {tr('review.approve', { coins: coins(remaining) })}
+              </button>
+            )}
             <button className="btn" disabled={!reason.trim()} onClick={() => {
               dispatch({ type: 'REJECT', taskId: t.id, managerId: me.id, reason: reason.trim() }); onClose()
             }}>{tr('review.reject')}</button>
+            {!canPay && (
+              <span className="faint" style={{ fontSize: 12, alignSelf: 'center' }}>
+                🔒 {tr('review.adminPayoutRequired')}
+              </span>
+            )}
             {/* A task under review can move between several employees — handoff
                 and mid-work cancel live right here in the decision. */}
             <button className="btn" onClick={() => setHandoff(true)}>{tr('review.handoffAnother')}</button>
-            {(me.role === 'ADMIN' || t.createdBy === me.id) && <button className="btn" onClick={() => setCancel(true)}>{tr('review.cancelTask')}</button>}
+            {/* Cancel is a MANAGEMENT act: same canonical gate as the task
+                drawer — server-mode managers need a scoped task; demo managers
+                never; admin unchanged. */}
+            {canManageTask(t, me) && (me.role === 'ADMIN' || t.createdBy === me.id) && <button className="btn" onClick={() => setCancel(true)}>{tr('review.cancelTask')}</button>}
           </div>
         </>}
       </div>

@@ -1298,5 +1298,8 @@
   "flow.stat.rejected": "مرفوض",
   "flow.stat.safeguarded": "محمي",
   "flow.windowDays": "آخر {{days}} يومًا",
-  "flow.current": "الآن"
+  "flow.current": "الآن",
+  "review.adminPayoutRequired": "يتطلب هذا الدفع موافقة المسؤول.",
+  "handoff.adminPayoutRequired": "يتطلب الدفع الإيجابي موافقة المسؤول — اضبط المساهمة المقبولة على 0% أو اطلب من المسؤول.",
+  "task.cancelCreditAdminRequired": "إضافة رصيد إلى {{name}} تتطلب موافقة المسؤول — لا يزال بإمكانك الإلغاء دون دفع."
 }
