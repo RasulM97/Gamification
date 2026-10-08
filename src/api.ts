@@ -95,6 +95,7 @@ export const api = {
     req<T>(path, { method: 'POST', ...(json !== undefined ? { json } : {}) }),
   patch: <T = State>(path: string, json: unknown) => req<T>(path, { method: 'PATCH', json }),
   put: <T = State>(path: string, json: unknown) => req<T>(path, { method: 'PUT', json }),
+  del: <T = void>(path: string) => req<T>(path, { method: 'DELETE' }),
   postForm: <T = State>(path: string, form: FormData) => req<T>(path, { method: 'POST', form }),
 }
 

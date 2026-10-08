@@ -70,9 +70,9 @@ function Shell() {
   const tasksEnabled = IS_DEMO || state.capabilities?.TASK_LITE === true
   const peopleEnabled = IS_DEMO || state.capabilities === undefined
     || !!(state.capabilities.THANKS ?? true) || !!(state.capabilities.RECOGNITION ?? true) || !!(state.capabilities.HELP ?? true)
-  const githubEnabled = IS_DEMO || state.capabilities?.GITHUB_CONNECTOR === true
-  const slackEnabled = IS_DEMO || state.capabilities?.SLACK_CONNECTOR === true
-  const integrationsEnabled = githubEnabled || slackEnabled
+  /* WS5: the Integrations surface is always visible to Admins — the generic
+     webhook intake has no capability flag, and GitHub/Slack connections must
+     stay visible (truthfully disabled) when their capability is off. */
   /* WS3: My Attention composes server-side domains too — it is not gated on
      the TASK_LITE capability; only its task section is. */
   const taskViews: View[] = ['tasks', 'mywork', 'available', 'reviews']
@@ -205,9 +205,10 @@ function Shell() {
           { v: 'incentives', labelKey: isAdmin ? 'incentives.title' : 'nav.incentiveApprovals', icon: '✦', badge: approvalPushCount },
         ],
       },
-      /* Cohesion F2: integrations admin — hidden when the capability is
-         disabled; the API blocks direct calls the same way. */
-      ...(isAdmin && integrationsEnabled ? [{
+      /* WS5: integrations admin is always visible to Admins — capability
+         truth is shown inside the view per provider; the API blocks direct
+         mutation calls the same way regardless. */
+      ...(isAdmin ? [{
         groupKey: 'common.integrations', items: [
           { v: 'integrations', labelKey: 'integrations.title', icon: '⎇' } as NavItem,
         ],
@@ -416,7 +417,7 @@ function Shell() {
           {view === 'admin' && isAdmin && <AdminView onRewards={() => go('rewards')} onGo={go} />}
           {view === 'people' && peopleEnabled && <PeopleView />}
           {view === 'incentives' && isMgr && <IncentivesView />}
-          {view === 'integrations' && isAdmin && githubEnabled && <IntegrationsView />}
+          {view === 'integrations' && isAdmin && <IntegrationsView />}
           {view === 'testlab' && isAdmin && WORKSPACE_TOOLS && <TestLabView />}
         </div>
       </div>

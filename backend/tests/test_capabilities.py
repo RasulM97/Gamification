@@ -25,6 +25,8 @@ from app.task_access import set_access
 from tests.golden.conftest import golden_db
 from tests.approval_helpers import approval_db
 from tests.github_helpers import github, deliver
+from tests.slack_helpers import slack, command
+from app.collaboration.model import HelpRequest
 from tests.economic_helpers import economic_chain
 from tests.test_internal_events import headers
 
@@ -108,6 +110,28 @@ def test_github_intake_and_management(github):
     assert result.status_code==200 and result.json()['sources'][0]['status']=='ACTIVE'
     assert count(db,CanonicalEvent)==before
     toggle(db,'GITHUB_CONNECTOR',True);assert deliver(c,source).status_code==200
+
+
+def test_slack_intake_and_management(slack):
+    """WS5: SLACK_CONNECTOR parity with the GitHub gate — delivery and every
+    management mutation refuse with 409 while listings stay truthful."""
+    c,db,workspace,h=slack
+    assert command(c,workspace,'/cve-help',text='general Capability gate',user='U0002EMPLOY',trigger='1000000001.000001.cap001').status_code==200
+    before=count(db,HelpRequest);toggle(db,'SLACK_CONNECTOR',False)
+    refused=command(c,workspace,'/cve-help',text='general Capability gate two',user='U0002EMPLOY',trigger='1000000002.000001.cap002')
+    # Slack acks deliveries with 200; the capability refusal is an audited
+    # REFUSED_DOMAIN receipt — never a silent acceptance.
+    assert refused.status_code==200 and refused.json()['result']=='REFUSED_DOMAIN'
+    assert count(db,HelpRequest)==before
+    assert c.post('/api/integrations/slack',headers=h,json={'name':'second','externalTeamId':'T0002ACME'}).status_code==409
+    assert c.patch(f"/api/integrations/slack/{workspace['id']}",headers=h,json={'status':'DISABLED'}).status_code==409
+    assert c.post(f"/api/integrations/slack/{workspace['id']}/rotate-secret",headers=h,json={}).status_code==409
+    assert c.put(f"/api/integrations/slack/{workspace['id']}/identities/U0003NEW",headers=h,json={'userId':'ap-employee'}).status_code==409
+    result=c.get('/api/integrations/slack',headers=h)
+    assert result.status_code==200 and result.json()['workspaces'][0]['status']=='ACTIVE'
+    assert count(db,HelpRequest)==before
+    toggle(db,'SLACK_CONNECTOR',True)
+    assert command(c,workspace,'/cve-help',text='general Capability gate two',user='U0002EMPLOY',trigger='1000000002.000001.cap002').status_code==200
 
 
 def test_shadow_history_and_live_economics(approval_db):

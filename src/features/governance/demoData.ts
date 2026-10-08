@@ -10,7 +10,7 @@
 import type {
   AppreciationItem, ApprovalItem, CandidateItem, DecisionItem, EffectItem, EventItem,
   GithubAttributionItem, GithubIdentityItem, GithubSourceItem, HelpItem, OrgUnit,
-  PolicyItem, RuleItem, SafetyEvalItem, ShadowItem, SlackWorkspaceItem,
+  PolicyItem, RuleItem, SafetyEvalItem, ShadowItem, SlackWorkspaceItem, WebhookSourceItem,
 } from './types'
 
 const H = 3600e3, D = 24 * H
@@ -221,6 +221,13 @@ export function demoGovernance(now = Date.now()) {
     { workspaceId: 'cw-1', externalUserId: 'U04JONAS', userId: 'u-jonas' },
   ]
 
+  /* WS5 demo: one registered generic webhook source (E3). No credential
+     material — the one-time demo secret is an obvious fake string. */
+  const webhookSources: WebhookSourceItem[] = [
+    { id: 'wh-1', name: 'CRM — customer praise', sourceKey: 'demo-webhook-key-1',
+      active: true, configured: true, createdAt: now - 15 * D, updatedAt: now - 15 * D },
+  ]
+
   const thanks: AppreciationItem[] = [
     { id: 'th-1', companyId: 'co-aster', senderUserId: 'u-priya', recipientUserId: 'u-jonas',
       message: 'Covered my client call while I was stuck in the audit — thank you!', createdAt: now - 30 * H,
@@ -247,7 +254,7 @@ export function demoGovernance(now = Date.now()) {
 
   return { orgUnits, rules, policies, events, candidates, decisions, safety, approvals,
            effects, shadow, githubSources, githubIdentities, githubAttributions,
-           slackWorkspaces, slackIdentities, thanks, recognition, help }
+           slackWorkspaces, slackIdentities, webhookSources, thanks, recognition, help }
 }
 
 export type DemoGovernance = ReturnType<typeof demoGovernance>

@@ -15,7 +15,7 @@ import type {
   AppreciationItem, ApprovalContext, ApprovalItem, CandidateItem, ChainDetail, ChannelIdentityItem,
   DecisionItem, EffectItem, EventItem, GithubAttributionItem, GithubIdentityItem, GithubSourceItem,
   GovernanceSource, HelpItem, IncentiveProvenanceItem, IncentiveStatus, OrgUnit, Page, PolicyItem, RuleItem,
-  SafetyEvalItem, ShadowItem, SlackWorkspaceItem,
+  SafetyEvalItem, ShadowItem, SlackWorkspaceItem, WebhookSourceItem,
 } from './types'
 
 const page = <T>(items: T[], offset = 0, limit = 100): Page<T> => ({ items, offset, limit })
@@ -77,12 +77,19 @@ const server: GovernanceSource = {
   async listGithubSources() {
     return (await api.get<{ sources: GithubSourceItem[] }>('/integrations/github')).sources
   },
+  createGithubSource: (name, repositoryId) =>
+    api.post<GithubSourceItem & { secret?: string }>('/integrations/github', { name, repositoryId }),
   setGithubSourceStatus: (id, status) => api.patch<GithubSourceItem>(`/integrations/github/${id}`, { status }),
+  rotateGithubSecret: id =>
+    api.post<GithubSourceItem & { secret?: string }>(`/integrations/github/${id}/rotate-secret`, {}),
   async listGithubIdentities(sourceId) {
     return (await api.get<{ mappings: GithubIdentityItem[] }>(`/integrations/github/${sourceId}/identities`)).mappings
   },
   async mapGithubIdentity(sourceId, externalUserId, userId) {
     await api.put(`/integrations/github/${sourceId}/identities/${externalUserId}`, { userId })
+  },
+  async deleteGithubIdentity(sourceId, externalUserId) {
+    await api.del(`/integrations/github/${sourceId}/identities/${externalUserId}`)
   },
   async listGithubAttributions(sourceId) {
     return (await api.get<{ attributions: GithubAttributionItem[] }>(
@@ -105,6 +112,17 @@ const server: GovernanceSource = {
   async mapSlackIdentity(workspaceId, externalUserId, userId) {
     await api.put(`/integrations/slack/${workspaceId}/identities/${externalUserId}`, { userId })
   },
+  async deleteSlackIdentity(workspaceId, externalUserId) {
+    await api.del(`/integrations/slack/${workspaceId}/identities/${externalUserId}`)
+  },
+  async listWebhookSources() {
+    return (await api.get<{ sources: WebhookSourceItem[] }>('/integrations/webhooks')).sources
+  },
+  createWebhookSource: name =>
+    api.post<WebhookSourceItem & { secret?: string }>('/integrations/webhooks', { name }),
+  setWebhookSourceActive: (id, active) => api.patch<WebhookSourceItem>(`/integrations/webhooks/${id}`, { active }),
+  rotateWebhookSecret: id =>
+    api.post<WebhookSourceItem & { secret?: string }>(`/integrations/webhooks/${id}/rotate-secret`, {}),
   listAppreciation: kind => api.get<AppreciationItem[]>(`/collaboration/${kind}`),
   async giveThanks(recipientUserId, message) {
     await api.post('/collaboration/thanks', { recipientUserId, message, submissionId: crypto.randomUUID() })
@@ -191,10 +209,26 @@ const demoSource: GovernanceSource = {
   },
   getEffect: async id => demo_state().effects.find(e => e.id === id) ?? null,
   listGithubSources: async () => demo_state().githubSources,
+  async createGithubSource(name, repositoryId) {
+    const s = demo_state()
+    const now = Date.now()
+    const item: GithubSourceItem = {
+      id: `gh-demo-${now}`, provider: 'GITHUB', name, repositoryId, status: 'ACTIVE',
+      webhookPath: `/api/webhooks/github/demo-key-${s.githubSources.length + 1}`,
+      createdAt: now, updatedAt: now,
+    }
+    s.githubSources.push(item)
+    return { ...item, secret: 'demo-signing-secret-shown-once' }
+  },
   async setGithubSourceStatus(id, status) {
     const source = demo_state().githubSources.find(s => s.id === id)
     if (source) { source.status = status; source.updatedAt = Date.now() }
     return source as GithubSourceItem
+  },
+  async rotateGithubSecret(id) {
+    const source = demo_state().githubSources.find(s => s.id === id)
+    if (source) source.updatedAt = Date.now()
+    return { ...(source as GithubSourceItem), secret: 'demo-signing-secret-rotated' }
   },
   listGithubIdentities: async () => demo_state().githubIdentities,
   async mapGithubIdentity(_sourceId, externalUserId, userId) {
@@ -202,6 +236,10 @@ const demoSource: GovernanceSource = {
     const existing = s.githubIdentities.find(m => m.externalUserId === externalUserId)
     if (existing) existing.userId = userId
     else s.githubIdentities.push({ externalUserId, userId })
+  },
+  async deleteGithubIdentity(_sourceId, externalUserId) {
+    const s = demo_state()
+    s.githubIdentities = s.githubIdentities.filter(m => m.externalUserId !== externalUserId)
   },
   listGithubAttributions: async () => demo_state().githubAttributions,
   async assignGithubResource(_sourceId, kind, resourceId, projectId) {
@@ -245,6 +283,33 @@ const demoSource: GovernanceSource = {
     const existing = s.slackIdentities.find(m => m.workspaceId === workspaceId && m.externalUserId === externalUserId)
     if (existing) existing.userId = userId
     else s.slackIdentities.push({ workspaceId, externalUserId, userId })
+  },
+  async deleteSlackIdentity(workspaceId, externalUserId) {
+    const s = demo_state()
+    s.slackIdentities = s.slackIdentities.filter(m => !(m.workspaceId === workspaceId && m.externalUserId === externalUserId))
+  },
+  /* WS5 demo: deterministic webhook sources; secrets are obvious fakes shown
+     once, mirroring the one-time contract without real credential material. */
+  listWebhookSources: async () => demo_state().webhookSources,
+  async createWebhookSource(name) {
+    const s = demo_state()
+    const now = Date.now()
+    const item: WebhookSourceItem = {
+      id: `wh-demo-${now}`, name, sourceKey: `demo-webhook-key-${s.webhookSources.length + 1}`,
+      active: true, configured: true, createdAt: now, updatedAt: now,
+    }
+    s.webhookSources.push(item)
+    return { ...item, secret: 'demo-webhook-secret-shown-once' }
+  },
+  async setWebhookSourceActive(id, active) {
+    const source = demo_state().webhookSources.find(x => x.id === id)
+    if (source) { source.active = active; source.updatedAt = Date.now() }
+    return source as WebhookSourceItem
+  },
+  async rotateWebhookSecret(id) {
+    const source = demo_state().webhookSources.find(x => x.id === id)
+    if (source) source.updatedAt = Date.now()
+    return { ...(source as WebhookSourceItem), secret: 'demo-webhook-secret-rotated' }
   },
   listAppreciation: async (kind, actorId) =>
     demo_state()[kind].filter(a => !actorId || a.senderUserId === actorId || a.issuerUserId === actorId || a.recipientUserId === actorId),

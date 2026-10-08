@@ -7,6 +7,7 @@ Phase-specific measurements below are historical evidence, not tests rerun by th
 ## Contents
 
 - [Current Slack intake](#slack-reference-intake-ws1--ws11)
+- [WS5 configuration surface](#ws5-configuration-surface)
 
 - [INGESTION CONTRACT](#contract-events-ingestion-contract)
 - [GITHUB V1](#contract-connectors-github-v1)
@@ -518,4 +519,43 @@ Explicit `/cve-help`, `/cve-thanks` and `/cve-recognize` commands pass through t
 
 Deployment caveat from source: the checked-in Slack boundary derives its signing secret from the operator webhook master key plus workspace key/nonce. It must not be described as a newly certified native Slack production installation. Live provider credential/setup compatibility requires its own acceptance; this sweep does not change the security contract or claim a live provider run.
 
-WS5 is the next Integration Configuration scope, not implemented here. Reuse the current GitHub status/mapping/resource-attribution surface and existing Slack management API. Inspect actual provider capabilities and credential boundaries before proposing configuration UI; a connected-system flag must not invent Project scope, identity, automatic economics or duplicate editable external work.
+<a id="ws5-configuration-surface"></a>
+## WS5 — configuration surface (implemented)
+
+WS5 adds the Admin configuration UI for the three EXISTING intake providers —
+generic webhook (E3), GitHub (E9), Slack (WS1) — without any backend contract,
+migration or Core change. The uniform backend management contract (create with
+one-time `secret`, metadata-only listing, status, rotate-secret) already
+satisfied WS5; the work was client parity plus one focused capability test.
+
+**Capability vs Connection vs Credential.** The view separates three truths per
+provider: the module Capability (`GITHUB_CONNECTOR` / `SLACK_CONNECTOR`, managed
+under Product configuration; the generic webhook intake has no capability flag
+and is always available), the Connection (a bound source/workspace), and the
+Credential (the one-time signing secret). A disabled capability never hides
+existing connections or credentials: listings stay truthful (pinned by
+`test_github_intake_and_management` and the WS5-added
+`test_slack_intake_and_management`, which also pins that Slack deliveries
+refused mid-disable are audited `REFUSED_DOMAIN` receipts, not silent
+acceptances), while every management action is withheld in the UI and refused
+with 409 `CAPABILITY_DISABLED` by the backend. Re-enabling preserves state.
+
+**Secret lifecycle UX.** Create and rotate return the secret exactly once. The
+UI holds it only in component state — never in browser persistence, URLs or
+listings — and presents copy + explicit dismiss. Rotation requires a
+confirmation that states the impact (old secret stops working immediately, no
+overlap) before the irreversible call. Recovery from a lost secret is rotation,
+never retrieval.
+
+**Error surface.** Canonical backend codes stay on the wire; the UI maps the
+safe known set (`CAPABILITY_DISABLED`, `WORKSPACE_CONFLICT`, `FORBIDDEN`,
+`NOT_FOUND`, `VALIDATION`, `INGRESS_UNAVAILABLE`, `NETWORK`) to localized human
+guidance and falls back to a generic message — never raw codes, stack traces or
+secret-bearing text.
+
+**Navigation.** The Integrations surface is always visible to Admins because
+the webhook intake is always available; capability truth is shown inside per
+provider instead of hiding the whole section.
+
+**Demo mode** mirrors the contract with deterministic fixtures and obvious fake
+one-time secrets; no credential material exists in demo.

@@ -141,6 +141,14 @@ export interface GithubAttributionItem {
   projectId: string | null; effectiveFrom: number; effectiveUntil: number | null
 }
 
+/* E3 generic webhook source. `configured` means the registration holds key
+   derivation metadata — never the secret itself (returned once, at create or
+   rotation only). */
+export interface WebhookSourceItem {
+  id: string; name: string; sourceKey: string; active: boolean
+  configured: boolean; createdAt: number; updatedAt: number
+}
+
 export interface AppreciationItem {
   id: string; companyId: string; scope?: { kind: 'TEAM' | 'PROJECT'; id: string }
   recipientUserId: string; message: string; createdAt: number
@@ -185,20 +193,29 @@ export interface GovernanceSource {
   listShadow(offset?: number): Promise<Page<ShadowItem>>
   listEffects(policyDecisionId?: string, offset?: number): Promise<Page<EffectItem>>
   getEffect(id: string): Promise<EffectItem | null>
-  /* Integrations (F2) */
+  /* Integrations (F2). Secrets are returned exactly once at create/rotate. */
   listGithubSources(): Promise<GithubSourceItem[]>
+  createGithubSource(name: string, repositoryId: string): Promise<GithubSourceItem & { secret?: string }>
   setGithubSourceStatus(id: string, status: 'ACTIVE' | 'DISABLED'): Promise<GithubSourceItem>
+  rotateGithubSecret(id: string): Promise<GithubSourceItem & { secret?: string }>
   listGithubIdentities(sourceId: string): Promise<GithubIdentityItem[]>
   mapGithubIdentity(sourceId: string, externalUserId: string, userId: string): Promise<void>
+  deleteGithubIdentity(sourceId: string, externalUserId: string): Promise<void>
   listGithubAttributions(sourceId: string): Promise<GithubAttributionItem[]>
   assignGithubResource(sourceId: string, kind: 'issue' | 'pull_request', resourceId: string, projectId: string | null): Promise<void>
-  /* Slack intake (WS1). secret is returned exactly once at create/rotate. */
+  /* Slack intake (WS1). */
   listSlackWorkspaces(): Promise<SlackWorkspaceItem[]>
   createSlackWorkspace(name: string, externalTeamId: string): Promise<SlackWorkspaceItem & { secret?: string }>
   setSlackWorkspaceStatus(id: string, status: 'ACTIVE' | 'DISABLED'): Promise<SlackWorkspaceItem>
   rotateSlackSecret(id: string): Promise<SlackWorkspaceItem & { secret?: string }>
   listSlackIdentities(workspaceId: string): Promise<ChannelIdentityItem[]>
   mapSlackIdentity(workspaceId: string, externalUserId: string, userId: string): Promise<void>
+  deleteSlackIdentity(workspaceId: string, externalUserId: string): Promise<void>
+  /* E3 generic webhook sources (WS5). */
+  listWebhookSources(): Promise<WebhookSourceItem[]>
+  createWebhookSource(name: string): Promise<WebhookSourceItem & { secret?: string }>
+  setWebhookSourceActive(id: string, active: boolean): Promise<WebhookSourceItem>
+  rotateWebhookSecret(id: string): Promise<WebhookSourceItem & { secret?: string }>
   /* People (E8). actorId is demo-only: the server scopes results to the
      authenticated actor; the demo source applies the same filter locally. */
   listAppreciation(kind: 'thanks' | 'recognition', actorId?: string): Promise<AppreciationItem[]>
