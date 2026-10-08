@@ -24,7 +24,8 @@ from .events import EVENT_TYPES
 from .task_events import record_task_review
 from .economy_position import balance_of
 
-from .task_access import require_view, require_review, can_review
+from .task_access import (require_view, require_review, can_review,
+                          admit_management, admit_review, require_payout_authority)
 from .audience_guard import route
 from .service_common import (
     _num, fmt_coins, _round, _clamp_pct, _dl, _dl_str, get_user, get_task, managers,
@@ -47,7 +48,7 @@ def create_task(db: Session, actor: User, *, title: str, description: str,
                       assign_mode=assign_mode, reward=reward)
     if audience == 'PRIVATE' and not assignee_id:
         raise DomainError('VALIDATION', 'A private task needs a specific assignee')
-    context=admit(db,actor,context,manager=True,participants=[assignee_id] if assignee_id else [])
+    context=admit_management(db,actor,context,participants=[assignee_id] if assignee_id else [])
     cid = actor.company_id
     now = now_ms()
     eff_mode = 'SPECIFIC_EMPLOYEE' if audience == 'PRIVATE' else assign_mode
@@ -164,7 +165,7 @@ def edit_task(db: Session, actor: User, task_id: str, *, title=None, description
     check_task_fields(title=title, priority=priority, reward=reward)
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
-    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
+    admit_management(db,actor,scope(t))
     # N2.1-A1: canonical-ownership protection — the task's creator and any
     # admin may edit the canonical definition. A manager must NOT edit an
     # admin-created task (mirrors the demo reducer's frozen rule).
@@ -174,6 +175,17 @@ def edit_task(db: Session, actor: User, task_id: str, *, title=None, description
         raise DomainError('BAD_STATE', 'Terminal tasks are immutable history')
     if reward is not None and reward < t.paid:
         raise DomainError('VALIDATION', 'Reward cannot drop below what is already paid')
+    if reward is not None and reward != t.reward:
+        # WS4 F1: reward terms freeze once work has actually started in the
+        # current cycle — an owner, verified progress, or any submission or
+        # contribution record locks the economic promise for that cycle.
+        started = (t.status != 'OPEN' or t.owner_id is not None or t.verified != 0
+                   or bool(db.scalar(select(func.count(Submission.id)).where(
+                       Submission.task_id == t.id, Submission.cycle == t.cycle)))
+                   or bool(db.scalar(select(func.count(Contribution.id)).where(
+                       Contribution.task_id == t.id, Contribution.cycle == t.cycle))))
+        if started:
+            raise DomainError('BAD_STATE', 'Reward is locked once work has started')
     changed: list[str] = []
     if title is not None and title.strip() and title != t.title:
         changed.append('title')
@@ -211,7 +223,7 @@ def reassign(db: Session, actor: User, task_id: str, assignee_id: Optional[str],
         raise DomainError('FORBIDDEN', 'Reassigning work is a management act')
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
-    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
+    admit_management(db,actor,scope(t))
     if t.status != 'OPEN':
         raise DomainError('BAD_STATE', 'Only open tasks can be reassigned')
     target = lock_capacity_user(db, actor.company_id, assignee_id) if assignee_id else None
@@ -308,7 +320,7 @@ def approve_work(db: Session, actor: User, task_id: str) -> Task:
         raise DomainError('FORBIDDEN', 'Review decisions are management acts')
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
-    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
+    admit_review(db, t, actor)
     if t.status != 'SUBMITTED':
         raise DomainError('BAD_STATE', 'Only a submitted task can be approved')
     require_review(db, t, actor)
@@ -319,6 +331,7 @@ def approve_work(db: Session, actor: User, task_id: str) -> Task:
     remaining = max(0.0, t.reward - t.paid)
     now = now_ms()
     if remaining > 0:
+        require_payout_authority(db, t, actor, remaining)
         ledger(db, actor.company_id, owner, 'TASK_REWARD', remaining, snap(db,actor,t,coins=remaining,))
         t.paid += remaining
     db.add(Contribution(company_id=actor.company_id, task_id=t.id, cycle=t.cycle,
@@ -348,7 +361,7 @@ def reject_work(db: Session, actor: User, task_id: str, reason: str) -> Task:
         raise DomainError('FORBIDDEN', 'Review decisions are management acts')
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
-    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
+    admit_review(db, t, actor)
     if t.status != 'SUBMITTED':
         raise DomainError('BAD_STATE', 'Only a submitted task can be rejected')
     require_review(db, t, actor)
@@ -380,7 +393,7 @@ def handoff(db: Session, actor: User, task_id: str, *, accepted_pct: float,
     check_task_fields(priority=priority, reward=remaining_reward)
     t = get_task(db, actor.company_id, task_id)
     require_view(t, actor)
-    admit(db,actor,scope(t),manager=actor.role=='MANAGER')
+    admit_review(db, t, actor)
     if t.status not in ('IN_PROGRESS', 'SUBMITTED'):
         raise DomainError('BAD_STATE', 'Only work in progress or under review can be handed off')
     require_review(db, t, actor)
@@ -421,6 +434,7 @@ def handoff(db: Session, actor: User, task_id: str, *, accepted_pct: float,
     payout = min(partial_payout(t.reward, pct), max(0.0, t.reward - t.paid)) if pct > 0 else 0.0
     now = now_ms()
     if payout > 0:
+        require_payout_authority(db, t, actor, payout)
         ledger(db, cid, from_id, 'TASK_PARTIAL_REWARD', payout, snap(db,actor,t,reason=reason,percent=pct,coins=payout,employee=get_user(db,actor.company_id,from_id).name,employeeId=from_id,overrideReason=override_reason or '',remainingCoins=max(0,t.reward-t.paid),))
         t.paid += payout
     db.add(Contribution(company_id=cid, task_id=t.id, cycle=t.cycle,

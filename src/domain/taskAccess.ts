@@ -9,7 +9,7 @@ export function canSeeTask(t: Task, u: User): boolean {
     || (t.privateWorkerRole === 'EMPLOYEE' && t.createdBy === u.id))
 }
 
-export function canReviewTask(s: State, t: Task, u: User): boolean {
+export function canReviewTask(s: Pick<State, 'users'>, t: Task, u: User): boolean {
   if (!canSeeTask(t, u) || t.ownerId === u.id) return false
   if (u.role === 'ADMIN') return true
   const owner = s.users.find(x => x.id === t.ownerId)

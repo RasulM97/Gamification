@@ -170,6 +170,50 @@ it('My Attention merges task rework as actionable rows opening the task drawer',
   expect(opened).toEqual(['t-1'])
 })
 
+/* WS4 round 2 (F3): submitted work this viewer may review is an attention row. */
+
+it('manager sees an authorized submitted review exactly once and opens the task surface', async () => {
+  mock.me = { id: 'u-marcus', role: 'MANAGER' }
+  mock.tasks = [{ id: 't-9', title: 'Onboarding pack', status: 'SUBMITTED', ownerId: 'u-priya',
+    audience: 'EMPLOYEES', assignMode: 'ALL_EMPLOYEES', assigneeId: null }]
+  const opened: string[] = []
+  await render(<MyAttentionView tasksEnabled={true} onOpenTask={id => opened.push(id)} onNavigate={() => {}} />)
+  const rows = host.querySelectorAll('[data-testid="attention-task-review"]')
+  expect(rows).toHaveLength(1)
+  expect(rows[0].textContent).toContain('Onboarding pack')
+  expect(rows[0].textContent).toContain('attention.kind.task.review')
+  expect(rows[0].textContent).toContain('task.action.reviewWork')
+  ;(rows[0] as HTMLElement).click()
+  expect(opened).toEqual(['t-9'])
+  /* the header count includes the review row */
+  expect(host.querySelector('[data-testid="attention-count"]')!.textContent).toBe('2') // + approval.decide
+})
+
+it('admin sees the same submitted review row; employees never do', async () => {
+  mock.me = { id: 'u-dana', role: 'ADMIN' }
+  mock.tasks = [{ id: 't-9', title: 'Onboarding pack', status: 'SUBMITTED', ownerId: 'u-priya',
+    audience: 'EMPLOYEES', assignMode: 'ALL_EMPLOYEES', assigneeId: null }]
+  await render(<MyAttentionView tasksEnabled={true} onOpenTask={() => {}} onNavigate={() => {}} />)
+  expect(host.querySelectorAll('[data-testid="attention-task-review"]')).toHaveLength(1)
+})
+
+it('self-review never produces a review row', async () => {
+  mock.me = { id: 'u-marcus', role: 'MANAGER' }
+  mock.tasks = [{ id: 't-9', title: 'Incentive plan', status: 'SUBMITTED', ownerId: 'u-marcus',
+    audience: 'MANAGEMENT', assignMode: 'ALL_EMPLOYEES', assigneeId: null }]
+  await render(<MyAttentionView tasksEnabled={true} onOpenTask={() => {}} onNavigate={() => {}} />)
+  expect(host.querySelector('[data-testid="attention-task-review"]')).toBeNull()
+})
+
+it('resolved work disappears and TASK_LITE-disabled hides all task rows', async () => {
+  mock.me = { id: 'u-marcus', role: 'MANAGER' }
+  mock.tasks = [{ id: 't-9', title: 'Onboarding pack', status: 'SUBMITTED', ownerId: 'u-priya',
+    audience: 'EMPLOYEES', assignMode: 'ALL_EMPLOYEES', assigneeId: null }]
+  await render(<MyAttentionView tasksEnabled={false} onOpenTask={() => {}} onNavigate={() => {}} />)
+  expect(host.querySelector('[data-testid^="attention-task-"]')).toBeNull()
+  expect(host.querySelector('[data-testid="attention-count"]')!.textContent).toBe('1') // approval.decide only
+})
+
 it('Team Flow renders sections and scope-aware items for a manager', async () => {
   mock.me = { id: 'u-marcus', role: 'MANAGER' }
   const nav: string[] = []

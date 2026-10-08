@@ -38,8 +38,15 @@ def can_review(db, task, actor):
         return False
     if actor.role == 'ADMIN':
         return True
+    if actor.role != 'MANAGER':
+        return False
+    # WS4 F2: company-scope review is never implied by the manager role alone —
+    # it requires the explicit per-task reviewer grant from an admin. For
+    # scoped tasks, visibility above already required managing that unit.
+    if scope(task)['kind'] == 'COMPANY':
+        return actor.id in (task.reviewer_ids or [])
     owner = db.get(User, task.owner_id) if task.owner_id else None
-    return actor.role == 'MANAGER' and bool(owner) and (
+    return bool(owner) and (
         owner.role == 'EMPLOYEE' or actor.id in (task.reviewer_ids or []))
 
 
@@ -48,6 +55,49 @@ def require_review(db, task, actor):
         raise DomainError('FORBIDDEN', 'Nobody reviews their own submission')
     if not can_review(db, task, actor):
         raise DomainError('REVIEW_AUTHORITY_REQUIRED', 'Review authority required')
+
+
+def admit_management(db, actor, context, participants=()):
+    """WS4 F2: admission for management actions (create/edit/reassign/cancel/
+    reopen/reactivate). Admin keeps existing company authority. A manager
+    never gains company-wide management authority from the role alone and
+    must MANAGE the task's Team/Project unit. Worker participation
+    (claim/decline/return/progress/submit/resume) is deliberately separate
+    and keeps the plain membership admission at those call sites."""
+    if actor.role != 'ADMIN' and context['kind'] == 'COMPANY':
+        raise DomainError('FORBIDDEN', 'Company-wide management requires admin authority')
+    return organization.admit(db, actor, context,
+                              manager=actor.role == 'MANAGER', participants=participants)
+
+
+def admit_review(db, task, actor):
+    """WS4 F2: admission for review actions (approve/reject/handoff). Admin
+    keeps company authority; a manager reviews a company-scope task only with
+    the explicit per-task reviewer grant, and a scoped task only by managing
+    its unit."""
+    context = scope(task)
+    if actor.role == 'ADMIN':
+        return organization.admit(db, actor, context)
+    if context['kind'] == 'COMPANY':
+        if actor.id not in (task.reviewer_ids or []):
+            raise DomainError('REVIEW_AUTHORITY_REQUIRED', 'Review authority required')
+        return organization.admit(db, actor, context)
+    return organization.admit(db, actor, context, manager=True)
+
+
+def require_payout_authority(db, task, actor, payout):
+    """WS4 F1: the legacy Task economy keeps TASK_REWARD/TASK_PARTIAL_REWARD,
+    but minting Coins from a MANAGER-authored rewarded task requires ADMIN
+    economic authority — a manager must not author the economic promise and
+    later trigger its payout, and a second manager never substitutes for
+    admin. Zero payout keeps the normal manager workflow. Fails closed when
+    the creator cannot be classified."""
+    if payout <= 0 or actor.role == 'ADMIN':
+        return
+    creator = db.get(User, task.created_by)
+    if creator is None or creator.role != 'ADMIN':
+        raise DomainError('ECONOMIC_AUTHORITY_REQUIRED',
+                          'Payout on a manager-authored task requires admin economic authority')
 
 
 @organization.guarded

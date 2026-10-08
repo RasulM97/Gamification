@@ -176,9 +176,11 @@ def test_creator_rule_and_admin_override(client, auth):
     r = client.patch('/api/tasks/t-pricing', headers=auth['dana'], json={'title': 'Pricing v2'})
     assert r.status_code == 200
     assert _task(client, auth, 'dana', 't-pricing')['title'] == 'Pricing v2'
-    # the creator-manager edits their own task
+    # WS4 round 2: even the creator-manager no longer manages COMPANY scope —
+    # company-wide management is admin-only; scoped creator-manager authority
+    # is covered by the managed-unit matrix in test_task_lite_ws4b.py
     assert client.patch('/api/tasks/t-pricing', headers=auth['marcus'],
-                        json={'priority': 'URGENT'}).status_code == 200
+                        json={'priority': 'URGENT'}).status_code == 403
 
 
 def test_manager_reviews_employee_work_owner_never_self_reviews(client, auth):
@@ -232,7 +234,8 @@ def test_submit_and_return_retries_are_single_effect(client, auth):
 # ── ADVERSARIAL API: mass assignment and reward injection ───────────────────
 
 def test_mass_assignment_fields_ignored(client, auth):
-    r = client.patch('/api/tasks/t-pricing', headers=auth['marcus'],
+    # WS4: company-scope edit requires admin — mass assignment still ignored
+    r = client.patch('/api/tasks/t-pricing', headers=auth['dana'],
                      json={'title': 'Renamed', 'status': 'APPROVED',
                            'ownerId': 'u-priya', 'assigneeId': 'u-priya', 'reward': 99})
     assert r.status_code == 200
@@ -313,7 +316,10 @@ def test_team_scoped_task_visibility_matrix(approval_db):
                        headers=headers(db, 'ap-outsider')).status_code == 404
 
 
-# ── MY ATTENTION: truthful N/A — tasks use the notification channel ─────────
+# ── MY ATTENTION: the WS3 attention API carries no task rows ────────────────
+# (Task-derived My Attention rows are deterministic client-side composition in
+#  src/domain/attention.ts with frontend coverage; the server-side task signal
+#  channel remains notifications.)
 
 def test_tasks_never_enter_ws3_attention(client, auth):
     # priya holds an assigned OPEN task (t-policy) — real work requiring action.
@@ -323,7 +329,7 @@ def test_tasks_never_enter_ws3_attention(client, auth):
     assert all(k.split('.')[0] in ('help', 'incentive', 'appreciation', 'approval')
                for k in kinds)
     # The task signal reaches her through the notification channel instead.
-    assert client.post('/api/tasks/t-pricing/reassign', headers=auth['marcus'],
+    assert client.post('/api/tasks/t-pricing/reassign', headers=auth['dana'],
                        json={'assigneeId': 'u-priya'}).status_code == 200
     notices = client.get('/api/bootstrap', headers=auth['priya']).json()['notices']
     assert any(n['eventType'] == 'TASK_ASSIGNED' and n.get('taskId') == 't-pricing'

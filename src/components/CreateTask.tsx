@@ -1,6 +1,8 @@
-import { ScopeSelect } from '../features/organization/ScopeSelect'
-import type { WorkScope } from '../features/organization/OrganizationPanel'
-import { useState } from 'react'
+import { ScopeSelect, creatableScopes } from '../features/organization/ScopeSelect'
+import type { OrganizationUnit, WorkScope } from '../features/organization/OrganizationPanel'
+import { useEffect, useState } from 'react'
+import { api } from '../api'
+import { IS_DEMO } from '../runtime'
 import { useStore, useMe } from '../store'
 import { PRIORITIES, capacityLimit, activeCount } from '../domain/engine'
 import type { Attachment, Audience, Priority } from '../domain/engine'
@@ -14,6 +16,24 @@ export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () 
   const { state, dispatch } = useStore()
   const me = useMe()
   const [scope, setScope] = useState<WorkScope>({ kind: 'COMPANY' })
+  /* WS4 round 2 (F2): scope options come from the organization service. A
+     manager is offered exactly the units they actively manage — never
+     COMPANY — and the assignee list follows the chosen scope's membership,
+     so the form cannot advertise authority the backend refuses. */
+  const [units, setUnits] = useState<OrganizationUnit[]>([])
+  const [scopeError, setScopeError] = useState(false)
+  useEffect(() => {
+    if (IS_DEMO || !open) return
+    let live = true
+    api.get<{ units: OrganizationUnit[] }>('/organization')
+      .then(result => { if (live) { setUnits(result.units); setScopeError(false) } })
+      .catch(() => { if (live) setScopeError(true) })
+    return () => { live = false }
+  }, [open])
+  const scopes = creatableScopes(units, me)
+  const scopeMembers = scope.kind === 'COMPANY' ? null
+    : new Set((units.find(u => u.id === scope.id)?.memberships ?? [])
+        .filter(m => m.leftAt === null).map(m => m.userId))
   const [title, setTitle] = useState('')
   const [desc, setDesc] = useState('')
   const [audience, setAudience] = useState<Audience>('EMPLOYEES')
@@ -35,8 +55,10 @@ export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () 
     (audience === 'EMPLOYEES' ? u.role === 'EMPLOYEE'
       : audience === 'MANAGEMENT' ? u.role === 'MANAGER'
       : u.role !== 'ADMIN') && u.id !== me.id)
+    .filter(u => !scopeMembers || scopeMembers.has(u.id))
   const valid = title.trim().length > 0 && desc.trim().length > 0
     && (audience === 'PRIVATE' ? !!assignee : mode === 'all' || assignee) && +reward > 0
+    && (IS_DEMO || me.role !== 'MANAGER' || scope.kind !== 'COMPANY')
 
   const create = () => {
     dispatch({
@@ -90,7 +112,8 @@ export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () 
         </div>
       ) : (
       <>
-      <ScopeSelect open={open} value={scope} onChange={setScope} />
+      <ScopeSelect value={scope} onChange={setScope} units={scopes.units}
+                   error={scopeError} allowCompany={scopes.allowCompany} />
       <div className="form-sec">
         <span className="eyebrow">{tr('task.field.whatNeedsDone')}</span>
         <Field label={tr('common.title')}>

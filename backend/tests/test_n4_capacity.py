@@ -91,7 +91,9 @@ def test_lower_limit_preserves_work_and_economics(db):
 
 
 def route(db,kind,tid,target=W):
-    actor=db.get(User,M)
+    # WS4: management routes on company-scope tasks require admin authority;
+    # these tests pin capacity semantics, not scope authority.
+    actor=db.get(User,A)
     if kind=='create': return svc.create_task(db,actor,title='New',description='Brief',priority='NORMAL',deadline=None,reward=10,audience='EMPLOYEES',assign_mode='SPECIFIC_EMPLOYEE',assignee_id=target)
     if kind=='reassign': return svc.reassign(db,actor,tid,target)
     if kind=='handoff': return svc.handoff(db,actor,tid,accepted_pct=20,reason='Transfer',next_kind='EMPLOYEE',next_id=target)

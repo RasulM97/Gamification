@@ -50,7 +50,7 @@ export function MyAttentionView({ tasksEnabled, onOpenTask, onNavigate }: {
     () => attention.myAttention({ id: me.id, role: me.role }), [me.id, me.role])
   const tasks = tasksEnabled
     ? selectNeedsAttention(state, me)
-    : { rework: [], assignments: [], total: 0, personal: true }
+    : { rework: [], assignments: [], reviews: [], total: 0, personal: true }
   const items = data ?? []
   const grouped = new Map(CATEGORIES.map(c => [c, items.filter(i => i.category === c)]))
   const actionable = (grouped.get('ACTION_REQUIRED')?.length ?? 0) + tasks.total
@@ -64,16 +64,20 @@ export function MyAttentionView({ tasksEnabled, onOpenTask, onNavigate }: {
         <Empty title={t('attention.empty')} hint={t('attention.emptyHint')} />}
       {!loading && !error && CATEGORIES.map(category => {
         const rows = grouped.get(category) ?? []
-        const taskRows = category === 'ACTION_REQUIRED' ? [...tasks.rework, ...tasks.assignments] : []
+        const taskRows = category === 'ACTION_REQUIRED' ? [...tasks.rework, ...tasks.assignments, ...tasks.reviews] : []
         if (rows.length === 0 && taskRows.length === 0) return null
         return <section key={category} data-testid={`attention-section-${category}`}>
           <h3 className="dim" style={{ padding: '12px 16px 0' }}>
             {t('attention.category.' + category)} · {fmtInt(rows.length + taskRows.length)}</h3>
-          {taskRows.map(task => <div className="att-row" key={task.id} {...rowProps(() => onOpenTask(task.id))}>
+          {taskRows.map(task => <div className="att-row" key={task.id}
+                                     data-testid={`attention-task-${task.status === 'SUBMITTED' ? 'review' : task.status === 'REJECTED' ? 'rework' : 'assign'}`}
+                                     {...rowProps(() => onOpenTask(task.id))}>
             <div style={{ flex: 1, minWidth: 0 }}><b dir="auto">{task.title}</b>
-              <p className="dim">{t(task.status === 'REJECTED' ? 'attention.kind.task.rework' : 'attention.kind.task.assign')}</p>
+              <p className="dim">{t(task.status === 'SUBMITTED' ? 'attention.kind.task.review'
+                : task.status === 'REJECTED' ? 'attention.kind.task.rework' : 'attention.kind.task.assign')}</p>
             </div>
-            <span className="badge">{t(task.status === 'REJECTED' ? 'task.action.resumeRework' : 'task.action.acceptStart')}</span>
+            <span className="badge">{t(task.status === 'SUBMITTED' ? 'task.action.reviewWork'
+              : task.status === 'REJECTED' ? 'task.action.resumeRework' : 'task.action.acceptStart')}</span>
           </div>)}
           {rows.map(item => <ItemRow key={item.id} item={item} onOpen={() => onNavigate(item.nav.view)} />)}
         </section>

@@ -26,7 +26,11 @@ it('public return is available work, never a history-based attention row', () =>
   Object.assign(task, { status: 'IN_PROGRESS', ownerId: 'u-priya', assignMode: 'ALL_EMPLOYEES', assigneeId: null })
   const next = reducer(s, { type: 'RETURN_CLAIM', taskId: task.id, userId: 'u-priya', reason: 'Return' })
   expect(next.tasks.find(t => t.id === task.id)!.status).toBe('OPEN')
-  expect(view(next).total).toBe(0)
+  /* Return creates no attention row: the admin view is byte-identical to the
+     pre-return view (WS4 round 2 added review rows for submitted work, which a
+     public return never produces). */
+  expect(view(next)).toEqual(view(s))
+  expect([...view(next).rework, ...view(next).assignments, ...view(next).reviews].some(t => t.id === task.id)).toBe(false)
   expect(next.activity.some(e => e.eventType === 'TASK_RETURNED')).toBe(true)
 })
 it('rework belongs only to its owner, including a manager acting as worker', () => {

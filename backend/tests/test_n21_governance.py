@@ -24,11 +24,11 @@ def test_n21_manager_cannot_edit_admin_created_task(client, auth):
     # the admin (creator side) CAN edit
     r = client.patch('/api/tasks/t-recount', headers=auth['dana'], json={'title': 'Urgent inventory recount'})
     assert r.status_code == 200
-    # a manager edits their OWN task (t-pricing is u-marcus)
+    # WS4 round 2: even the creator-manager no longer edits COMPANY scope —
+    # company-wide management is admin-only (scoped creator-manager authority
+    # is covered by the managed-unit matrix in test_task_lite_ws4b.py)
     r = client.patch('/api/tasks/t-pricing', headers=auth['marcus'], json={'priority': 'URGENT'})
-    assert r.status_code == 200
-    t = next(x for x in r.json()['tasks'] if x['id'] == 't-pricing')
-    assert t['priority'] == 'URGENT'
+    assert r.status_code == 403 and r.json()['code'] == 'FORBIDDEN'
 
 
 def test_n21_manager_cannot_cancel_admin_created_task(client, auth):
@@ -47,9 +47,14 @@ def test_n21_manager_cannot_cancel_admin_created_task(client, auth):
     assert t['status'] == 'CANCELLED' and t['paid'] == 6 + 9  # partialPayout(30,30)=9
 
 
-def test_n21_manager_cancels_own_task(client, auth):
-    # t-pricing is manager-created (u-marcus), OPEN, no owner
+def test_n21_manager_cannot_cancel_company_scope_task(client, auth):
+    # t-pricing is manager-created (u-marcus), OPEN, no owner — but WS4 round 2:
+    # COMPANY-scope management (even of your own task) requires admin authority
     r = client.post('/api/tasks/t-pricing/cancel', headers=auth['marcus'],
+                    json={'reason': 'Deprioritized'})
+    assert r.status_code == 403 and r.json()['code'] == 'FORBIDDEN'
+    # the admin cancels it
+    r = client.post('/api/tasks/t-pricing/cancel', headers=auth['dana'],
                     json={'reason': 'Deprioritized'})
     assert r.status_code == 200
     t = next(x for x in r.json()['tasks'] if x['id'] == 't-pricing')
@@ -245,6 +250,11 @@ def test_n21r2_manager_handoff_routes_to_employee_and_manager(client, auth):
     never become the worker."""
     # t-commission: admin-created, EMPLOYEES audience, owned by u-jonas (IN_PROGRESS)
     # 1. manager → employee, explicit EMPLOYEES audience
+    # WS4 round 2: company-scope manager review requires the explicit per-task
+    # admin grant; on the admin-authored task the granted manager then executes
+    # the pre-authorized (zero-payout here) routing
+    assert client.put('/api/tasks/t-commission/access', headers=auth['dana'],
+                      json={'viewerIds': [], 'reviewerIds': ['u-marcus']}).status_code == 200
     r = client.post('/api/tasks/t-commission/handoff', headers=auth['marcus'], data={
         'acceptedPct': '0', 'reason': 'route to specialist',
         'nextKind': 'EMPLOYEE', 'nextId': 'u-aisha', 'audience': 'EMPLOYEES'})

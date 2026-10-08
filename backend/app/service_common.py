@@ -85,8 +85,25 @@ def check_task_fields(*, title=None, priority=None, audience=None, assign_mode=N
 
 
 def _dl(s: str | None) -> Optional[date]:
+    """WS4 canonical deadline parser — fail-closed, used by every task mutation
+    that accepts a deadline (create/edit/handoff). None or empty/whitespace
+    clears the deadline where the caller supports clearing; a valid YYYY-MM-DD
+    prefix is accepted (legacy full-ISO input deterministically coerces to its
+    date part); any other malformed non-empty string or impossible calendar
+    date is refused as VALIDATION (422) — never a raw ValueError/500."""
+    if s is None:
+        return None
+    if type(s) is not str:
+        raise DomainError('VALIDATION', 'Invalid deadline')
+    if not s.strip():
+        return None
     nd = normalize_deadline(s)
-    return date.fromisoformat(nd) if nd else None
+    if nd is None:
+        raise DomainError('VALIDATION', 'Invalid deadline')
+    try:
+        return date.fromisoformat(nd)
+    except ValueError:
+        raise DomainError('VALIDATION', 'Invalid deadline')
 
 
 def _dl_str(d: Optional[date]) -> Optional[str]:

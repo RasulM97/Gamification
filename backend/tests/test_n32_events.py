@@ -22,7 +22,8 @@ def matches(actual, expected):
 
 
 def test_n32_approval_contract(client, auth):
-    r = client.post('/api/tasks/t-northstar/approve', headers=auth['marcus'])
+    # WS4: t-northstar is manager-authored company scope — admin executes
+    r = client.post('/api/tasks/t-northstar/approve', headers=auth['dana'])
     assert r.status_code == 200
     a = next(a for a in r.json()['activity'] if a.get('eventType') == 'TASK_APPROVED' and a.get('taskId') == 't-northstar')
     matches(a, CONTRACT['approval'])
@@ -34,7 +35,7 @@ def test_n32_approval_contract(client, auth):
 
 def test_n32_handoff_preserves_reason(client, auth):
     reason = 'Keep example.com and file.py unchanged — دلیل'
-    r = client.post('/api/tasks/t-commission/handoff', headers=auth['marcus'],
+    r = client.post('/api/tasks/t-commission/handoff', headers=auth['dana'],  # WS4: admin review authority
                     data={'acceptedPct': 20, 'reason': reason, 'nextKind': 'AVAILABLE'})
     assert r.status_code == 200
     a = next(a for a in r.json()['activity'] if a.get('eventType') == 'TASK_HANDOFF' and a.get('taskId') == 't-commission' and a.get('params', {}).get('reason') == reason)
@@ -83,7 +84,7 @@ def test_n32_legacy_payload_still_bootstraps_without_rewrite(client, auth, db):
 
 def test_n32_activity_appends_and_does_not_rewrite(client, auth):
     before = copy.deepcopy(state(client, auth)['activity'])
-    assert client.post('/api/tasks/t-northstar/approve', headers=auth['marcus']).status_code == 200
+    assert client.post('/api/tasks/t-northstar/approve', headers=auth['dana']).status_code == 200
     after = state(client, auth)['activity']
     assert len(after) == len(before) + 1
     assert {a['id']: a for a in after if a['id'] in {a['id'] for a in before}} == {a['id']: a for a in before}

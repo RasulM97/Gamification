@@ -65,7 +65,8 @@ def test_full_cycle_claim_submit_approve(client, auth):
     assert t['status'] == 'SUBMITTED' and t['attachments'][0]['name'] == 'prices.pdf'
     assert t['submissions'][0]['outcome'] == 'PENDING'
 
-    r = client.post('/api/tasks/t-pricing/approve', headers=auth['marcus'])
+    # WS4: company-scope review + manager-authored payout require admin authority
+    r = client.post('/api/tasks/t-pricing/approve', headers=auth['dana'])
     t = _task(r.json(), 't-pricing')
     assert t['status'] == 'APPROVED' and t['paid'] == 12 and t['verified'] == 100
     led = [l for l in r.json()['ledger'] if l.get('taskId') == 't-pricing']
@@ -82,7 +83,7 @@ def test_reject_resume_resubmit(client, auth):
     r = client.post('/api/tasks/t-leads/submit', headers=auth['aisha'],
                     data={'note': 'Fixed rows 200-260, all region tags added.'})
     assert _task(r.json(), 't-leads')['status'] == 'SUBMITTED'
-    r = client.post('/api/tasks/t-leads/approve', headers=auth['marcus'])
+    r = client.post('/api/tasks/t-leads/approve', headers=auth['dana'])  # WS4: admin reviews company scope
     t = _task(r.json(), 't-leads')
     assert t['status'] == 'APPROVED'
     assert [s['outcome'] for s in t['submissions']] == ['REJECTED', 'APPROVED']
@@ -102,7 +103,7 @@ def test_no_self_review_and_bad_states(client, auth):
     # second approve on terminal task
     assert client.post('/api/tasks/t-incentive/approve', headers=auth['dana']).status_code == 409
     # approve an OPEN task
-    assert client.post('/api/tasks/t-recount/approve', headers=auth['marcus']).status_code == 409
+    assert client.post('/api/tasks/t-recount/approve', headers=auth['dana']).status_code == 409
 
 
 def test_capacity_max_active(client, auth):
@@ -128,20 +129,24 @@ def test_report_progress_ownership(client, auth):
 
 
 def test_edit_task_guards(client, auth):
-    # terminal tasks immutable
-    assert client.patch('/api/tasks/t-audit', headers=auth['marcus'],
+    # terminal tasks immutable (WS4: company-scope management is admin-only)
+    assert client.patch('/api/tasks/t-audit', headers=auth['dana'],
                         json={'title': 'new'}).status_code == 409
     # reward cannot drop below paid (t-commission paid=6)
     assert client.patch('/api/tasks/t-commission', headers=auth['dana'],
                         json={'reward': 3}).status_code == 422
-    r = client.patch('/api/tasks/t-commission', headers=auth['dana'],
+    # WS4: reward is locked once work has started (t-commission is IN_PROGRESS)
+    assert client.patch('/api/tasks/t-commission', headers=auth['dana'],
+                        json={'reward': 40}).status_code == 409
+    # OPEN + unowned + untouched cycle: reward/deadline stay editable; legacy ISO coerces
+    r = client.patch('/api/tasks/t-recount', headers=auth['dana'],
                      json={'reward': 40, 'deadline': '2026-10-01T00:00:00Z'})
-    t = _task(r.json(), 't-commission')
+    t = _task(r.json(), 't-recount')
     assert t['reward'] == 40 and t['deadline'] == '2026-10-01'  # canonical coercion
 
 
 def test_handoff_math_and_history(client, auth):
-    r = client.post('/api/tasks/t-commission/handoff', headers=auth['marcus'],
+    r = client.post('/api/tasks/t-commission/handoff', headers=auth['dana'],  # WS4: admin review authority
                     data={'acceptedPct': 15, 'reason': 'rebalance',
                           'nextKind': 'EMPLOYEE', 'nextId': 'u-aisha'})
     t = _task(r.json(), 't-commission')
@@ -150,11 +155,11 @@ def test_handoff_math_and_history(client, auth):
     assert [c['payout'] for c in t['contributions']] == [6, 4.5]
     assert t['submissions'][0]['outcome'] == 'HANDED_OFF'
     # remaining-reward override requires audited reason
-    r = client.post('/api/tasks/t-northstar/handoff', headers=auth['marcus'],
+    r = client.post('/api/tasks/t-northstar/handoff', headers=auth['dana'],
                     data={'acceptedPct': 0, 'reason': 'x', 'nextKind': 'AVAILABLE',
                           'remainingReward': 1})
     assert r.status_code == 422
-    r = client.post('/api/tasks/t-northstar/handoff', headers=auth['marcus'],
+    r = client.post('/api/tasks/t-northstar/handoff', headers=auth['dana'],
                     data={'acceptedPct': 0, 'reason': 'scope cut', 'nextKind': 'AVAILABLE',
                           'remainingReward': 20, 'overrideReason': 'client reduced scope'})
     assert r.status_code == 200
@@ -232,7 +237,8 @@ def test_new_cycle_routing_is_free_of_previous_worker_type(client, auth):
 
 
 def test_cancel_with_partial_credit(client, auth):
-    r = client.post('/api/tasks/t-crm/cancel', headers=auth['marcus'],
+    # WS4: company scope + manager-authored positive payout → admin economic authority
+    r = client.post('/api/tasks/t-crm/cancel', headers=auth['dana'],
                     json={'reason': 'CRM migration postponed', 'acceptedPct': 40})
     t = _task(r.json(), 't-crm')
     # partialPayout(15, 40) = ceil(6*2)/2 = 6

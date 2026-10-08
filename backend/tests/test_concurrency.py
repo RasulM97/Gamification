@@ -34,7 +34,10 @@ def test_race_double_review_single_payout(client):
     h_priya = login(client, 'priya@aster.demo')
     client.post('/api/tasks/t-pricing/claim', headers=h_priya)
     client.post('/api/tasks/t-pricing/submit', headers=h_priya, data={'note': 'done'})
-    (c1, h1), (c2, h2) = _clients(client, 'marcus@aster.demo', 'dana@aster.demo')
+    # WS4: two authorized reviewers race — manager review of a company-scope
+    # manager-authored task is no longer authorized, so both racers are admin
+    # sessions; the granted-manager + admin race lives in test_task_lite_ws4b.
+    (c1, h1), (c2, h2) = _clients(client, 'dana@aster.demo', 'dana@aster.demo')
     with ThreadPoolExecutor(2) as ex:
         rs = [f.result() for f in
               [ex.submit(lambda: c1.post('/api/tasks/t-pricing/approve', headers=h1)),

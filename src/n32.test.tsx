@@ -14,7 +14,10 @@ import contract from '../backend/tests/fixtures/n32-parity.json'
 ;(globalThis as Record<string,unknown>).IS_REACT_ACT_ENVIRONMENT=true
 
 afterEach(()=>{setActiveLocale('en');vi.restoreAllMocks()})
-const approve=()=>reducer(seed(),{type:'APPROVE',taskId:'t-northstar',managerId:'u-marcus'})
+/* WS4 round 2: t-northstar is manager-authored with a positive reward, so the
+   canonical approval is executed by admin u-dana (economic authority), keeping
+   cross-runtime parity with backend/tests/fixtures/n32-parity.json. */
+const approve=()=>reducer(seed(),{type:'APPROVE',taskId:'t-northstar',managerId:'u-dana'})
 const approval=()=>approve().activity[0]
 const handoff=()=>reducer(seed(),{type:'HANDOFF',taskId:'t-commission',managerId:'u-marcus',acceptedPct:20,reason:'Keep example.com and file.py unchanged — دلیل',next:{kind:'AVAILABLE'}})
 const approvedRedemption=()=>reducer(seed(),{type:'APPROVE_REDEMPTION',id:'r2',by:'u-marcus'})
@@ -22,7 +25,7 @@ const fulfilled=()=>reducer(approvedRedemption(),{type:'FULFILL_REDEMPTION',id:'
 
 it('task approval emits the cross-runtime event and semantic snapshot contract',()=>{
   expect(approval()).toMatchObject(contract.approval)
-  expect(approve().ledger[0]).toMatchObject({type:'TASK_REWARD',amount:37,eventType:'TASK_REWARD',params:{coins:37,taskId:'t-northstar',actorId:'u-marcus'}})
+  expect(approve().ledger[0]).toMatchObject({type:'TASK_REWARD',amount:37,eventType:'TASK_REWARD',params:{coins:37,taskId:'t-northstar',actorId:'u-dana'}})
 })
 it('handoff snapshots exact authored reason, accepted percentage and actual payout',()=>{
   expect(handoff().activity[0]).toMatchObject({eventType:'TASK_HANDOFF',params:{reason:'Keep example.com and file.py unchanged — دلیل',percent:20,coins:6,employee:'Jonas Berg'}})
@@ -48,7 +51,7 @@ for(const cleared of [false,true])it(`executor ${cleared?'clear':'update'} is st
 })
 for(const locale of ['en','fa','zh-CN','ar','he','hi','ru','tr','ja','ko'])it(`${locale} renders system wording and preserves snapshots`,()=>{
   const text=eventText(approval(),'',locale)
-  expect(text).toContain('Marcus Webb');expect(text).toContain('Client onboarding pack — Northstar Labs')
+  expect(text).toContain('Dana Cole');expect(text).toContain('Client onboarding pack — Northstar Labs')
   expect(text).not.toContain('TASK_APPROVED');expect(text).not.toContain('{{')
   if(locale!=='en')expect(text).not.toContain('approved work')
   expect(text).toContain(fmtNum(37,locale))

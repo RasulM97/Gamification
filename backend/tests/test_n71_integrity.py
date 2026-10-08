@@ -71,7 +71,25 @@ def test_adjustment_creates_and_offsets_debt(client, people):
 
 
 def test_private_employee_visibility_and_file_boundary(client, people, db):
-    tid = create(client, people['reviewer'], 'PRIVATE', 'n71-worker')
+    # WS4: manager creation authority lives inside a managed scope — the
+    # reviewer manages a fresh team (the worker is a member) and the PRIVATE
+    # task is scoped to it; the privacy boundary assertions are unchanged.
+    from app.organization import service as org
+    from app import services as svc
+    admin = db.get(User, 'u-dana')
+    team = org.create(db, admin, 'TEAM', {'name': 'N71 privacy'})
+    org.membership(db, admin, {'kind': 'TEAM', 'id': team['id']}, 'n71-reviewer',
+                   {'active': True, 'manager': True})
+    org.membership(db, admin, {'kind': 'TEAM', 'id': team['id']}, 'n71-worker',
+                   {'active': True, 'manager': False})
+    db.commit()
+    task = svc.create_task(db, db.get(User, 'n71-reviewer'), title='N7.1 task',
+                           description='First\n\n1. item\n- child', priority='NORMAL',
+                           deadline=None, reward=20, audience='PRIVATE',
+                           assign_mode='SPECIFIC_EMPLOYEE', assignee_id='n71-worker',
+                           context={'kind': 'TEAM', 'id': team['id']})
+    db.commit()
+    tid = task.id
     for key in ('dana', 'reviewer', 'worker'):
         assert tid in {t['id'] for t in state(client, people[key])['tasks']}
     for key in ('other', 'marcus', 'priya'):
@@ -103,9 +121,11 @@ def test_manager_private_delegation_and_revocation(client, people):
 def test_sensitive_reroute_and_history_cannot_bypass_guard(client, people):
     tid = create(client, people['dana'], 'MANAGEMENT')
     body = {'assigneeId':'n71-worker'}
-    refused = client.post(f'/api/tasks/{tid}/reassign', headers=people['reviewer'], json=body)
+    # WS4: company-scope management is admin-only; the sensitivity guard is
+    # actor-agnostic, so the admin path pins it here
+    refused = client.post(f'/api/tasks/{tid}/reassign', headers=people['dana'], json=body)
     assert refused.json()['code'] == 'SENSITIVITY_CONFIRMATION_REQUIRED'
-    routed = client.post(f'/api/tasks/{tid}/reassign', headers=people['reviewer'], json={**body,'sensitivityConfirmed':True})
+    routed = client.post(f'/api/tasks/{tid}/reassign', headers=people['dana'], json={**body,'sensitivityConfirmed':True})
     assert routed.status_code == 200
     task = next(t for t in routed.json()['tasks'] if t['id'] == tid)
     assert task['audience'] == 'EMPLOYEES' and 'MANAGEMENT' in task['restrictedAudiences']
@@ -209,12 +229,20 @@ def test_concurrent_spending_on_different_rewards_uses_one_wallet_lock(client, p
     assert net(state(client, people['dana'])) == 0
 
 
-def test_manager_creator_cannot_award_cancellation_credit_without_delegation(client, people):
-    tid = create(client, people['marcus'], 'MANAGEMENT', 'n71-reviewer')
+def test_manager_cannot_award_cancellation_credit_on_company_scope(client, people):
+    # WS4 round 2: cancel is a creator-or-admin management act, and on COMPANY
+    # scope management authority is admin-only — the explicit per-task reviewer
+    # grant (which authorizes approve/reject/handoff review) does NOT extend
+    # to cancellation payouts.
+    tid = create(client, people['dana'], 'MANAGEMENT', 'n71-reviewer')
     assert client.post(f'/api/tasks/{tid}/claim', headers=people['reviewer']).status_code == 200
     body = {'reason':'Stop with partial credit','acceptedPct':50}
     refused = client.post(f'/api/tasks/{tid}/cancel', headers=people['marcus'], json=body)
-    assert refused.status_code == 403 and refused.json()['code'] == 'REVIEW_AUTHORITY_REQUIRED'
+    assert refused.status_code == 403 and refused.json()['code'] == 'FORBIDDEN'
     assert client.put(f'/api/tasks/{tid}/access', headers=people['dana'], json={
         'viewerIds':[], 'reviewerIds':['u-marcus']}).status_code == 200
-    assert client.post(f'/api/tasks/{tid}/cancel', headers=people['marcus'], json=body).status_code == 200
+    still = client.post(f'/api/tasks/{tid}/cancel', headers=people['marcus'], json=body)
+    assert still.status_code == 403 and still.json()['code'] == 'FORBIDDEN'
+    # admin economic + management authority executes the cancellation credit
+    done = client.post(f'/api/tasks/{tid}/cancel', headers=people['dana'], json=body)
+    assert done.status_code == 200
