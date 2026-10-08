@@ -436,9 +436,10 @@ def test_pending_approvals_scan_past_foreign_scope_flood(teamed):
     manager_flow = flow((client, db), 'ap-manager').json()
     assert [i['id'] for i in manager_flow['waitingDecisions']] == ['approval.decide.' + owned['id']]
     assert manager_flow['incentiveFlow']['current'] == {'pending': 1, 'held': 0, 'safeguarded': 0}
-    # Admin remains company-wide, bounded at the visible limit.
+    # Admin remains company-wide; the count is now the COMPLETE current state
+    # (101 foreign + 1 managed), while the visible list stays bounded at 100.
     admin_flow = flow((client, db), 'gold-admin-a').json()
-    assert admin_flow['incentiveFlow']['current']['pending'] == 100
+    assert admin_flow['incentiveFlow']['current']['pending'] == 102
     # Tenant isolation.
     assert flow((client, db), 'gold-admin-b').json()['incentiveFlow']['current']['pending'] == 0
 
@@ -630,3 +631,107 @@ def test_current_safeguarded_respects_scope(teamed):
     assert admin['incentiveFlow']['current']['safeguarded'] == 2
     tenant = flow((client, db), 'gold-admin-b').json()
     assert tenant['incentiveFlow']['current']['safeguarded'] == 0
+
+
+# ── Review round 2: relevance before caps, truthful current counts ──────────
+
+def test_waiting_outcome_survives_nonpayout_flood(attn):
+    """Round 2: 500+ newer visible NON-PAYOUT outcomes must not evict an
+    older still-current PENDING_REVIEW from My Attention — the bound applies
+    after relevance classification, never before it."""
+    client, db = attn
+    chain(db, identity='att_r2_wait_buried', subject='ap-employee')  # older PENDING_REVIEW
+    db.commit()
+    for index in range(501):
+        chain(db, identity='att_r2_noise_%d' % index, subject='ap-employee', decision='BLOCK')
+    db.commit()
+    items = me((client, db), 'ap-employee')
+    waiting = [i for i in items if i['kind'] == 'incentive.waiting']
+    assert len(waiting) == 1 and waiting[0]['state'] == 'PENDING_REVIEW'
+    assert waiting[0]['category'] == 'WAITING'
+    assert len([i for i in items if i['kind'] == 'incentive.outcome']) == 501  # noise visible, not starving
+
+
+def test_authorized_pending_survives_nonpayout_flood(attn):
+    """Round 2: one older AUTHORIZED_PENDING plus 500+ newer resolved
+    outcomes — the waiting state survives the scan intact."""
+    client, db = attn
+    chain(db, identity='att_r2_authz_buried', subject='ap-employee', decision='ALLOW')
+    db.commit()
+    for index in range(501):
+        chain(db, identity='att_r2_noise2_%d' % index, subject='ap-employee', decision='BLOCK')
+    db.commit()
+    waiting = [i for i in me((client, db), 'ap-employee') if i['kind'] == 'incentive.waiting']
+    assert len(waiting) == 1 and waiting[0]['state'] == 'AUTHORIZED_PENDING'
+    assert waiting[0]['category'] == 'WAITING'
+
+
+def test_current_pending_count_is_complete_beyond_list_cap(teamed):
+    """Round 2: 150 authority-visible pending approvals — current.pending is
+    the complete count while Waiting Decisions stays bounded at 100."""
+    client, db, sales, _ = teamed
+    admin = db.get(User, 'gold-admin-a')
+    for index in range(150):
+        built = chain(db, identity='att_r2_pending_%d' % index, subject='ap-employee', hint='MANAGER')
+        org.capture(db, 'gold-a', built['event'].id, {'kind': 'TEAM', 'id': sales['id']})
+        create_request(db, admin, built['decision']['decisionId'])
+        db.commit()
+    result = flow((client, db), 'ap-manager').json()
+    assert result['incentiveFlow']['current']['pending'] == 150
+    assert len(result['waitingDecisions']) == 100
+    assert all(i['kind'] == 'approval.decide' for i in result['waitingDecisions'])
+
+
+def test_current_held_counts_safety_bound_beyond_row_100(teamed):
+    """Round 2: safety-bound pending approvals older than 110 newer policy
+    ones sit beyond list row 100 — current.held must still count them all."""
+    client, db, sales, _ = teamed
+    admin = db.get(User, 'gold-admin-a')
+    for index in range(40):  # older: safety-bound (held)
+        built = chain(db, identity='att_r2_held_%d' % index, subject='ap-employee',
+                      decision='ALLOW', hint='MANAGER')
+        org.capture(db, 'gold-a', built['event'].id, {'kind': 'TEAM', 'id': sales['id']})
+        evaluation = safety(db, built, outcome='REQUIRE_REVIEW')
+        create_request(db, admin, built['decision']['decisionId'],
+                       safety_evaluation_id=evaluation.id)
+        db.commit()
+    for index in range(110):  # newer: plain policy pending
+        built = chain(db, identity='att_r2_policy_%d' % index, subject='ap-employee', hint='MANAGER')
+        org.capture(db, 'gold-a', built['event'].id, {'kind': 'TEAM', 'id': sales['id']})
+        create_request(db, admin, built['decision']['decisionId'])
+        db.commit()
+    result = flow((client, db), 'ap-manager').json()
+    assert result['incentiveFlow']['current'] == {'pending': 150, 'held': 40, 'safeguarded': 0}
+    decisions = result['waitingDecisions']
+    assert len(decisions) == 100
+    # The bounded list shows the 100 newest — all policy-bound; held rows are
+    # counted in the aggregate even though none fit the list.
+    assert not any(i['state'] != 'MANAGER_OR_ADMIN' for i in decisions)
+
+
+def test_current_pending_excludes_foreign_scope(teamed):
+    """Round 2: 150 managed + 150 newer foreign-scope pending — the manager's
+    count covers exactly the managed set, foreign rows never contribute, the
+    bounded list holds only authorized rows, Admin sees the complete
+    company-wide count, the foreign tenant sees zero."""
+    client, db, sales, _ = teamed
+    admin = db.get(User, 'gold-admin-a')
+    foreign = _foreign_team(db, 'ForeignPendingCounts')
+    managed_ids = set()
+    for index in range(150):
+        built = chain(db, identity='att_r2_mix_man_%d' % index, subject='ap-employee', hint='MANAGER')
+        org.capture(db, 'gold-a', built['event'].id, {'kind': 'TEAM', 'id': sales['id']})
+        managed_ids.add(create_request(db, admin, built['decision']['decisionId'])['id'])
+        db.commit()
+    for index in range(150):
+        built = chain(db, identity='att_r2_mix_for_%d' % index, subject='ap-employee', hint='MANAGER')
+        org.capture(db, 'gold-a', built['event'].id, {'kind': 'TEAM', 'id': foreign['id']})
+        create_request(db, admin, built['decision']['decisionId'])
+        db.commit()
+    manager = flow((client, db), 'ap-manager').json()
+    assert manager['incentiveFlow']['current']['pending'] == 150
+    listed = {i['id'].removeprefix('approval.decide.') for i in manager['waitingDecisions']}
+    assert len(listed) == 100 and listed <= managed_ids
+    admin_view = flow((client, db), 'gold-admin-a').json()
+    assert admin_view['incentiveFlow']['current']['pending'] == 300
+    assert flow((client, db), 'gold-admin-b').json()['incentiveFlow']['current']['pending'] == 0

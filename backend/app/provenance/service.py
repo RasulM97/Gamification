@@ -123,30 +123,42 @@ def my_incentives(db: Session, actor: User, *, offset: int = 0):
                 hasMore=len(merged) > offset + PAGE)
 
 
-def my_outcomes(db: Session, actor: User, *, limit: int = 500):
+def my_outcomes(db: Session, actor: User, *, resolved_since: float, scan_limit: int = 10000):
     """Internal read projection for WS3 attention: the caller's non-payout
     outcome stream with a safe `statusAt` per item.
 
     Same derivation, same visibility, same order as the non-payout family of
     my_incentives() — this reuses `_outcome_stream` directly instead of the
-    merged public page, so a payout-heavy Wallet history can never push a
-    still-relevant PENDING_REVIEW / NOT_APPROVED / SAFEGUARDED state out of
-    reach, and payout rows are never loaded here at all. The scan is bounded
-    (chunked generator, at most `limit` visible items).
+    merged public page, so payout rows are never loaded here at all.
+
+    Relevance is protected structurally, not by a cap: EVERY currently
+    waiting outcome (PENDING_REVIEW / AUTHORIZED_PENDING) is collected
+    regardless of age or position, while resolved outcomes are collected only
+    when their statusAt is at/after `resolved_since`. Newer resolved noise
+    can therefore never evict an older still-current waiting state.
+    `scan_limit` bounds scan work only — a safety net far above any realistic
+    per-person stream, never a relevance filter.
 
     `statusAt` is the time the CURRENT business state took effect — rejection
     time, current safety evaluation time, policy decision time, or the start
     of the applicable waiting state — never the candidate's creation time and
     never an internal id or safety evidence. The public /me payload is
     unchanged; attention is the only consumer."""
-    if type(limit) is not int or not 1 <= limit <= 5000:
+    if type(resolved_since) not in (int, float) or not 0 <= resolved_since:
+        raise DomainError('VALIDATION', 'Invalid resolved-since timestamp')
+    if type(scan_limit) is not int or not 1 <= scan_limit <= 100000:
         raise DomainError('VALIDATION', 'Invalid outcome scan limit')
-    collected = []
+    waiting, resolved = [], []
+    scanned = 0
     for _key, status_at, item in _outcome_stream(db, actor.company_id, actor.id):
-        collected.append(dict(item, statusAt=int(status_at)))
-        if len(collected) >= limit:
+        scanned += 1
+        if item['status'] in ('PENDING_REVIEW', 'AUTHORIZED_PENDING'):
+            waiting.append(dict(item, statusAt=int(status_at)))
+        elif status_at >= resolved_since:
+            resolved.append(dict(item, statusAt=int(status_at)))
+        if scanned >= scan_limit:
             break
-    return collected
+    return waiting + resolved
 
 
 def _payout_stream(db, company_id, user_id):

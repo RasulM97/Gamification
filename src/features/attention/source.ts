@@ -48,10 +48,22 @@ function helpItem(row: HelpItem, category: AttentionItem['category'], kind: stri
 
 async function demoMyAttention(me: AttentionActor): Promise<AttentionItem[]> {
   const now = Date.now()
-  const [help, thanks, recognition, units, outcomes] = await Promise.all([
+  const [help, thanks, recognition, units] = await Promise.all([
     governance.listHelp(), governance.listAppreciation('thanks'), governance.listAppreciation('recognition'),
-    governance.listOrgUnits(), governance.myIncentives(me.id),
+    governance.listOrgUnits(),
   ])
+  /* Follow the paged public projection to exhaustion: a payout-heavy page 1
+     must never hide an older still-waiting outcome — demo mirrors the server
+     contract. Fixtures are tiny; the loop terminates on hasMore, never on a
+     relevance cap. Resolved recency uses decision time (decidedAt), falling
+     back to candidate creation — the demo mirror of the server's statusAt. */
+  const outcomes: Awaited<ReturnType<typeof governance.myIncentives>>['items'] = []
+  for (let offset = 0; ;) {
+    const page = await governance.myIncentives(me.id, offset)
+    outcomes.push(...page.items)
+    if (!page.hasMore || page.items.length === 0) break
+    offset += page.items.length
+  }
   const items: AttentionItem[] = []
   for (const row of help) {
     const mine = row.requesterUserId === me.id
@@ -98,7 +110,7 @@ async function demoMyAttention(me: AttentionActor): Promise<AttentionItem[]> {
       })
   }
   let sequence = 0
-  for (const row of outcomes.items) {
+  for (const row of outcomes) {
     if (row.ledgerTransactionId !== null) continue  // payout history stays in the Wallet
     sequence += 1
     const id = `incentive.${row.status}.${row.createdAt}.${sequence}`
@@ -106,9 +118,9 @@ async function demoMyAttention(me: AttentionActor): Promise<AttentionItem[]> {
       items.push({ id, category: 'WAITING', kind: 'incentive.waiting', title: row.ruleName, state: row.status,
         occurredAt: row.createdAt, nextAction: null, nav: { view: 'wallet' } })
     else if ((row.status === 'NOT_APPROVED' || row.status === 'NOT_AUTHORIZED' || row.status === 'SAFEGUARDED')
-             && row.createdAt >= now - FLOW_WINDOW)
+             && (row.decidedAt ?? row.createdAt) >= now - FLOW_WINDOW)
       items.push({ id, category: 'RESOLVED_RECENTLY', kind: 'incentive.outcome', title: row.ruleName,
-        state: row.status, occurredAt: row.createdAt, nextAction: null, nav: { view: 'wallet' } })
+        state: row.status, occurredAt: row.decidedAt ?? row.createdAt, nextAction: null, nav: { view: 'wallet' } })
   }
   if (me.role === 'MANAGER' || me.role === 'ADMIN')
     items.push(...(await demoPendingDecisions(me)).items)

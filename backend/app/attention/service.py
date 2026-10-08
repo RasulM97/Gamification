@@ -139,7 +139,7 @@ def _outcome_personal(db: Session, actor: User, now: float):
     a still-relevant state. Recency is judged by statusAt — the time the
     current business state took effect — not the candidate's creation time."""
     items, sequence = [], 0
-    for row in provenance.my_outcomes(db, actor):
+    for row in provenance.my_outcomes(db, actor, resolved_since=now - OUTCOME_WINDOW_MS):
         sequence += 1
         status_at = row['statusAt']
         identity = 'incentive.%s.%d.%d' % (row['status'], int(row['createdAt']), sequence)
@@ -153,14 +153,16 @@ def _outcome_personal(db: Session, actor: User, now: float):
 
 
 def _pending_authority_scoped(db: Session, actor: User, *, limit=PENDING_LIMIT):
-    """Pending approvals the caller holds authority over. WS3-local read
-    helper: the same raw pending query shape as approvals.list_requests, but
-    require_authority() applies per chunk BEFORE the visible limit fills, so
-    newer foreign-scope requests can never starve an older approval the
-    caller actually owns. Approval business semantics are untouched."""
+    """One authority-scoped pending-approval scan to exhaustion returning
+    (visible_rows, pending_count, held_count): the first `limit` rows for
+    presentation plus COMPLETE current-state counts. require_authority()
+    applies per row before either consumption — foreign-scope requests never
+    appear in the list and never contribute to the counts. Same raw query
+    shape as approvals.list_requests; approval business semantics untouched."""
     actor = management_actor(db, actor)
-    visible, base = [], 0
-    while len(visible) < limit:
+    visible, pending_count, held_count = [], 0, 0
+    base = 0
+    while True:
         query = select(ApprovalRequest, ApprovalDecision).outerjoin(
             ApprovalDecision, ApprovalDecision.approval_request_id == ApprovalRequest.id).where(
             ApprovalRequest.company_id == actor.company_id, ApprovalDecision.id.is_(None))
@@ -177,25 +179,27 @@ def _pending_authority_scoped(db: Session, actor: User, *, limit=PENDING_LIMIT):
                 if exc.code == 'APPROVAL_FORBIDDEN':
                     continue
                 raise
-            visible.append(approvals.view(*row))
-            if len(visible) >= limit:
-                break
+            pending_count += 1
+            held_count += 1 if row[0].safety_evaluation_id else 0
+            if len(visible) < limit:
+                visible.append(approvals.view(*row))
         if len(rows) < CHUNK:
             break
         base += CHUNK
-    return visible
+    return visible, pending_count, held_count
 
 
 def _pending_decisions(db: Session, actor: User):
     """Pending approvals the caller holds authority over — the authority-
-    scoped paged read; never re-derive eligibility."""
+    scoped paged read; never re-derive eligibility. Returns the bounded
+    presentation items plus the complete current pending/held counts."""
     if actor.role not in ('MANAGER', 'ADMIN'):
-        return [], []
-    pending = _pending_authority_scoped(db, actor)
+        return [], 0, 0
+    pending, pending_count, held_count = _pending_authority_scoped(db, actor)
     items = [_item('approval.decide.' + row['id'], 'ACTION_REQUIRED', 'approval.decide', None,
                    row['requiredAuthority'], row['requestedAt'], next_action='decide', view='incentives')
              for row in pending]
-    return items, pending
+    return items, pending_count, held_count
 
 
 def personal(db: Session, actor: User):
@@ -204,7 +208,7 @@ def personal(db: Session, actor: User):
     items = _outcome_personal(db, actor, now) + _appreciation_personal(db, actor, now)
     if capability_enabled(db, actor.company_id, 'HELP'):
         items += _help_personal(db, actor, now)
-    decisions, _ = _pending_decisions(db, actor)
+    decisions, _pending_count, _held_count = _pending_decisions(db, actor)
     return dict(items=_sort(items + decisions))
 
 
@@ -302,11 +306,13 @@ def _count_scoped(db: Session, actor: User, query, *, authority):
         base += SCAN_LIMIT
 
 
-def _flow_incentives(db: Session, actor: User, now: float, *, pending_rows):
+def _flow_incentives(db: Session, actor: User, now: float, *, pending, held):
     """Aggregate business-state counts, separated into CURRENT state (what is
     true right now, no cutoff) and RECENT flow (what happened in the fixed
     30-day window). Counts of system states only — never per-person
-    breakdowns, never detector detail. CURRENT safeguarded reads the current
+    breakdowns, never detector detail. `pending`/`held` are the COMPLETE
+    authority-scoped current counts from _pending_authority_scoped (not the
+    bounded presentation list). CURRENT safeguarded reads the current
     SafetyHead only: superseded evaluations never count, and one candidate
     contributes at most one row."""
     cutoff = now - FLOW_WINDOW_MS
@@ -335,9 +341,8 @@ def _flow_incentives(db: Session, actor: User, now: float, *, pending_rows):
                SafetyEvaluation.outcome == 'SUPPRESS_INCENTIVE')
         .order_by(SafetyEvaluation.created_at.desc(), SafetyEvaluation.id.desc()),
         authority='scope')
-    held = sum(1 for row in pending_rows if row.get('safetyEvaluationId'))
     return dict(
-        current=dict(pending=len(pending_rows), held=held, safeguarded=safeguarded),
+        current=dict(pending=pending, held=held, safeguarded=safeguarded),
         recent=dict(issued=issued, rejected=rejected, windowDays=int(FLOW_WINDOW_MS // DAY_MS)))
 
 
@@ -346,8 +351,8 @@ def flow(db: Session, actor: User):
     Manager/Admin only, server-enforced by existing scope authority."""
     actor = management_actor(db, actor, lock=False)  # read-only: no row locks
     now = now_ms()
-    waiting, pending = _pending_decisions(db, actor)
+    waiting, pending_count, held_count = _pending_decisions(db, actor)
     unresolved, resolved = _flow_help(db, actor, now)
-    incentives = _flow_incentives(db, actor, now, pending_rows=pending)
+    incentives = _flow_incentives(db, actor, now, pending=pending_count, held=held_count)
     return dict(waitingDecisions=_sort(waiting), unresolvedHelp=_sort(unresolved),
                 incentiveFlow=incentives, resolvedRecently=_sort(resolved))
