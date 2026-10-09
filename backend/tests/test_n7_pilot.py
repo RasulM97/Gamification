@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from fastapi.testclient import TestClient
 from app.models import Base, Company, CompanySettings, User, now_ms
 from app.provisioning import provision_company
-from app.security import make_token, check_password
+from app.security import issue_token, check_password
 from app.domain import DomainError
 from app.onboarding import readiness
 from app.config import settings
@@ -20,7 +20,7 @@ def pilot(db):
     db.expunge_all()
     company, admin, _ = provision_company(db, company_name='New % company', admin_name='Founder', admin_email='founder@pilot.test', password=PASSWORD)
     db.commit()
-    return db, company, admin, {'Authorization': 'Bearer ' + make_token(admin)}
+    return db, company, admin, {'Authorization': 'Bearer ' + issue_token(db, admin)}
 
 
 def ok(response):
@@ -135,7 +135,7 @@ def test_first_real_lifecycles_and_two_company_isolation(pilot, client):
     ok(client.post('/api/onboarding/complete', headers=headers))
     s, tid, rid, redemption = task_and_reward(client, headers, employee, uid)
     second, other_admin, _ = provision_company(db, company_name='Second pilot', admin_name='Other founder', admin_email='other@pilot.test', password=PASSWORD)
-    db.commit(); other = {'Authorization': 'Bearer ' + make_token(other_admin)}
+    db.commit(); other = {'Authorization': 'Bearer ' + issue_token(db, other_admin)}
     other_result = add(client, other, 'second@pilot.test'); other_employee, other_uid = activate_person(client, other_result, 'second@pilot.test')
     ok(client.post('/api/onboarding/complete', headers=other))
     second_state, _, _, _ = task_and_reward(client, other, other_employee, other_uid)

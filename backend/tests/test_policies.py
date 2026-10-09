@@ -9,14 +9,14 @@ from app.main import app
 from app.models import User
 from app.policies.model import Policy, PolicyDecision
 from app.policies.service import create_policy, evaluate_candidate, update_policy
-from app.security import make_token
+from app.security import issue_token
 from tests.golden.conftest import golden_db
 from tests.test_internal_events import rows
 from tests.policy_helpers import candidate, policy
 
 
 def auth(db, tenant='a'):
-    return {'Authorization': 'Bearer '+make_token(db.get(User, 'gold-admin-'+tenant))}
+    return {'Authorization': 'Bearer '+issue_token(db, db.get(User, 'gold-admin-'+tenant))}
 
 
 def test_api_version_history_immutability_and_no_effects(golden_db):
@@ -76,7 +76,7 @@ def test_policy_tenant_rbac_and_database_integrity(golden_db):
         assert client.get('/api/policies/decisions/'+decision['decisionId'],headers=foreign).status_code==404
         for role in ('MANAGER','EMPLOYEE'):
             user=User(id=role,company_id='gold-a',name=role,email=role+'@golden.invalid',role=role,password_hash='disabled')
-            db.add(user); db.commit(); headers={'Authorization':'Bearer '+make_token(user)}; before=rows()
+            db.add(user); db.commit(); headers={'Authorization':'Bearer '+issue_token(db, user)}; before=rows()
             for method,path,body in [('POST','/api/policies',policy()),('PATCH','/api/policies/'+created['id'],{'active':False}),
                 ('POST','/api/policies/evaluate/'+cid,None),('GET','/api/policies',None),
                 ('GET','/api/policies/decisions/'+decision['decisionId'],None)]:
@@ -158,10 +158,10 @@ def test_policy_db_insert_failure_and_corrupt_definition_fail_closed(golden_db):
             BEGIN RAISE EXCEPTION 'PRIVATE GOVERNANCE FAILURE'; END; $$"""))
         conn.execute(sa.text('CREATE TRIGGER e5_reject_decision BEFORE INSERT ON policy_decisions '
                              'FOR EACH ROW EXECUTE FUNCTION e5_reject_decision()'))
-    before=rows()
+    h=auth(db); before=rows()  # token/session created BEFORE the atomicity snapshot
     try:
         with TestClient(app) as client:
-            response=client.post('/api/policies/evaluate/'+cid,headers=auth(db))
+            response=client.post('/api/policies/evaluate/'+cid,headers=h)
             assert response.status_code==503 and 'PRIVATE GOVERNANCE FAILURE' not in response.text
         assert rows()==before
     finally:

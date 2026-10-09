@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from app.db import engine
 from app.models import Base, User, Task, Activity, Redemption, Reward, Company
-from app.security import make_token, check_password
+from app.security import issue_token, check_password
 from app.pilot_accounts import new_person
 from app.canonical_events.model import CanonicalEvent
 from app.task_events import record_task_review
@@ -22,7 +22,7 @@ PASSWORD = 'Unique-internal-test-password-74'
 
 
 def headers(db, uid):
-    return {'Authorization': 'Bearer ' + make_token(db.get(User, uid))}
+    return {'Authorization': 'Bearer ' + issue_token(db, db.get(User, uid))}
 
 
 def prepare(client, db, flow):

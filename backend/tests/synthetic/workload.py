@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.db import engine, SessionLocal
 from app.models import Base, Company, User
-from app.security import make_token
+from app.security import issue_token
 from app.canonical_events.contracts import EventInput
 from app.canonical_events.store import PostgresEventStore
 from app.ingestion.service import create_source
@@ -54,7 +54,7 @@ class Workload:
 
     def headers(self, tenant=0, user=0):
         with SessionLocal() as db:
-            return {'Authorization': 'Bearer '+make_token(db.get(User, f'syn-u-{tenant}-{user}'))}
+            return {'Authorization': 'Bearer '+issue_token(db, db.get(User, f'syn-u-{tenant}-{user}'))}
 
     def raw(self, event, override=None, bad_signature=False):
         source = self.sources[event['tenant']]

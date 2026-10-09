@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import get_db, log_action
 from .models import User
-from .security import current_user, make_token
+from .security import create_session, current_user, make_token
 from .routes import mutate
 from .auth_routes import _me
 from .service_common import get_user
@@ -48,5 +48,8 @@ def dev_switch(user_id: str, actor: User = Depends(current_user), db: Session = 
     user = get_user(db, actor.company_id, user_id)
     if user.active is False or user.activation_hash:
         raise HTTPException(404, {'code': 'NOT_FOUND'})
+    # Same contract as login: the dev switcher also gets its own server session.
+    session = create_session(db, user)
+    db.commit()
     log_action(actor.id, actor.role, actor.company_id, 'dev_switch', user.id, 'ok', 0)
-    return {'token': make_token(user), 'user': _me(user)}
+    return {'token': make_token(user, session.id), 'user': _me(user)}

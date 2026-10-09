@@ -182,6 +182,7 @@
   "common.showLess": "Show less",
   "common.showMore": "Show more",
   "common.signOut": "Sign out",
+  "common.signOutFailed": "Sign out failed — the server did not confirm it. You are still signed in.",
   "common.submittedAgo": "submitted {{time}}",
   "common.system": "System",
   "common.task": "Task",

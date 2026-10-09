@@ -86,6 +86,9 @@ export const api = {
   passwordPolicy: () => req<{minimum: number; weakDevAllowed: boolean}>('/auth/password-policy'),
   login: (email: string, password: string) =>
     req<{ token: string; user: MeUser }>('/auth/login', { method: 'POST', json: { email, password } }),
+  /* Server-side session revocation (UAT-blocker fix): sign-out is only
+     truthful once the server has revoked the current session. */
+  logout: () => req<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
   me: () => req<MeUser>('/auth/me'),
   bootstrap: () => req<State>('/bootstrap'),
   reseed: () => req<State>('/dev/reseed', { method: 'POST' }),

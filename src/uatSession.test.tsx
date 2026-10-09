@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-/* UAT Stage A — one-persona-session contract (server mode).
-   The Grok-bot protocol is: login → scenario → logout → token/session gone →
-   next persona. This pins that logout actually clears the CVE authentication
-   token (localStorage) AND the in-memory session binding, so no subsequent
-   request can carry the previous persona's identity. */
+/* UAT session contract (server mode) — server-authoritative revocation.
+   The Grok-bot protocol is: login → scenario → logout → session revoked on
+   the SERVER → token gone locally → next persona. These tests pin that
+   logout revokes server-side BEFORE the local anonymous transition, that a
+   failed server revocation is never shown as success, and that a revoked
+   token held by another context dies on its next request. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement as h } from 'react'
 import type { ReactNode } from 'react'
@@ -33,7 +34,13 @@ const UAT_USERS: Record<string, { token: string; user: object }> = {
 const BOOTSTRAP = JSON.parse(JSON.stringify(seed()))
 
 let fetchMock: ReturnType<typeof vi.fn>
+let tokenAtServerLogout: string | null | undefined   // captures ordering: server first
+let failServerLogout = false                          // simulates network/server failure
+let serverRevoked = false                             // simulates server-side revocation
 function stubFetch() {
+  tokenAtServerLogout = undefined
+  failServerLogout = false
+  serverRevoked = false
   fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     if (url.includes('/api/auth/login')) {
@@ -42,8 +49,20 @@ function stubFetch() {
       if (!account) return { ok: false, status: 401, json: async () => ({}) }
       return { ok: true, status: 200, json: async () => ({ token: account.token, user: account.user }) }
     }
+    if (url.includes('/api/auth/logout')) {
+      // The server MUST still see the session token at revocation time — the
+      // local anonymous transition happens only after this call resolves.
+      tokenAtServerLogout = localStorage.getItem('cve-token')
+      if (failServerLogout) return { ok: false, status: 500, json: async () => ({}) }
+      serverRevoked = true
+      return { ok: true, status: 200, json: async () => ({ ok: true }) }
+    }
+    const auth = String((init?.headers as Record<string, string> | undefined)?.Authorization ?? '')
+    if (serverRevoked && auth.includes('uat-token-A-dana')) {
+      // server-side truth: the revoked token is dead everywhere
+      return { ok: false, status: 401, json: async () => ({ detail: { code: 'AUTH_INVALID' } }) }
+    }
     if (url.includes('/api/auth/me')) {
-      const auth = String((init?.headers as Record<string, string> | undefined)?.Authorization ?? '')
       const account = Object.values(UAT_USERS).find(a => auth === `Bearer ${a.token}`)
       if (!account) return { ok: false, status: 401, json: async () => ({}) }
       return { ok: true, status: 200, json: async () => account.user }
@@ -76,9 +95,10 @@ afterEach(async () => {
 })
 
 const authHeaders = () => fetchMock.mock.calls.map(c => (c[1]?.headers ?? {}).Authorization)
+const logoutCalls = () => fetchMock.mock.calls.filter(c => String(c[0]).includes('/api/auth/logout'))
 
 describe('UAT one-persona-session contract (server mode)', () => {
-  it('login stores the token; logout removes it from persistence and memory', async () => {
+  it('login stores the token; logout revokes server-side, then clears persistence and memory', async () => {
     await render(h(StoreProvider, null, h(Capture)))
     expect(ctx.auth).toBe('anon') // no token → never auto-authenticated
     expect(getToken()).toBeNull()
@@ -89,12 +109,18 @@ describe('UAT one-persona-session contract (server mode)', () => {
     expect(authHeaders()).toContain('Bearer uat-token-A-dana')
 
     fetchMock.mockClear()
-    await act(async () => { ctx.logout() })
+    await act(async () => { await ctx.logout() })
+    // N: the server revocation was called BEFORE local state was cleared…
+    expect(logoutCalls()).toHaveLength(1)
+    expect(tokenAtServerLogout).toBe('uat-token-A-dana')
+    // O: …and persistence + in-memory binding are gone afterwards.
     expect(ctx.auth).toBe('anon')
     expect(localStorage.getItem('cve-token')).toBeNull()
     expect(getToken()).toBeNull()
 
-    // After logout no request can carry the previous persona's identity.
+    // After logout no request can carry the previous persona's identity
+    // (the logout call itself legitimately bore the token — checked above).
+    fetchMock.mockClear()
     await api.get('/auth/me').catch(() => {})
     expect(authHeaders().every(h => h === undefined)).toBe(true)
   })
@@ -105,7 +131,7 @@ describe('UAT one-persona-session contract (server mode)', () => {
     await act(async () => { await ctx.login('dana@aster.uat.test', 'secret') })
     expect(localStorage.getItem('cve-token')).toBe('uat-token-A-dana')
     // Logout clears token A from persistence AND memory.
-    await act(async () => { ctx.logout() })
+    await act(async () => { await ctx.logout() })
     expect(localStorage.getItem('cve-token')).toBeNull()
     expect(getToken()).toBeNull()
     // Persona B (Marcus) receives a DISTINCT token B.
@@ -119,5 +145,37 @@ describe('UAT one-persona-session contract (server mode)', () => {
     expect(headers).toContain('Bearer uat-token-B-marcus')
     expect(headers.every(h => h === undefined || h === 'Bearer uat-token-B-marcus')).toBe(true)
     expect(headers).not.toContain('Bearer uat-token-A-dana')
+  })
+
+  it('a failed server revocation is never shown as a successful sign-out', async () => {
+    await render(h(StoreProvider, null, h(Capture)))
+    await act(async () => { await ctx.login('dana@aster.uat.test', 'secret') })
+    failServerLogout = true
+    await act(async () => { await ctx.logout() })
+    // P: no false "signed out" — session stays, error is surfaced.
+    expect(ctx.auth).toBe('ready')
+    expect(localStorage.getItem('cve-token')).toBe('uat-token-A-dana')
+    expect(getToken()).toBe('uat-token-A-dana')
+    expect(ctx.persistError).toBeTruthy()
+    // Recovery: once the server confirms, sign-out completes normally.
+    failServerLogout = false
+    await act(async () => { await ctx.logout() })
+    expect(ctx.auth).toBe('anon')
+    expect(getToken()).toBeNull()
+  })
+
+  it('a token revoked server-side dies in any other context on its next request', async () => {
+    await render(h(StoreProvider, null, h(Capture)))
+    await act(async () => { await ctx.login('dana@aster.uat.test', 'secret') })
+    expect(ctx.auth).toBe('ready')
+    // Another window logged the session out: the server revoked the token.
+    serverRevoked = true
+    // Q: this context's next authenticated request (refresh/poll) gets 401
+    // and the store returns to anonymous — it must not keep polling as Dana.
+    await act(async () => { ctx.refresh() })
+    await act(async () => { await Promise.resolve() })
+    expect(ctx.auth).toBe('anon')
+    expect(localStorage.getItem('cve-token')).toBeNull()
+    expect(getToken()).toBeNull()
   })
 })

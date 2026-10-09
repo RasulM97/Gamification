@@ -2,7 +2,7 @@
 import pytest
 from sqlalchemy import select
 from app.models import User, Task, LedgerTransaction, Notification, Activity
-from app.security import hash_password, make_token
+from app.security import hash_password, issue_token
 from app.economy_position import position
 from app.password_policy import validate_password
 from app.domain import DomainError
@@ -15,7 +15,7 @@ def people(db, auth):
         user = User(id='n71-' + name, company_id='co-aster', name=name, email=name+'@n71.test',
                     role=role, position='', password_hash=hash_password('Hardened8!'))
         db.add(user); db.flush()
-        result[name] = {'Authorization': 'Bearer ' + make_token(user)}
+        result[name] = {'Authorization': 'Bearer ' + issue_token(db, user)}
     db.commit()
     return result
 

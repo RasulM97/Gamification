@@ -182,6 +182,7 @@
   "common.showLess": "إظهار أقل",
   "common.showMore": "إظهار المزيد",
   "common.signOut": "تسجيل الخروج",
+  "common.signOutFailed": "فشل تسجيل الخروج — لم يؤكد الخادم العملية. ما زلت مسجلاً الدخول.",
   "common.submittedAgo": "قُدِّم {{time}}",
   "common.system": "النظام",
   "common.task": "مهمة",

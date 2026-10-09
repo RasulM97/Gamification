@@ -182,6 +182,7 @@
   "common.showLess": "نمایش کمتر",
   "common.showMore": "نمایش بیشتر",
   "common.signOut": "خروج",
+  "common.signOutFailed": "خروج ناموفق بود — سرور تأیید نکرد. همچنان وارد حساب هستید.",
   "common.submittedAgo": "{{time}} ارسال شد",
   "common.system": "سیستم",
   "common.task": "تسک",

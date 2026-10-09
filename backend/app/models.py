@@ -72,6 +72,24 @@ class CompanySettings(Base):
     max_submission_total_mb: Mapped[int] = mapped_column(Integer, default=25)
 
 
+class AuthSession(Base):
+    """Server-authoritative login session (UAT-blocker security fix).
+
+    A JWT alone is no longer sufficient authority: every authenticated
+    request must reference a session row that exists, belongs to the same
+    user AND company, and is neither revoked nor expired. Logout revokes the
+    current session server-side, immediately invalidating every copy of its
+    token in any tab/window/context. Sessions are tenant-scoped (company_id)
+    so UAT tenant reset and dev reseed dispose of them with the tenant."""
+    __tablename__ = 'auth_sessions'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # secrets.token_urlsafe(32)
+    user_id: Mapped[str] = mapped_column(String(40), ForeignKey('users.id'), index=True)
+    company_id: Mapped[str] = mapped_column(String(40), ForeignKey('companies.id'), index=True)
+    created_at: Mapped[float] = mapped_column(Float)   # epoch seconds
+    expires_at: Mapped[float] = mapped_column(Float)   # epoch seconds
+    revoked_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
 from .organization.columns import ScopeColumns, constraints as scope_constraints
 
 

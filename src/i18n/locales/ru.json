@@ -182,6 +182,7 @@
   "common.showLess": "Свернуть",
   "common.showMore": "Показать ещё",
   "common.signOut": "Выйти",
+  "common.signOutFailed": "Не удалось выйти — сервер не подтвердил выход. Вы всё ещё в системе.",
   "common.submittedAgo": "отправлено {{time}}",
   "common.system": "Система",
   "common.task": "Задача",

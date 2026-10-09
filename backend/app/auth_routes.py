@@ -15,7 +15,7 @@ from .config import settings
 from .db import get_db, log_action
 from .domain import DomainError, UploadCandidate, can_see_task, validate_attachments
 from .models import Attachment, Company, Task, User
-from .security import check_password, current_user, make_token
+from .security import check_password, create_session, current_auth, current_user, make_token
 from .serializers import bootstrap
 from .task_access import can_view
 from .storage import StoredFile, storage
@@ -36,8 +36,25 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
         # never log the password; never reveal which half failed
         log_action('-', '-', '-', 'login', body.email, 'denied', 0)
         raise HTTPException(401, {'code': 'AUTH_INVALID', 'message': 'Invalid email or password'})
+    # Every login creates a NEW independent server session; the JWT alone is
+    # no longer sufficient authority without it.
+    session = create_session(db, u)
+    db.commit()
     log_action(u.id, u.role, u.company_id, 'login', u.email, 'ok', 0)
-    return {'token': make_token(u), 'user': _me(u)}
+    return {'token': make_token(u, session.id), 'user': _me(u)}
+
+
+@router.post('/auth/logout')
+def logout(auth=Depends(current_auth), db: Session = Depends(get_db)):
+    """Server-side revocation of the CURRENT session only. Idempotent-safe:
+    the first call revokes; a repeated call with the same token fails closed
+    with 401 because the session is already revoked. No other session of this
+    or any other user is affected."""
+    if auth.session.revoked_at is None:
+        auth.session.revoked_at = time.time()
+        db.commit()
+    log_action(auth.user.id, auth.user.role, auth.user.company_id, 'logout', auth.user.id, 'ok', 0)
+    return {'ok': True}
 
 
 def _me(u: User) -> dict:

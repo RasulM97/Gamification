@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from fastapi.testclient import TestClient
 from app.main import app
 from app.models import User
-from app.security import make_token
+from app.security import issue_token
 from app.economic_effects.service import issue
 from app.economic_effects.reversal import reverse
 from tests.approval_helpers import approval_db, chain
@@ -15,7 +15,7 @@ from tests.golden.conftest import golden_db  # noqa: F401 — fixture namespace
 
 
 def headers(db, user='gold-admin-a'):
-    return {'Authorization': 'Bearer ' + make_token(db.get(User, user))}
+    return {'Authorization': 'Bearer ' + issue_token(db, db.get(User, user))}
 
 
 @pytest.fixture()

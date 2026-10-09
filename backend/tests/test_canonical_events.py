@@ -17,7 +17,7 @@ from app.canonical_events.validation import validate, dedupe_key, PAYLOAD_LIMIT
 from app.db import engine, get_db
 from app.domain import DomainError
 from app.models import Company, User, Task, LedgerTransaction, Notification, Activity
-from app.security import current_user, make_token
+from app.security import current_user, issue_token
 
 
 def incoming(**changes):
@@ -149,8 +149,8 @@ def test_tenant_references_and_token_boundary(db):
         return PostgresEventStore(session).get(actor.company_id, event_id)
 
     client = TestClient(probe)
-    foreign = {'Authorization': 'Bearer ' + make_token(stranger)}
-    own = {'Authorization': 'Bearer ' + make_token(db.get(User, 'u-dana'))}
+    foreign = {'Authorization': 'Bearer ' + issue_token(db, stranger)}
+    own = {'Authorization': 'Bearer ' + issue_token(db, db.get(User, 'u-dana'))}
     assert client.get('/probe/' + event.id, headers=own).status_code == 200
     denied = client.get('/probe/' + event.id, headers=foreign)
     absent = client.get('/probe/absent', headers=foreign)

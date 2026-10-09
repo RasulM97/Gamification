@@ -182,6 +182,7 @@
   "common.showLess": "הצג פחות",
   "common.showMore": "הצג עוד",
   "common.signOut": "יציאה",
+  "common.signOutFailed": "ההתנתקות נכשלה — השרת לא אישר אותה. אתה עדיין מחובר.",
   "common.submittedAgo": "הוגש {{time}}",
   "common.system": "מערכת",
   "common.task": "משימה",

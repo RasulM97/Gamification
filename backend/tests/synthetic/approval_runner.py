@@ -25,7 +25,7 @@ def main():
     from fastapi.testclient import TestClient
     from app.db import engine, SessionLocal, logger
     from app.models import User, Base
-    from app.security import make_token
+    from app.security import issue_token
     from app.domain import DomainError
     from app.approvals.model import ApprovalRequest, ApprovalDecision
     from app.approvals.service import create_request, decide, list_requests
@@ -113,7 +113,7 @@ def main():
         # A separate 50-way mixed finalization of one still-pending request.
         import threading
         chosen=pending[0]; tenant=int(chosen['companyId'].split('-')[-1])
-        auth={'Authorization':'Bearer '+make_token(reviewers[tenant])}
+        with SessionLocal() as db: auth={'Authorization':'Bearer '+issue_token(db, db.merge(reviewers[tenant]))}
         barrier=threading.Barrier(50)
         def attempt(i):
             barrier.wait(timeout=30)

@@ -67,13 +67,13 @@ def _unit(db, kind, name, managers=(), members=()):
 
 def _second_manager(db):
     """A second MANAGER account (the seed has only marcus) + API headers."""
-    from app.security import hash_password, make_token
+    from app.security import hash_password, issue_token
     if db.get(User, 'u-ws4b-mgr2') is None:
         db.add(User(id='u-ws4b-mgr2', company_id='co-aster', name='Mgr Two',
                     email='mgr2@ws4b.test', role='MANAGER', position='',
                     password_hash=hash_password('Hardened8!')))
         db.commit()
-    return {'Authorization': 'Bearer ' + make_token(db.get(User, 'u-ws4b-mgr2'))}
+    return {'Authorization': 'Bearer ' + issue_token(db, db.get(User, 'u-ws4b-mgr2'))}
 
 
 def _create(client, headers_, *, reward='0', scope=None, assignee=None, title='WS4b task',

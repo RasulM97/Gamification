@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app.db import engine, SessionLocal
 from app.main import app
 from app.models import User
-from app.security import make_token
+from app.security import issue_token
 from app.domain import DomainError
 from app.approvals.model import ApprovalRequest, ApprovalDecision
 from app.approvals.service import create_request, decide, get_request, list_requests
@@ -19,7 +19,7 @@ from tests.test_internal_events import rows
 
 
 def headers(db,user='gold-admin-a'):
-    return {'Authorization':'Bearer '+make_token(db.get(User,user))}
+    return {'Authorization':'Bearer '+issue_token(db, db.get(User,user))}
 
 
 def race(count, work):
@@ -115,14 +115,14 @@ def test_bad_json_and_server_owned_fields(approval_db):
 def test_failure_atomicity(approval_db,table,stage):
     db=approval_db; source=chain(db); admin=db.get(User,'gold-admin-a')
     request=create_request(db,admin,source['decision']['decisionId']) if stage=='decide' else None
-    db.commit(); before=rows()
+    db.commit(); h=headers(db); before=rows()  # token/session created BEFORE the atomicity snapshot
     with engine.begin() as conn:
         conn.execute(sa.text("CREATE FUNCTION e6_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'PRIVATE FAILURE'; END; $$"))
         conn.execute(sa.text(f'CREATE TRIGGER e6_fail BEFORE INSERT ON {table} FOR EACH ROW EXECUTE FUNCTION e6_fail()'))
     try:
         with TestClient(app,raise_server_exceptions=False) as client:
             path=('/api/approvals/from-policy/'+source['decision']['decisionId'] if stage=='create' else '/api/approvals/'+request['id']+'/decision')
-            r=client.post(path,headers=headers(db),json={'decision':'APPROVED'})
+            r=client.post(path,headers=h,json={'decision':'APPROVED'})
             assert r.status_code==503 and 'PRIVATE FAILURE' not in r.text
         assert rows()==before
     finally:

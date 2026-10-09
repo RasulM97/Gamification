@@ -182,6 +182,7 @@
   "common.showLess": "Daha az göster",
   "common.showMore": "Daha fazla göster",
   "common.signOut": "Çıkış yap",
+  "common.signOutFailed": "Çıkış başarısız — sunucu onaylamadı. Oturumunuz hâlâ açık.",
   "common.submittedAgo": "{{time}} gönderildi",
   "common.system": "Sistem",
   "common.task": "Görev",

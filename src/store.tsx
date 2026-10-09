@@ -231,7 +231,7 @@ function useServerStore(): Ctx {
       applyState(s)
     }).catch((e: unknown) => {
       if (epoch !== sessionEpoch.current) return
-      if (e instanceof ApiError && e.status === 401) { logout(); return }
+      if (e instanceof ApiError && e.status === 401) { clearLocalSession(); return }
       const msg = errorText(e)
       setPersistError(msg)
     })
@@ -342,10 +342,21 @@ function useServerStore(): Ctx {
       const fresh = await api.bootstrap()
       if (epoch !== sessionEpoch.current) return
       setMe(r.user); applyState(fresh); setAuth('ready')
-    } catch (error) { if (epoch === sessionEpoch.current) logout(); throw error }
+    } catch (error) {
+      if (epoch === sessionEpoch.current) {
+        /* Login bootstrap failed: best-effort revoke the just-created server
+           session, then clear locally. This is login cleanup, not the
+           user-visible sign-out contract, so it never blocks on the server. */
+        try { await api.logout() } catch { /* server unreachable — session expires server-side */ }
+        clearLocalSession()
+      }
+      throw error
+    }
   }
 
-  const logout = () => {
+  /* Local session teardown, ONLY truthful when the server session is already
+     invalid (401 anywhere) or the server confirmed revocation. */
+  const clearLocalSession = () => {
     ++sessionEpoch.current
     setToken(null)
     bindSessionToken(null)
@@ -353,6 +364,23 @@ function useServerStore(): Ctx {
     setMe(null)
     setState(null)
     setAuth('anon')
+  }
+
+  /* Server-authoritative sign-out (UAT-blocker fix): revoke the server
+     session FIRST; transition to anonymous only after the server confirms
+     revocation — or when the session is already invalid there (401), where
+     local clearing is equally truthful. On network/server failure the user
+     is NOT told they signed out: the error is shown and the session stays. */
+  const logout = async () => {
+    try {
+      await api.logout()
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 401)) {
+        setPersistError(translate(currentLocale(), 'common.signOutFailed'))
+        return
+      }
+    }
+    clearLocalSession()
   }
 
   /* Server mode has no persona simulation: identity comes only from real

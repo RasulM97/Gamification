@@ -9,7 +9,7 @@ from app.canonical_events.contracts import EventInput
 from app.canonical_events.store import PostgresEventStore
 from app.main import app
 from app.models import Company, User
-from app.security import make_token
+from app.security import issue_token
 from tests.approval_helpers import approval_db  # noqa: F401  (fixture)
 from tests.economic_helpers import economic_chain
 from tests.golden.conftest import golden_db  # noqa: F401  (fixture)
@@ -117,7 +117,7 @@ def test_effect_browse_filter_authority_and_tenant(approval_db):  # noqa: F811
     client = TestClient(app, raise_server_exceptions=False)
 
     def auth(uid):
-        return {'Authorization': 'Bearer ' + make_token(db.get(User, uid))}
+        return {'Authorization': 'Bearer ' + issue_token(db, db.get(User, uid))}
 
     decision_id = chain['decision']['decisionId']
     issued = client.post('/api/economic-effects/from-policy/' + decision_id,

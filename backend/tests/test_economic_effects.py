@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from app.db import engine, SessionLocal
 from app.main import app
 from app.models import User, LedgerTransaction
-from app.security import make_token
+from app.security import issue_token
 from app.domain import DomainError
 from app.economic_effects.model import EconomicEffect, EconomicReversal
 from app.economic_effects.service import issue, economic_detail
@@ -140,7 +140,7 @@ def test_fifty_way_issue_and_reversal(approval_db,mixed):
         request=create_request(db,actor(db),second['decisionId']); db.commit()
         decide(db,db.get(User,'ap-other'),request['id'],{'decision':'APPROVED'}); db.commit()
         ids.append(second['decisionId'])
-    headers={'Authorization':'Bearer '+make_token(actor(db))}; db.commit()
+    headers={'Authorization':'Bearer '+issue_token(db, actor(db))}; db.commit()
     client=TestClient(app,raise_server_exceptions=False)
     def race(callback):
         barrier=threading.Barrier(50)
@@ -159,7 +159,7 @@ def test_api_authority_tenant_and_no_client_ledger_fields(approval_db):
     db=approval_db
     chain=economic_chain(db)
     client=TestClient(app,raise_server_exceptions=False)
-    def headers(uid): return {'Authorization':'Bearer '+make_token(db.get(User,uid))}
+    def headers(uid): return {'Authorization':'Bearer '+issue_token(db, db.get(User,uid))}
     url='/api/economic-effects/from-policy/'+chain['decision']['decisionId']
     for uid in ('ap-manager','ap-employee'):
         assert client.post(url,headers=headers(uid)).status_code==403

@@ -182,6 +182,7 @@
   "common.showLess": "表示を減らす",
   "common.showMore": "もっと見る",
   "common.signOut": "サインアウト",
+  "common.signOutFailed": "サインアウトに失敗しました — サーバーが確認できませんでした。まだサインインしています。",
   "common.submittedAgo": "{{time}}に提出",
   "common.system": "システム",
   "common.task": "タスク",

@@ -182,6 +182,7 @@
   "common.showLess": "कम दिखाएँ",
   "common.showMore": "और दिखाएँ",
   "common.signOut": "साइन आउट",
+  "common.signOutFailed": "साइन आउट विफल — सर्वर ने पुष्टि नहीं की। आप अभी भी साइन इन हैं।",
   "common.submittedAgo": "{{time}} सबमिट किया",
   "common.system": "सिस्टम",
   "common.task": "कार्य",

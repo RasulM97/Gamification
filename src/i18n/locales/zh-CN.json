@@ -182,6 +182,7 @@
   "common.showLess": "收起",
   "common.showMore": "展开",
   "common.signOut": "退出登录",
+  "common.signOutFailed": "退出失败——服务器未确认。您仍处于登录状态。",
   "common.submittedAgo": "{{time}}提交",
   "common.system": "系统",
   "common.task": "任务",
