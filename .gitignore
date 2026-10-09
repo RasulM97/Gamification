@@ -25,3 +25,6 @@ app_log/e71-*.xml
 .pgtest/
 .vite-dev*.log
 .preview.log
+
+# UAT Stage A local operator artifacts (credentials); never commit.
+uat-out/
