@@ -18,19 +18,35 @@ import { seed } from './domain/engine'
 
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
 
-const UAT_USER = { id: 'uat-dana', name: 'Dana', role: 'ADMIN', position: 'Operations Director',
-  email: 'dana@aster.uat.test', companyId: 'co-uat-aster' }
+const UAT_USERS: Record<string, { token: string; user: object }> = {
+  'dana@aster.uat.test': {
+    token: 'uat-token-A-dana',
+    user: { id: 'uat-dana', name: 'Dana', role: 'ADMIN', position: 'Operations Director',
+      email: 'dana@aster.uat.test', companyId: 'co-uat-aster' },
+  },
+  'marcus@aster.uat.test': {
+    token: 'uat-token-B-marcus',
+    user: { id: 'uat-marcus', name: 'Marcus', role: 'MANAGER', position: 'Commercial Team Lead',
+      email: 'marcus@aster.uat.test', companyId: 'co-uat-aster' },
+  },
+}
 const BOOTSTRAP = JSON.parse(JSON.stringify(seed()))
 
 let fetchMock: ReturnType<typeof vi.fn>
 function stubFetch() {
-  fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     if (url.includes('/api/auth/login')) {
-      return { ok: true, status: 200, json: async () => ({ token: 'uat-session-token-1', user: UAT_USER }) }
+      const email = JSON.parse(String(init?.body ?? '{}')).email as string
+      const account = UAT_USERS[email]
+      if (!account) return { ok: false, status: 401, json: async () => ({}) }
+      return { ok: true, status: 200, json: async () => ({ token: account.token, user: account.user }) }
     }
     if (url.includes('/api/auth/me')) {
-      return { ok: true, status: 200, json: async () => UAT_USER }
+      const auth = String((init?.headers as Record<string, string> | undefined)?.Authorization ?? '')
+      const account = Object.values(UAT_USERS).find(a => auth === `Bearer ${a.token}`)
+      if (!account) return { ok: false, status: 401, json: async () => ({}) }
+      return { ok: true, status: 200, json: async () => account.user }
     }
     if (url.includes('/api/bootstrap')) {
       return { ok: true, status: 200, json: async () => BOOTSTRAP }
@@ -69,8 +85,8 @@ describe('UAT one-persona-session contract (server mode)', () => {
 
     await act(async () => { await ctx.login('dana@aster.uat.test', 'secret') })
     expect(ctx.auth).toBe('ready')
-    expect(localStorage.getItem('cve-token')).toBe('uat-session-token-1')
-    expect(authHeaders()).toContain('Bearer uat-session-token-1')
+    expect(localStorage.getItem('cve-token')).toBe('uat-token-A-dana')
+    expect(authHeaders()).toContain('Bearer uat-token-A-dana')
 
     fetchMock.mockClear()
     await act(async () => { ctx.logout() })
@@ -85,12 +101,23 @@ describe('UAT one-persona-session contract (server mode)', () => {
 
   it('a second persona cannot inherit the first session token', async () => {
     await render(h(StoreProvider, null, h(Capture)))
+    // Persona A (Dana) receives token A.
     await act(async () => { await ctx.login('dana@aster.uat.test', 'secret') })
+    expect(localStorage.getItem('cve-token')).toBe('uat-token-A-dana')
+    // Logout clears token A from persistence AND memory.
     await act(async () => { ctx.logout() })
-    // Next persona logs in: fresh token replaces — never merges with — the old.
+    expect(localStorage.getItem('cve-token')).toBeNull()
+    expect(getToken()).toBeNull()
+    // Persona B (Marcus) receives a DISTINCT token B.
     fetchMock.mockClear()
     await act(async () => { await ctx.login('marcus@aster.uat.test', 'secret2') })
-    expect(localStorage.getItem('cve-token')).toBe('uat-session-token-1') // freshly set by login
-    expect(authHeaders().every(h => h === undefined || h === 'Bearer uat-session-token-1')).toBe(true)
+    // Persistence contains only B — A is gone.
+    expect(localStorage.getItem('cve-token')).toBe('uat-token-B-marcus')
+    expect(getToken()).toBe('uat-token-B-marcus')
+    // Every request after the switch carries B and never A.
+    const headers = authHeaders()
+    expect(headers).toContain('Bearer uat-token-B-marcus')
+    expect(headers.every(h => h === undefined || h === 'Bearer uat-token-B-marcus')).toBe(true)
+    expect(headers).not.toContain('Bearer uat-token-A-dana')
   })
 })

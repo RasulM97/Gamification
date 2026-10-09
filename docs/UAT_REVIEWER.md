@@ -2,14 +2,16 @@
 
 > Status: **Stage A prepared. Execution happens after Synthetic Company UAT runs complete.**
 > Companion docs: `docs/UAT.md` (persona pack + evidence format), `docs/UAT_REDTEAM.md` (adversarial spec).
+> The evidence field names below are the canonical schema from `docs/UAT.md`
+> §Evidence capture — identical names, identical enum values. No synonyms.
 
 ---
 
 ## 1. Role
 
 The Reviewer/Auditor receives the **outputs of all personas** (evidence artifacts,
-one JSON file per scenario run, plus persona comments) and produces the final UAT
-review. The Reviewer:
+**one JSON file per executed scenario**, plus persona comments) and produces the
+final UAT review. The Reviewer:
 
 - **is NOT allowed to rewrite history.** Evidence files are read-only inputs. If
   evidence is missing or contradictory, that is itself a finding — never
@@ -21,16 +23,21 @@ review. The Reviewer:
 
 ## 2. Inputs
 
-- `uat-out/evidence/<persona>__<scenario-id>__<date>.json` — one per scenario run,
-  conforming to the schema in `docs/UAT.md` §Evidence Capture.
-- Optional free-form persona comments attached to the same files.
+- `uat-out/evidence/<persona>__<scenarioId>__<date>.json` — **one file per
+  executed scenario**, conforming to the canonical schema in `docs/UAT.md`
+  §Evidence capture. If one persona performed multiple scenarios in a single
+  login session, there is still one file per scenario.
+- Optional free-form persona comments inside each file's `personaComments`.
 - Server logs only as corroboration, never as replacement for persona evidence.
 
 Before reviewing, verify:
 
 1. Every executed scenario has exactly one evidence file.
 2. Every evidence file parses as JSON and contains all required fields.
-3. Every evidence file carries the `hard_assertions` block with all 7 counters.
+3. Every evidence file carries the `hardAssertions` block with all 7 counters.
+4. Every evidence file carries `session.testedBuildSha`, and all files under
+   review share the same tested build SHA. The review report header MUST cite
+   that exact SHA.
 
 Missing/malformed evidence → record as process finding `UAT-EVIDENCE-GAP`, do
 not silently skip.
@@ -39,42 +46,44 @@ not silently skip.
 
 ## 3. Hard Assertions (deterministic, non-overridable)
 
-Aggregate the counters across ALL evidence files. The review verdict for this
-section is mechanical:
+Aggregate the `hardAssertions` counters across ALL evidence files. Canonical
+field names (camelCase, exactly as in the schema):
 
 ```text
-unauthorized action succeeded  — total must be 0
-cross-tenant access            — total must be 0
-secret re-exposure             — total must be 0
-duplicate payout               — total must be 0
-unexpected economic write      — total must be 0
-unexpected 5xx                 — total must be 0
-ledger inconsistency           — total must be 0
+unauthorizedActionSucceeded  — total must be 0
+crossTenantAccess            — total must be 0
+secretReexposure             — total must be 0
+duplicatePayout              — total must be 0
+unexpectedEconomicWrite      — total must be 0
+unexpected5xx                — total must be 0
+ledgerInconsistency          — total must be 0
 ```
 
 Rules:
 
-- Any counter > 0 ⇒ the corresponding invariant is **FAIL**. No narrative may
-  soften this. Report the exact scenario IDs and personas where it occurred.
+- Any counter total > 0 ⇒ the corresponding invariant is **FAIL**. No narrative
+  may soften this. Report the exact `scenarioId` + persona + date of every
+  contributing evidence file.
 - The Reviewer **must NOT mark security/economic invariants PASS based on
-  intuition.** A PASS means: the counters are 0 AND the scenarios that exercise
-  the invariant actually ran (check coverage: unauthorized attempts, tenant-isolation
-  probes, economic flows, capability-disabled actions). If no evidence exercises an
-  invariant, mark it **NOT TESTED**, not PASS.
-- The Auditor may summarize ("cross-tenant isolation held across 14 probes") but
-  cannot convert a FAIL into PASS or a NOT TESTED into PASS.
+  intuition.** A PASS means: the counter total is 0 AND scenarios that exercise
+  the invariant actually ran (check coverage: unauthorized attempts,
+  tenant-isolation probes, economic flows, capability-disabled actions). If no
+  evidence exercises an invariant, mark it **NOT TESTED**, not PASS.
+- The Auditor may summarize ("cross-tenant isolation held across 14 probes")
+  but cannot convert a FAIL into PASS or a NOT TESTED into PASS.
 
 ---
 
 ## 4. Analysis Duties (qualitative, evidence-based)
 
-For each of the following, cite persona + scenario IDs as support. Every
+For each of the following, cite persona + `scenarioId` as support. Every
 qualitative claim must trace to at least one evidence record.
 
-1. **Aggregate friction.** Sum/average `major_navigation_transitions`, `retries`,
+1. **Aggregate friction.** Sum/average `navigationTransitions`, `retries`, and
    `errors` per scenario and per persona. Flag the top-friction scenarios.
-2. **Repeated patterns.** Group confusing moments / errors by similarity. A
-   pattern needs ≥ 2 independent occurrences (different personas or scenarios).
+2. **Repeated patterns.** Group `confusingMoments` / `errors` entries by
+   similarity. A pattern needs ≥ 2 independent occurrences (different personas
+   or scenarios).
 3. **Separate UX problems from functional defects.**
    - Functional defect: the system produced a wrong result, refused a permitted
      action, or errored on valid input.
@@ -82,24 +91,27 @@ qualitative claim must trace to at least one evidence record.
      misunderstood it, or could not tell it succeeded.
    - When unsure, classify as `ambiguous` with reasoning — do not force a call.
 4. **Separate expected refusal from bug.** A refusal that matches the product's
-   documented RBAC/capability rules (see `docs/UAT.md` §Persona Rules and the
-   backend security contracts) is an *expected refusal*, not a bug. Note whether
-   the refusal was *understandable* to the persona (UX) separately from whether
-   it was *correct* (defect).
+   documented RBAC/capability rules (see `docs/UAT.md` §Persona operating rules
+   and the backend security contracts) is an *expected refusal*, not a bug.
+   Note whether the refusal was *understandable* to the persona (UX) separately
+   from whether it was *correct* (defect).
 5. **Navigation/click friction.** Approximate per scenario:
-   `major_navigation_transitions + retries` relative to a reasonable minimum.
+   `navigationTransitions + retries` relative to a reasonable minimum.
    Report the worst offenders with numbers.
 6. **Dashboard dependence.** Count evidence records where
-   `dashboard_visit_necessary = true` and the goal was not a dashboard goal.
-   Repeated compulsory dashboard returns are a navigation smell — quantify them.
+   `dashboardVisitNecessary` is `true` and the `businessGoal` was not a
+   dashboard goal. Repeated compulsory dashboard returns are a navigation
+   smell — quantify them.
 7. **Manager/Admin workload.** From Manager and Admin persona evidence, count
-   interventions (`another_person_had_to_intervene = true`) and approval/oversight
+   interventions (`anotherPersonHadToIntervene` = `true`) and approval/oversight
    steps. Identify whether the product shifts routine work upward.
 8. **Confusing terminology.** Collect label/wording misunderstandings verbatim
-   from `confusing_moments` and `persona_comments`. Quote the exact label.
+   from `confusingMoments` and `personaComments`. Quote the exact label.
 9. **Undiscovered paths.** List goals where personas gave up or never found the
-   feature (`success = false` with discovery-type comments), and goals completed
-   only via a non-obvious route.
+   feature (`outcome` = `FAILED` or `GAVE_UP`, or `PARTIAL` with
+   discovery-type `confusingMoments`), and goals completed only via a
+   non-obvious route. The canonical `outcome` enum is
+   `SUCCESS | PARTIAL | FAILED | GAVE_UP` — no other values exist.
 10. **Candidate findings.** Produce the final findings list (format below).
 
 ---
@@ -109,16 +121,16 @@ qualitative claim must trace to at least one evidence record.
 `uat-out/review/UAT_REVIEW_<date>.md`:
 
 ```text
-# UAT Review — <date> — baseline <git SHA of the tested build>
+# UAT Review — <date> — testedBuildSha <git SHA recorded in the evidence>
 
 ## 1. Hard Assertions
-| counter | total | verdict (PASS/FAIL/NOT TESTED) | evidence refs |
+| counter (canonical name) | total | verdict (PASS/FAIL/NOT TESTED) | evidence refs |
 
 ## 2. Coverage
 scenarios executed / planned, personas executed, gaps
 
 ## 3. Friction Summary
-per-scenario table: transitions, retries, errors, interventions
+per-scenario table: navigationTransitions, retries, errors, interventions
 
 ## 4. Patterns
 numbered list, each with ≥2 evidence refs
@@ -128,7 +140,7 @@ CF-001 … CF-NNN, each:
   - title
   - classification: defect | ux | ambiguous
   - expected-refusal check: n/a | expected refusal (correct) | expected refusal (confusing UX) | unexpected refusal
-  - evidence refs (persona + scenario + date)
+  - evidence refs (persona + scenarioId + date)
   - severity suggestion: blocker | major | minor | observation
   - exact reproduction context as recorded (no invented steps)
 

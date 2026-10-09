@@ -15,8 +15,10 @@
   evidence.
 - **Reuse existing backend security contracts** as the oracle: authentication,
   RBAC/capability checks, tenant isolation, idempotency, and ledger/economic
-  invariants as enforced by the current API (see `backend/app/api.py`,
-  `backend/app/security.py`, `backend/tests/` security and tenant suites).
+  invariants as enforced by the current API (see §4 for the authoritative
+  modules — `backend/app/main.py`, `backend/app/routes.py`,
+  `backend/app/auth_routes.py`, `backend/app/security.py`, and the
+  `backend/tests/` security and tenant suites).
 - Every probe records the **expected refusal/behavior per the existing contract**
   and the **actual response**. A mismatch is a finding; an expected refusal is a PASS.
 - **Do not invent malware/exploitation functionality.** Probes are ordinary HTTP
@@ -44,10 +46,15 @@ Each probe produces a record appended to `uat-out/redteam/<probe-id>__<date>.jso
   "actual_status": 403,
   "actual_body_excerpt": "...",
   "verdict": "PASS | FAIL | INCONCLUSIVE",
-  "hard_assertions_hit": ["cross-tenant access"],
+  "hardAssertionsHit": ["crossTenantAccess"],
   "notes": ""
 }
 ```
+
+`hardAssertionsHit` uses the canonical counter names from the evidence schema
+(`docs/UAT.md`): `unauthorizedActionSucceeded`, `crossTenantAccess`,
+`secretReexposure`, `duplicatePayout`, `unexpectedEconomicWrite`,
+`unexpected5xx`, `ledgerInconsistency`.
 
 Red-Team results feed the same hard-assertion counters as persona evidence
 (`docs/UAT_REVIEWER.md` §3). A FAIL on any security/economic probe sets the
@@ -58,8 +65,8 @@ corresponding counter > 0 and is a blocker-class candidate finding.
 ## 3. Probe Catalogue
 
 IDs are stable; execute all unless marked optional. "Actor" means the credential
-used. Tenant shorthand: **A** = Aster Dynamics (`co-uat-aster`), **O** = Orbit
-Logistics (`co-uat-orbit`).
+used. Tenant shorthand: **A** = Aster Dynamics UAT (`co-uat-aster`),
+**O** = Orbit Labs UAT (`co-uat-orbit`).
 
 ### 3.1 Direct endpoint attempts
 | ID | Probe | Expected |
@@ -78,7 +85,7 @@ Logistics (`co-uat-orbit`).
 ### 3.3 Foreign tenant IDs
 | ID | Probe | Expected |
 |----|-------|----------|
-| RT-020 | A-Employee requests O resources by ID (tasks, users, projects, teams, help requests) — enumerate from seeded Orbit IDs if discoverable, else plausible IDs | 404/403, never data; `cross-tenant access` stays 0 |
+| RT-020 | A-Employee requests O resources by ID (tasks, users, projects, teams, help requests) — enumerate from seeded Orbit IDs if discoverable, else plausible IDs | 404/403, never data; `crossTenantAccess` stays 0 |
 | RT-021 | A-Admin attempts mutations carrying O company_id / unit ids in body | Rejected; no cross-tenant write |
 | RT-022 | O-Employee replays an A resource ID captured from an A persona's evidence | Same as RT-020 |
 
@@ -87,14 +94,14 @@ Logistics (`co-uat-orbit`).
 |----|-------|----------|
 | RT-030 | Open a form, have Admin revoke the actor's capability/role, then submit from the stale page | Server rejects per current permission; no capability-orphaned write |
 | RT-031 | Refresh/reload mid-mutation (submit then hard-refresh immediately) | Exactly one resulting effect; idempotent or safely aborted |
-| RT-032 | **Double submit**: fire the same create/complete action twice rapidly (button double-click / duplicate request) | One effect only; `duplicate payout` and `unexpected economic write` stay 0 |
+| RT-032 | **Double submit**: fire the same create/complete action twice rapidly (button double-click / duplicate request) | One effect only; `duplicatePayout` and `unexpectedEconomicWrite` stay 0 |
 | RT-033 | **Replay**: resend an identical captured request body (same action, new request) minutes later | Treated per existing idempotency rules; no duplicate economic effect |
 
 ### 3.5 Credential lifecycle
 | ID | Probe | Expected |
 |----|-------|----------|
 | RT-040 | After an Admin rotates/regenerates a credential (integration secret or password change if supported), retry the **old credential** | Old credential rejected; no grace window |
-| RT-041 | Request endpoints that return config/integration data and scan responses for raw secret values | Secrets never re-exposed after initial display; `secret re-exposure` stays 0 |
+| RT-041 | Request endpoints that return config/integration data and scan responses for raw secret values | Secrets never re-exposed after initial display; `secretReexposure` stays 0 |
 
 ### 3.6 Capability disable during action
 | ID | Probe | Expected |
@@ -104,7 +111,7 @@ Logistics (`co-uat-orbit`).
 ### 3.7 Input robustness
 | ID | Probe | Expected |
 |----|-------|----------|
-| RT-060 | Invalid IDs: nonexistent UUIDs/int IDs, wrong-type IDs, IDs of other entity kinds | 4xx, no 5xx; `unexpected 5xx` stays 0 |
+| RT-060 | Invalid IDs: nonexistent UUIDs/int IDs, wrong-type IDs, IDs of other entity kinds | 4xx, no 5xx; `unexpected5xx` stays 0 |
 | RT-061 | Malformed input: oversized strings, invalid JSON, wrong field types, boundary numbers (negative amounts, zero, huge values) on economic inputs | 4xx validation errors; no economic write; no 5xx |
 | RT-062 | **Duplicate actions**: repeat a create with identical natural keys (e.g. same-name unit, repeated help request) | Handled per existing contract (reject or accept deterministically), never a crash |
 
@@ -120,13 +127,25 @@ Logistics (`co-uat-orbit`).
 ## 4. Oracle Sources (existing contracts to cite)
 
 Before execution, the Red-Team operator must read the current source/tests and
-fill the "Expected" column with the *actual* contract:
+fill the "Expected" column with the *actual* contract. Authority order:
+**Source Code → DB/Migrations → Explicit Contracts → Graphify.** Current
+authoritative modules (verified present in the source tree):
 
-- `backend/app/api.py` — endpoint surface, auth dependencies, capability gates.
-- `backend/app/security.py` — password/JWT handling.
-- `backend/app/tenant.py` / tenant filtering in repositories — isolation rules.
-- `backend/app/economics.py` / ledger modules — economic invariants, idempotency.
-- `backend/tests/` — security/RBAC/tenant/idempotency suites as executable oracles.
+- `backend/app/main.py`, `backend/app/routes.py`, `backend/app/workspace_routes.py`
+  — endpoint surface, auth dependencies, capability gates.
+- `backend/app/auth_routes.py`, `backend/app/security.py` — login/logout,
+  password/JWT handling, uniform-401 contract.
+- `backend/app/service_common.py` and the per-feature service modules —
+  `company_id`-scoped getters/enforcement (tenant isolation in practice).
+- `backend/app/ledger.py`, `backend/app/economic_effects/` — economic
+  invariants and idempotency.
+- `backend/app/ingestion/security.py`, `backend/app/github_connector/`,
+  `backend/app/slack_connector/` — integration secret derivation/rotation,
+  `INGRESS_UNAVAILABLE` behavior.
+- `backend/tests/` — executable oracles: `test_capabilities.py`,
+  `test_economy_tenant.py`, `test_organization_adversarial.py`,
+  `test_ingestion_security.py`, `test_api_lifecycle.py`, and the
+  `system_integration/` suites.
 
 If source and this catalogue disagree, **source wins**; record the catalogue
 entry as needing correction rather than reporting a false defect.

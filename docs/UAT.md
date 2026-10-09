@@ -1,6 +1,10 @@
 # UAT — Synthetic Company Acceptance Harness (Stage A)
 
-Canonical UAT document at code baseline `d087070efc168e4c373a8f8135b7ac56ce182b68`.
+Stage A started from code baseline `d087070efc168e4c373a8f8135b7ac56ce182b68`.
+This document is not pinned to one commit: **every UAT execution MUST record
+`git rev-parse HEAD` at session start as `testedBuildSha` in the evidence
+metadata**, and the reviewer report must use that exact tested build SHA, so
+findings can always be tied to the exact code actually used.
 Companion documents: [Reviewer pack](UAT_REVIEWER.md) · [Red-Team pack](UAT_REDTEAM.md) (both separate on purpose).
 
 This harness prepares a **real server-backed** synthetic company for external
@@ -11,18 +15,53 @@ CVE. Demo mode is untouched and separate.
 
 ## Environment
 
-Backend (server mode, real PostgreSQL):
+Two distinct modes — do not mix them.
+
+### Setup / reset only (explicit development mode)
+
+`CVE_DEV_MODE=true` is used ONLY for the two seed/reset CLI commands in the
+next section. It is never set for the persona-facing server.
+
+### Persona UAT runtime (production-like)
+
+The actual Grok persona sessions run the server-backed application WITHOUT
+development tooling, so persona UX stays close to the real product and no
+development identity-switching surface contaminates UAT:
+
+- `CVE_DEV_MODE=false`
+- an explicit strong LOCAL UAT `CVE_JWT_SECRET` — generate locally
+  (e.g. `python -c "import secrets; print(secrets.token_urlsafe(32))"`);
+  never commit it, never print its value into reports — placeholders only
+- an explicit LOCAL UAT `CVE_WEBHOOK_MASTER_KEY` — same handling. **Required:**
+  backend secret derivation refuses to operate without it and source
+  management returns `INGRESS_UNAVAILABLE`; without the key, Dana's Day-5
+  integration scenario would fail as an *environment* failure, not a product
+  finding
+- the same UAT PostgreSQL database via `CVE_DATABASE_URL`
+- frontend in server data mode: `VITE_CVE_DATA_MODE=server`
+- do NOT enable `VITE_CVE_DEV_TOOLS` — no frontend dev account switcher;
+  UAT personas log in with real credentials only
+
+Launch (truthful sequence per current `backend/scripts/run_dev.py`: migrates
+the schema to head, then serves uvicorn on :8000; it does not force dev
+mode):
 
 ```bash
 cd backend
-CVE_DEV_MODE=true python scripts/run_dev.py     # uvicorn on :8000
+CVE_DEV_MODE=false \
+CVE_JWT_SECRET=<local-secret> \
+CVE_WEBHOOK_MASTER_KEY=<local-secret> \
+CVE_DATABASE_URL=<uat-postgres-url> \
+python scripts/run_dev.py
 ```
 
-Frontend server mode: `VITE_CVE_DATA_MODE=server` (see README/dev workflow).
-DEV_MODE additionally enables the existing demo persona switcher — **do not
-use it for UAT personas**; UAT personas log in with real credentials only.
+Then start the frontend with `VITE_CVE_DATA_MODE=server` (see README/dev
+workflow), without `VITE_CVE_DEV_TOOLS`.
 
 ## Seed / reset
+
+Run ONLY in setup/reset mode (`CVE_DEV_MODE=true`, see Environment) — never
+against the persona-facing server process:
 
 ```bash
 cd backend
@@ -170,11 +209,11 @@ fit its role. Never give routes, button names, or expected outcomes.
   and product capabilities. Note anything you could not find or understand."
 
 ### Day 2 — Coordination Friction
-- Aisha: "You are blocked on customer-migration work: you need someone with
+- Aisha: "You are blocked on Northstar Launch work: you need someone with
   export access to help you today. Get that help using the app."
 - Noah: "You started a task yesterday and left it half-done. Find it and
   resume. Then thank the colleague who covered your client call."
-- Jonas: "A colleague seems stuck on migration work. Find out if anyone asked
+- Jonas: "A colleague seems stuck on Northstar work. Find out if anyone asked
   for help and respond if you can."
 - Marcus: "Two people need decisions from you (work approvals). Also,
   recognize someone who clearly went beyond their assignment."
@@ -218,12 +257,15 @@ every feature.
 
 ## Evidence capture
 
-One JSON file per persona-session in `uat-out/evidence/` (git-ignored), using
-`uat-out` artifacts only locally. Schema:
+**One JSON file per executed scenario** in `uat-out/evidence/` (git-ignored).
+The scenario is the review/audit evidence unit: if one persona performs
+multiple scenarios in one login session, each scenario still gets its own
+evidence record. Schema:
 
 ```json
 {
-  "session": {"date": "2026-10-09", "day": 2, "operator": "user"},
+  "session": {"date": "2026-10-09", "day": 2, "operator": "user",
+              "testedBuildSha": "<git rev-parse HEAD at session start>"},
   "persona": {"name": "Aisha", "role": "EMPLOYEE"},
   "scenarioId": "D2-Aisha-blocked",
   "businessGoal": "Get help from someone with export access",
@@ -252,6 +294,9 @@ One JSON file per persona-session in `uat-out/evidence/` (git-ignored), using
 }
 ```
 
+`testedBuildSha` is mandatory: record `git rev-parse HEAD` of the code the
+server was built/started from. The reviewer report must cite this exact SHA.
+
 **Hard assertions are operator-verified facts, not LLM judgment.** A nonzero
 value in any hard assertion is an automatic FAIL regardless of narrative. The
 reviewer may summarize but never override them (see the reviewer pack).
@@ -262,3 +307,9 @@ No real Slack/GitHub providers in this stage. Dana's persona exercises the
 existing configuration UI with safe dummy values: capability on/off, create
 connection, copy the one-time secret, rotate, disable/enable, map identities,
 generic webhook source. Never claim live-provider certification from this.
+
+**Deployment prerequisite:** the persona runtime must have a valid local
+`CVE_WEBHOOK_MASTER_KEY` (see Environment). Without it, backend secret
+derivation refuses and source management returns `INGRESS_UNAVAILABLE` — that
+is an environment failure, not a product UAT finding. Do not use real provider
+credentials.

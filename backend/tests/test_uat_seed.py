@@ -4,6 +4,12 @@ Pins: deterministic roster/structure, idempotent reruns, scoped reset that
 cannot touch other tenants, regenerated credentials, real login per role,
 tenant isolation, and the explicit-dev-mode guard. Uses the shared Golden
 database; the UAT tenants are additive synthetic companies."""
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 import sqlalchemy as sa
 from fastapi.testclient import TestClient
@@ -19,6 +25,8 @@ from app.canonical_events.model import CanonicalEvent
 from app.provisioning import provision_company
 from tests.approval_helpers import approval_db
 from tests.golden.conftest import golden_db  # noqa: F401  (registers the fixture)
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
 def count(db, model, company=None):
@@ -131,6 +139,58 @@ def test_reset_wipes_only_uat_tenants_and_regenerates_credentials(uat):
     # Credentials rotate: the old password dies, the new one works.
     assert login('dana@aster.uat.test', summary['passwords']['uat-dana']).status_code == 401
     assert login('dana@aster.uat.test', fresh['passwords']['uat-dana']).status_code == 200
+
+
+def test_clean_process_cli_reset_covers_the_complete_schema(uat):
+    """Reproduces the REAL CLI path: a fresh Python process running
+    `python -m app.uat_seed reset`, WITHOUT the parent pytest process's
+    incidental model imports (app.main, CanonicalEvent, PeerThanks…).
+
+    Independent-review regression: the pre-patch harness registered only
+    core+organization tables in a clean process, so the CLI reset silently
+    orphaned feature-domain history instead of wiping it. This test fails
+    against that version and passes once reset covers the full live schema."""
+    db, summary = uat
+    bystander, by_admin, _ = provision_company(db, company_name='CLI Bystander Co',
+        admin_name='CLI Bystander', admin_email='cli-bystander@bystander.invalid',
+        password='Bystander-Pass-1')
+    db.commit()
+    # Feature-domain history in tables uat_seed.py never imported directly.
+    actor = db.get(User, 'uat-jonas')
+    appreciation.create(db, actor, 'thanks',
+        {'recipientUserId': 'uat-priya', 'message': 'CLI reset probe', 'submissionId': 'uat-thanks-cli'})
+    db.commit()
+    assert count(db, PeerThanks, 'co-uat-aster') == 1
+    assert count(db, CanonicalEvent, 'co-uat-aster') > 0
+
+    bind = db.get_bind()
+    url = (bind.engine.url if hasattr(bind, 'engine') else bind.url).render_as_string(hide_password=False)
+    env = {**os.environ, 'CVE_DATABASE_URL': url, 'CVE_DEV_MODE': 'true'}
+    proc = subprocess.run([sys.executable, '-m', 'app.uat_seed', 'reset'],
+                          cwd=BACKEND_DIR, env=env, capture_output=True, text=True, timeout=180)
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload['created'] == {'co-uat-aster': True, 'co-uat-orbit': True}
+
+    db.expire_all()  # see the subprocess's committed state, not the identity map
+    # Feature history wiped by the clean process…
+    assert count(db, PeerThanks, 'co-uat-aster') == 0
+    assert count(db, CanonicalEvent, 'co-uat-aster') == 0
+    # …UAT users and org structure reseeded…
+    assert count(db, User, 'co-uat-aster') == 10
+    assert count(db, TeamMembership, 'co-uat-aster') == 9
+    assert count(db, ProjectMembership, 'co-uat-aster') == 8
+    assert count(db, User, 'co-uat-orbit') == 2
+    # …and every non-UAT company untouched.
+    assert db.get(Company, bystander.id) is not None and db.get(User, by_admin.id) is not None
+    assert db.get(Company, 'gold-a') is not None
+    # The CLI rotated credentials and wrote the git-ignored artifact.
+    assert login('dana@aster.uat.test', summary['passwords']['uat-dana']).status_code == 401
+    artifact = Path(payload['credentialsFile'])
+    assert artifact.exists() and 'uat-out' in str(artifact)
+    dana_line = next(l for l in artifact.read_text(encoding='utf-8').splitlines()
+                     if l.startswith('Dana'))
+    assert login('dana@aster.uat.test', dana_line.split()[-1]).status_code == 200
 
 
 def test_reset_refuses_when_a_uat_id_no_longer_names_a_uat_tenant(uat):

@@ -54,6 +54,36 @@ from .organization.model import Project, ProjectMembership, Team, TeamMembership
 from .password_policy import validate_password
 from .security import hash_password
 
+
+def _register_models() -> None:
+    """Register the complete current model set on Base.metadata.
+
+    A clean CLI process (`python -m app.uat_seed …`) does NOT import the
+    feature model modules on its own (app.db doesn't either), so a reset keyed
+    on Base.metadata would silently skip unregistered tenant tables. This list
+    mirrors backend/alembic/env.py plus the newer source-authoritative model
+    modules. reset() additionally verifies the result against the live
+    database catalog (information_schema) and refuses to run when any
+    tenant-scoped table is unregistered, so this list can never drift into an
+    incomplete reset without failing closed."""
+    from .capabilities import model as _capabilities  # noqa: F401
+    from .canonical_events import model as _canonical_events  # noqa: F401
+    from .ingestion import model as _ingestion  # noqa: F401
+    from .rules import model as _rules  # noqa: F401
+    from .policies import model as _policies  # noqa: F401
+    from .approvals import model as _approvals  # noqa: F401
+    from .economic_effects import model as _economic_effects  # noqa: F401
+    from .collaboration import model as _collaboration  # noqa: F401
+    from .github_connector import model as _github_connector  # noqa: F401
+    from .shadow import model as _shadow  # noqa: F401
+    from .incentive_safety import model as _incentive_safety  # noqa: F401
+    from .notifications import model as _notifications  # noqa: F401
+    from .slack_connector import model as _slack_connector  # noqa: F401
+    from .source_authority import model as _source_authority  # noqa: F401
+
+
+_register_models()
+
 ASTER_ID = 'co-uat-aster'
 ORBIT_ID = 'co-uat-orbit'
 UAT_COMPANY_IDS = (ASTER_ID, ORBIT_ID)
@@ -165,6 +195,21 @@ def reset(db: Session) -> dict:
     for company_id, name in rows.items():
         if expected.get(company_id) != name:
             raise DomainError('FORBIDDEN', f'Refusing reset: {company_id} is not the expected UAT tenant')
+    # Fail closed on schema drift: every tenant-scoped BASE TABLE in the live
+    # database must be registered in metadata before a metadata-driven delete.
+    # This is the DB/migration-authoritative check — it does not depend on any
+    # import list staying current.
+    registered = {t.name for t in Base.metadata.sorted_tables if 'company_id' in t.c}
+    live = {row[0] for row in db.execute(text(
+        "SELECT c.table_name FROM information_schema.columns c "
+        "JOIN information_schema.tables t ON t.table_schema = c.table_schema "
+        "AND t.table_name = c.table_name "
+        "WHERE c.table_schema = 'public' AND t.table_type = 'BASE TABLE' "
+        "AND c.column_name = 'company_id'"))}
+    missing = sorted(live - registered)
+    if missing:
+        raise DomainError('FORBIDDEN',
+                          f'Refusing reset: tenant tables not registered in metadata: {missing}')
     # Superuser-only: bypasses the by-design history immutability triggers for
     # this scoped synthetic-tenant disposal. Fails (and aborts the reset) on
     # any deployment whose application role lacks the privilege.
