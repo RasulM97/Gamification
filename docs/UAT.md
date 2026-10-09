@@ -29,15 +29,21 @@ development tooling, so persona UX stays close to the real product and no
 development identity-switching surface contaminates UAT:
 
 - `CVE_DEV_MODE=false`
-- an explicit strong LOCAL UAT `CVE_JWT_SECRET` — generate locally
-  (e.g. `python -c "import secrets; print(secrets.token_urlsafe(32))"`);
+- an explicit strong LOCAL UAT `CVE_JWT_SECRET` — generate locally:
+  `python -c "import secrets; print(secrets.token_urlsafe(32))"`;
   never commit it, never print its value into reports — placeholders only
-- an explicit LOCAL UAT `CVE_WEBHOOK_MASTER_KEY` — same handling. **Required:**
-  backend secret derivation refuses to operate without it and source
-  management returns `INGRESS_UNAVAILABLE`; without the key, Dana's Day-5
-  integration scenario would fail as an *environment* failure, not a product
-  finding
-- the same UAT PostgreSQL database via `CVE_DATABASE_URL`
+- an explicit LOCAL UAT `CVE_WEBHOOK_MASTER_KEY` — **different format**: the
+  backend contract (`backend/app/ingestion/security.py::master_key`) requires
+  **exactly 64 hexadecimal characters**, so the JWT `token_urlsafe` example is
+  NOT valid here. Generate locally:
+  `python -c "import secrets; print(secrets.token_hex(32))"` (→ 64 hex chars);
+  never commit it, never print its value into reports — placeholders only.
+  **Required:** without a valid key, backend secret derivation refuses and
+  source management returns `INGRESS_UNAVAILABLE`; Dana's Day-5 integration
+  scenario would then fail as an *environment* failure, not a product finding
+- the same UAT PostgreSQL database via `CVE_DATABASE_URL=<uat-postgres-url>` —
+  the exact same URL used for seed/reset; do not rely on the application's
+  default database URL
 - frontend in server data mode: `VITE_CVE_DATA_MODE=server`
 - do NOT enable `VITE_CVE_DEV_TOOLS` — no frontend dev account switcher;
   UAT personas log in with real credentials only
@@ -61,12 +67,16 @@ workflow), without `VITE_CVE_DEV_TOOLS`.
 ## Seed / reset
 
 Run ONLY in setup/reset mode (`CVE_DEV_MODE=true`, see Environment) — never
-against the persona-facing server process:
+against the persona-facing server process. Both commands MUST explicitly point
+at the **same UAT PostgreSQL database** as the persona runtime via
+`CVE_DATABASE_URL=<uat-postgres-url>` — do NOT rely on the application's
+default database URL (without it the CLI would target the default local dev
+database), and `reset` must never be aimed at production:
 
 ```bash
 cd backend
-CVE_DEV_MODE=true python -m app.uat_seed seed     # create if absent (idempotent)
-CVE_DEV_MODE=true python -m app.uat_seed reset    # wipe ONLY the UAT tenants, reseed
+CVE_DEV_MODE=true CVE_DATABASE_URL=<uat-postgres-url> python -m app.uat_seed seed     # create if absent (idempotent)
+CVE_DEV_MODE=true CVE_DATABASE_URL=<uat-postgres-url> python -m app.uat_seed reset    # wipe ONLY the UAT tenants, reseed
 ```
 
 - Creates `Aster Dynamics UAT` (10 people, 2 Teams, 2 Projects) and
