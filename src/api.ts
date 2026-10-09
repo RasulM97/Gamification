@@ -2,14 +2,21 @@
  *
  * The backend is canonical: every mutation returns the full refreshed
  * bootstrap state and the store replaces its copy with it. The token lives
- * in localStorage (session persistence across reloads); nothing domain-
+ * in sessionStorage (TAB/WINDOW-scoped: same-tab reload keeps the session,
+ * unrelated tabs/windows never share login identity); nothing domain-
  * related is stored client-side anymore.
  */
 import type { State } from './domain/engine'
 
 const TOKEN_KEY = 'cve-token'
+/* Legacy cleanup (UAT-blocker cross-window identity fix): pre-fix builds
+   stored the bearer token in SHARED localStorage. A stale localStorage
+   token must never authenticate anyone again — it is ignored as an
+   authority and removed on startup, never migrated into this tab's
+   sessionStorage. Demo localStorage keys are untouched. */
+try { localStorage.removeItem(TOKEN_KEY) } catch { /* private mode */ }
 // Once authenticated, this tab owns its request identity. Another tab's
-// localStorage write must never silently change the actor of an action.
+// storage write must never silently change the actor of an action.
 let boundSessionToken: string | null | undefined
 export const bindSessionToken = (token: string | null) => { boundSessionToken = token }
 const requestToken = () => boundSessionToken === undefined ? getToken() : boundSessionToken
@@ -41,12 +48,14 @@ export class ApiError extends Error {
 }
 
 export function getToken(): string | null {
-  try { return localStorage.getItem(TOKEN_KEY) } catch { return null }
+  /* sessionStorage is per-tab/per-window: reload in THIS tab preserves the
+     session, an independent tab/window starts anonymous. */
+  try { return sessionStorage.getItem(TOKEN_KEY) } catch { return null }
 }
 export function setToken(t: string | null) {
   try {
-    if (t) localStorage.setItem(TOKEN_KEY, t)
-    else localStorage.removeItem(TOKEN_KEY)
+    if (t) sessionStorage.setItem(TOKEN_KEY, t)
+    else sessionStorage.removeItem(TOKEN_KEY)
   } catch { /* private mode — session just won't survive reload */ }
 }
 

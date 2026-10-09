@@ -66,7 +66,7 @@ it.each(['en','fa','he','ar','hi','zh-CN','ja','ko','ru','tr'])('known refusals 
 it('another tab token write cannot silently change this tab request identity', async () => {
   const fetch = vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({})}); vi.stubGlobal('fetch',fetch)
   setToken('ray-token'); bindSessionToken('ray-token')
-  localStorage.setItem('cve-token','marcus-token')
+  sessionStorage.setItem('cve-token','marcus-token')
   await api.post('/notices/ray-notice/read')
   expect(fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer ray-token')
   bindSessionToken('marcus-token'); await api.bootstrap()

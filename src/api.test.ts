@@ -66,7 +66,7 @@ describe('stored file download uses the shared helper', () => {
 
   it('openStoredFile fetches `${base}/api/files/{id}` with the auth token', async () => {
     vi.stubEnv('VITE_API_BASE_URL', 'http://localhost:8000')
-    localStorage.setItem('cve-token', 'tok-1')
+    sessionStorage.setItem('cve-token', 'tok-1')
     const calls: [string, RequestInit?][] = []
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       calls.push([url, init])
@@ -81,6 +81,6 @@ describe('stored file download uses the shared helper', () => {
     expect(calls[0][0]).toBe('http://localhost:8000/api/files/att-9')
     expect((calls[0][1]?.headers as Record<string, string>).Authorization).toBe('Bearer tok-1')
     expect(opened).toEqual(['blob:mock'])
-    localStorage.removeItem('cve-token')
+    sessionStorage.removeItem('cve-token')
   })
 })

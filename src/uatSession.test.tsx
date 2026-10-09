@@ -52,7 +52,7 @@ function stubFetch() {
     if (url.includes('/api/auth/logout')) {
       // The server MUST still see the session token at revocation time — the
       // local anonymous transition happens only after this call resolves.
-      tokenAtServerLogout = localStorage.getItem('cve-token')
+      tokenAtServerLogout = sessionStorage.getItem('cve-token')
       if (failServerLogout) return { ok: false, status: 500, json: async () => ({}) }
       serverRevoked = true
       return { ok: true, status: 200, json: async () => ({ ok: true }) }
@@ -87,7 +87,7 @@ async function render(node: ReactNode) {
 let ctx: ReturnType<typeof useStore>
 function Capture() { ctx = useStore(); return null }
 
-beforeEach(() => { localStorage.clear(); setToken(null); bindSessionToken(null); root = null; stubFetch() })
+beforeEach(() => { localStorage.clear(); sessionStorage.clear(); setToken(null); bindSessionToken(null); root = null; stubFetch() })
 afterEach(async () => {
   if (root) await act(async () => root!.unmount())
   host?.remove()
@@ -105,7 +105,7 @@ describe('UAT one-persona-session contract (server mode)', () => {
 
     await act(async () => { await ctx.login('dana@aster.uat.test', 'secret') })
     expect(ctx.auth).toBe('ready')
-    expect(localStorage.getItem('cve-token')).toBe('uat-token-A-dana')
+    expect(sessionStorage.getItem('cve-token')).toBe('uat-token-A-dana')
     expect(authHeaders()).toContain('Bearer uat-token-A-dana')
 
     fetchMock.mockClear()
@@ -115,7 +115,7 @@ describe('UAT one-persona-session contract (server mode)', () => {
     expect(tokenAtServerLogout).toBe('uat-token-A-dana')
     // O: …and persistence + in-memory binding are gone afterwards.
     expect(ctx.auth).toBe('anon')
-    expect(localStorage.getItem('cve-token')).toBeNull()
+    expect(sessionStorage.getItem('cve-token')).toBeNull()
     expect(getToken()).toBeNull()
 
     // After logout no request can carry the previous persona's identity
@@ -129,16 +129,16 @@ describe('UAT one-persona-session contract (server mode)', () => {
     await render(h(StoreProvider, null, h(Capture)))
     // Persona A (Dana) receives token A.
     await act(async () => { await ctx.login('dana@aster.uat.test', 'secret') })
-    expect(localStorage.getItem('cve-token')).toBe('uat-token-A-dana')
+    expect(sessionStorage.getItem('cve-token')).toBe('uat-token-A-dana')
     // Logout clears token A from persistence AND memory.
     await act(async () => { await ctx.logout() })
-    expect(localStorage.getItem('cve-token')).toBeNull()
+    expect(sessionStorage.getItem('cve-token')).toBeNull()
     expect(getToken()).toBeNull()
     // Persona B (Marcus) receives a DISTINCT token B.
     fetchMock.mockClear()
     await act(async () => { await ctx.login('marcus@aster.uat.test', 'secret2') })
     // Persistence contains only B — A is gone.
-    expect(localStorage.getItem('cve-token')).toBe('uat-token-B-marcus')
+    expect(sessionStorage.getItem('cve-token')).toBe('uat-token-B-marcus')
     expect(getToken()).toBe('uat-token-B-marcus')
     // Every request after the switch carries B and never A.
     const headers = authHeaders()
@@ -154,7 +154,7 @@ describe('UAT one-persona-session contract (server mode)', () => {
     await act(async () => { await ctx.logout() })
     // P: no false "signed out" — session stays, error is surfaced.
     expect(ctx.auth).toBe('ready')
-    expect(localStorage.getItem('cve-token')).toBe('uat-token-A-dana')
+    expect(sessionStorage.getItem('cve-token')).toBe('uat-token-A-dana')
     expect(getToken()).toBe('uat-token-A-dana')
     expect(ctx.persistError).toBeTruthy()
     // Recovery: once the server confirms, sign-out completes normally.
@@ -175,7 +175,7 @@ describe('UAT one-persona-session contract (server mode)', () => {
     await act(async () => { ctx.refresh() })
     await act(async () => { await Promise.resolve() })
     expect(ctx.auth).toBe('anon')
-    expect(localStorage.getItem('cve-token')).toBeNull()
+    expect(sessionStorage.getItem('cve-token')).toBeNull()
     expect(getToken()).toBeNull()
   })
 })

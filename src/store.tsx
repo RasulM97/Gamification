@@ -112,7 +112,9 @@ interface Ctx {
   switchDevAccount: (id: string) => Promise<void>
   dismissError: () => void
   login: (email: string, password: string) => Promise<void>
-  logout: () => void
+  /* Server logout is asynchronous: the server session is revoked FIRST and
+     the local anonymous transition only happens after confirmation. */
+  logout: () => Promise<void>
   /* N2.1-C/F: ask the authoritative source for a fresh bootstrap. Server
      mode refetches through the serialized queue; demo mode is already live
      and local, so this is a deliberate no-op there. */
@@ -196,7 +198,7 @@ function useDemoStore(): Ctx {
     me: null,
     /* Server-only API surface — never invoked in demo mode. */
     login: async () => { throw new Error('login is only available in server mode') },
-    logout: () => { /* demo mode has no session to end */ },
+    logout: async () => { /* demo mode has no session to end */ },
     /* Demo state is live and local — nothing to refetch (N2.1-F: demo mode
        remains completely offline, no polling ever starts here). */
     refresh: () => { /* no-op by design */ },
@@ -308,9 +310,12 @@ function useServerStore(): Ctx {
 
   useEffect(() => {
     void boot()
-    const changed = (event: StorageEvent) => { if (event.key === 'cve-token' || event.key === null) void boot() }
-    window.addEventListener('storage', changed)
-    return () => { ++sessionEpoch.current; window.removeEventListener('storage', changed) }
+    /* Cross-window identity isolation (UAT-blocker fix): there is NO storage
+       listener here. The auth token lives in this tab's own sessionStorage,
+       and no StorageEvent from another tab/window may ever re-boot this tab
+       into a different actor. One tab's login must never silently change
+       another tab's identity. */
+    return () => { ++sessionEpoch.current }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* N2.1-F: lightweight near-real-time sync — refetch on window focus, on
