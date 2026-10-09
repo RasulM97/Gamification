@@ -5,8 +5,9 @@
 > [UAT_REVIEWER.md](UAT_REVIEWER.md) · [UAT_REDTEAM.md](UAT_REDTEAM.md)
 > (Red-Team is a separate later stage — do NOT run it now).
 > Source remains authoritative if any document disagrees.
-> Prepared and smoke-checked against testedBuildSha
-> `1d2c1026e60f8a1f031644b31bf6be25e7b59e95`.
+> The UAT campaign is **localhost-only by default** (see §7 for the sole
+> fallback). `testedBuildSha` is never hardcoded here — it is recorded from
+> the frozen HEAD at campaign start (§4).
 
 Everything runs locally. Four terminals, all in Git Bash from the repository
 root unless noted. No secrets or passwords ever appear in docs, chat, or
@@ -26,15 +27,15 @@ repository's existing tooling (`pgserver`, the same user-space PostgreSQL
   demo dataset, and NEVER production
 
 `pgserver` stops when its owning process stops, so one terminal must hold the
-database open for the whole session. A small git-ignored keeper artifact was
-prepared during environment prep: `uat-out/uat_db_keeper.py`. It starts the
-cluster, creates `cve_uat` if missing, refreshes `uat-out/uat-env.local` with
-the current connection URL (existing secrets are preserved), then holds.
+database open for the whole session. The tracked, reviewable keeper script is
+`backend/scripts/uat_db_keeper.py`. It starts the cluster, creates `cve_uat`
+if missing, refreshes the git-ignored `uat-out/uat-env.local` with the current
+connection URL (existing secrets are preserved), prints no secrets, then holds.
 
 **Terminal 1 — database keeper (leave running all session):**
 
 ```bash
-./.venv/Scripts/python.exe uat-out/uat_db_keeper.py
+./.venv/Scripts/python.exe backend/scripts/uat_db_keeper.py
 ```
 
 The canonical placeholder `<uat-postgres-url>` below means: the
@@ -86,17 +87,59 @@ After seeding, confirm the credential artifact:
 - it lists 10 Aster Dynamics UAT + 2 Orbit Labs UAT accounts
 - do NOT print or share its contents
 
-## 4. Tested build identity
+### Pre-Day-1 snapshot (local rollback)
 
-Immediately before persona execution:
+After the seed and BEFORE Day 1, take one local snapshot of the dedicated
+`cve_uat` database — the only rollback point for local UAT state:
+
+```bash
+./.venv/Scripts/python.exe backend/scripts/uat_db_snapshot.py snapshot --label pre-day1
+```
+
+This uses the pgserver-bundled `pg_dump`/`pg_restore` already in the project
+virtualenv (no new tooling) and writes `uat-out/snapshots/cve_uat_pre-day1.dump`
+— git-ignored, local only, never committed, and it can only ever contain the
+disposable UAT database (the script refuses non-UAT database names).
+
+Tested rollback method (verified during preparation by restoring into a
+scratch database and comparing row counts):
+
+```bash
+# stop the backend first (Terminal 2), then:
+./.venv/Scripts/python.exe backend/scripts/uat_db_snapshot.py restore uat-out/snapshots/cve_uat_pre-day1.dump
+# restart the backend
+```
+
+The restore terminates open connections to `cve_uat`, drops and recreates it,
+and restores the dump. Snapshotting/restoring any non-UAT database is refused
+by the script.
+
+## 4. Tested build identity — execution freeze
+
+`testedBuildSha` is never hardcoded in this document. Freeze the build once,
+immediately before persona execution:
+
+```bash
+git status --short          # must be clean (untracked local artifacts like uat-out/ are fine)
+git rev-parse HEAD          # must equal:
+git rev-parse origin/main
+git branch -f uat/synthetic-baseline HEAD
+git push -u origin uat/synthetic-baseline
+git ls-remote origin uat/synthetic-baseline   # must equal HEAD
+```
+
+The backup branch `uat/synthetic-baseline` makes the exact tested code —
+runbook, operator scripts, harness — recoverable from GitHub at any time.
+
+Then, at UAT start (and once per virtual day):
 
 ```bash
 git rev-parse HEAD
 ```
 
-Expected: `1d2c1026e60f8a1f031644b31bf6be25e7b59e95` — record it as
-`testedBuildSha` in EVERY evidence record. If HEAD changes at any point:
-STOP the UAT; never mix evidence from different builds.
+That value becomes `testedBuildSha` in EVERY evidence record. If HEAD changes
+at any point after campaign start: STOP the UAT; never mix evidence from
+different builds.
 
 ## 5. Backend launch (persona runtime — production-like)
 
@@ -142,31 +185,33 @@ Notes verified on this machine:
 The app is at `http://127.0.0.1:8173/`. All `/api` calls are proxied
 same-origin to the backend.
 
-## 7. Grok access (only if needed)
+## 7. Grok access — local-only by default
 
-If the Grok Bots operate on THIS machine (you drive the browser and relay the
-bot's actions), no tunnel is needed — use `http://127.0.0.1:8173/` directly
-and skip this section.
+The canonical UAT is **localhost only**: `http://127.0.0.1:8173/`. Do NOT
+start any tunnel by default.
 
-If the bots are cloud-based and must browse the app themselves, localhost is
-unreachable to them. The smallest compatible method (the project has used
-Cloudflare Tunnel for webhook testing before):
+Fallback — only if Grok genuinely cannot interact with the local browser and
+the operator explicitly decides to expose the session (e.g. cloud-based bots
+that must browse the app themselves): the project has previously used
+Cloudflare Tunnel for webhook testing, and the smallest compatible method is:
 
 ```bash
 cloudflared tunnel --url http://127.0.0.1:8173
 ```
 
+- the operator's explicit decision is required each campaign — never automatic;
 - exposes ONLY the vite frontend port; `/api` rides the same origin through
-  vite's proxy, so the backend and PostgreSQL stay unexposed
+  vite's proxy, so the backend and PostgreSQL stay unexposed;
 - `cloudflared` is not currently installed on this machine
-  (`winget install cloudflare.cloudflared` if you choose this route)
+  (`winget install cloudflare.cloudflared` if you choose this route);
 - the random `*.trycloudflare.com` URL is session-local: share it only with
-  the bots, never commit it, and stop the tunnel (Ctrl+C) when the session ends
-- no developer consoles, no secrets, no production infrastructure
+  the bots, never commit it, and stop the tunnel (Ctrl+C) when the session ends;
+- no developer consoles, no secrets, no production infrastructure.
 
 ## 8. Environment smoke check (before ANY Grok persona)
 
-Already executed against the prepared environment — ALL PASS:
+Executed during environment preparation — ALL PASS (re-verify quickly at
+campaign start after the §4 freeze):
 
 | Check | Result |
 |---|---|
@@ -182,6 +227,9 @@ Already executed against the prepared environment — ALL PASS:
 | wrong password → uniform 401 | PASS |
 | no demo company (`co-aster`) in the UAT DB | PASS |
 | frontend reaches real backend through the `/api` proxy | PASS |
+| tracked keeper starts cluster + writes env artifact without printing secrets | PASS |
+| snapshot created; restore into scratch DB matches source row counts; scratch dropped | PASS |
+| snapshot restore refuses non-UAT database names | PASS |
 
 Remaining manual confirmations in the browser (30 seconds, environment check
 only — not UAT): the login page appears; no demo banner; no dev account
