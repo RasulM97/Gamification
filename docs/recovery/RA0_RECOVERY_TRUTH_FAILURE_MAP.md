@@ -748,13 +748,19 @@ Rows: Employee / Manager in scope / Manager out of scope / Admin.
 | Deactivate / demote user | — | — | — | admin-only, sole-admin guard, `require_clean` |
 | Workspace clear | — | — | — | admin + dev mode + explicit setting; refuses if collaboration or INCENTIVE_* ledger rows exist |
 
-INFERENCE: payout authority is concentrated exactly at Admin for anything
-not self-created; the review/payout split (`can_review` vs
-`require_payout_authority`) means a manager can approve work but the approval
-FAILS CLOSED if a payout would result and the manager lacks payout authority —
-approval and payout are one atomic transaction, so the whole approval rolls
-back. This is a Day-1 authority-confusion mechanism (F-03/04/05): the UI
-permits the attempt; the server refuses late.
+SOURCE FACT (`task_access.py:88-100`): for a positive payout, ADMIN may
+execute it; a non-admin reviewer may also execute it when the task CREATOR is
+ADMIN; if the creator is not ADMIN (or cannot be classified — fail-closed),
+a non-admin reviewer receives `ECONOMIC_AUTHORITY_REQUIRED`. Zero payout keeps
+the normal manager workflow. INFERENCE: the architectural problem is that the
+work decision and payout execution are coupled in one atomic command, and
+payout authority depends on task-authoring provenance (who created the task)
+rather than on a separate explicit work-decision/economic-authorization
+state. Because Day-1's managers authored their own team's tasks, every tested
+manager review of rewarded work was blocked — the review/payout split
+(`can_review` vs `require_payout_authority`) means the UI permits the attempt
+and the server refuses late, rolling back the whole approval
+(F-03/04/05 mechanism).
 
 ## 12. Economic Path Divergence
 
@@ -1068,10 +1074,10 @@ not invented).
 |---|---|---|---|---|---|---|---|---|
 | F-01 | P0 | Backend deadlocks under concurrent load | RC-A | RC-B | §6/§7/§8: 5 async Task routes block the loop on sync DB + org X lock wait; bootstrap S-lock teardown needs the loop; pool 10+5; no timeouts | HIGH (IT ~85–90%) | Architectural | Root — first |
 | F-02 | P0 | Silent failure and data loss | RC-B | RC-A | Fire-and-forget dispatch closes dialogs before server answer; requests in flight lost at kills; no error surface (§13) | HIGH | Architectural (dispatch contract) | After/with RC-A |
-| F-03 | P0 | Managers cannot approve own team's work | RC-C | RC-B | `require_payout_authority` is role-only (ADMIN); approval+payout one atomic tx; unexplained lock text; no admin setting | HIGH | Architectural | After Q1 + RC-B |
+| F-03 | P0 | Managers cannot approve own team's work | RC-C | RC-B | `require_payout_authority` (`task_access.py:88-100`): positive payout on a task NOT created by ADMIN → non-admin reviewer gets `ECONOMIC_AUTHORITY_REQUIRED`; approval+payout coupled in one atomic command; payout authority derives from task-authoring provenance, not an explicit economic-authorization state; unexplained lock text; no admin setting. Day-1's managers authored their own tasks, so all tested manager reviews were blocked | HIGH | Architectural | After Q1 + RC-B |
 | F-04 | P1 | Admin can pay before/against manager decision | RC-C | RC-D | No pending-manager hold state; no reversal writer on legacy ledger (§11/§12) | HIGH | Architectural | After RC-C policy decision |
 | F-05 | P1 | Decision provenance wrong or missing | RC-C | RC-F | Ledger records executing admin, not deciding manager; no approval comment field; cycle not in ledger ref | HIGH | Architectural | With RC-C |
-| F-06 | P1 | Rejection box pre-filled with another employee's text | RC-E | RC-B | Mechanism NOT verified in source; consistent with stale client dialog state reused across reviews | LOW — needs frontend state audit | Local (UI state) | Independent; investigate with RC-E |
+| F-06 | P1 | Rejection box pre-filled with another employee's text | RC-E (bookkeeping only) | RC-B | **UNRESOLVED** — likely frontend dialog/state isolation; requires focused reproduction/source audit. NOT evidence for RC-E's architectural root mechanism | LOW — UNRESOLVED mechanism | Local (UI state) | Independent; focused reproduction owed |
 | F-07 | P1 | 6 server sessions never revoked, valid 12 h | RC-I | — | Client drops token without server logout on failure/tab-close; logout revokes current session only; no orphan cleanup (§18) | HIGH | Local (auth module) | Independent |
 | F-08 | P1 | No login failed-attempt tracking/lockout/rate limit | RC-I | — | Verified absence in auth path (§18) | HIGH | Local (auth module) | Independent |
 | F-09 | P1 | Governance pipeline never exercised (0 rows) | RC-D | — | Rule evaluation/issuance are explicit admin commands; nothing configured; "no automatic replay" (§12) | HIGH | Architectural | Gated by Q1 economy decision |
@@ -1085,9 +1091,9 @@ not invented).
 | F-17 | P1 | Contradictory eligibility (label vs scope vs 403) | RC-H | RC-B | Scope label, assignment picker and server enforcement derive from different checks; server fails closed at 403 | MEDIUM-HIGH | Architectural (semantics) + Local (labels) | Eligibility-semantics decision |
 | F-18 | P2 | Help state contradicts itself across surfaces | RC-E | RC-G | People>Help vs Needs Attention read different projections of help status (§16/§17) | MEDIUM | Local (projection) | After D4 |
 | F-19 | P2 | No reviewer/collaborator field; peer review unlinkable | RC-G | — | Task model has owner/assignee only; verified absence of reviewer/collaborator relation | HIGH | Architectural | Product-scope decision |
-| F-20 | P2 | My Work / task cards show ◈0 on paid tasks | RC-E | — | Card projection reads per-cycle `paid` (reset on reopen/cycle) while wallet reads ledger Σ | MEDIUM | Local (projection) | After D-register decisions |
+| F-20 | P2 | My Work / task cards show ◈0 on paid tasks | RC-E | — | SOURCE FACT: cards render `Math.max(0, task.reward - task.paid)` = REMAINING unpaid reward (`WorkModules.tsx:18`, `TaskDrawer.tsx:35`); a fully paid task naturally shows ◈0 while wallet/detail show the actual amounts. Misleading metric/semantic projection — NOT proven stale data | HIGH (display formula verified) | Local (metric semantics) | Metric-labeling decision |
 | F-21 | P2 | Status contradicts itself within one panel | RC-E | RC-F | Badge (task status) vs cycle header (cycle state) render different stores | MEDIUM | Local (projection) | After RC-F |
-| F-22 | P2 | Cycle counter never increments; titles stay v1 | RC-F | RC-E | Display reads first cycle/title snapshot; ledger records cycle 1; cycles exist as rows (§10/§15) | MEDIUM | Local (display) + Architectural (semantics) | With RC-F |
+| F-22 | P2 | Cycle counter never increments; titles stay v1 | RC-F | RC-E | SOURCE FACT: reject→resume→resubmit stays inside the SAME Task cycle; only reopen/reactivate increment `t.cycle` (`task_cycle_services.py:38-78`). "Cycle 1 on the 3rd submission" is therefore mechanically consistent, NOT proven stale display. The real issue is unresolved PRODUCT SEMANTICS: should a rework/resubmission be (A) another Submission revision inside the same WorkCycle, or (B) a new WorkCycle? (§23 Q15). No first-cycle-snapshot claim is made | HIGH (mechanism), semantics UNRESOLVED | Architectural (product semantics) | With RC-F; needs founder semantics decision |
 | F-23 | P2 | Version history buried; no compare/diff | RC-K | RC-F | History-by-cycle exists (SOURCE: TaskCycle rows) but no navigation/compare affordance | HIGH (existence), UX cause | UX-content / Local | Wait (P2 polish) |
 | F-24 | P2 | Capacity data wrong (omissions, manager listed) | RC-H | — | Capacity card inputs differ from capacity enforcement (`require_capacity`/`active_owned_task_count`); assigned-not-accepted and rework counting inconsistent | MEDIUM | Architectural (counting rule) | Capacity-rule decision |
 | F-25 | P2 | Active-task limit opaque and inconsistent | RC-H | RC-B | In-review occupancy, silent claim-button disappearance; enforcement timing inconsistent (items 10,12 of Day-1 §19 UNRECONCILED) | MEDIUM (parts UNRECONCILED) | Local + Architectural | With F-24 |
@@ -1122,8 +1128,10 @@ not invented).
 
 **Coverage proof: F-01…F-53 mapped: 53/53. Unmapped: 0.** No finding IDs
 invented. UNRECONCILED items preserved: F-43 (Day-1 §19 item 3), F-25 items
-(Day-1 §19 items 10 and 12), F-38 attachment duplication (item 11), F-06
-mechanism (LOW confidence — frontend state audit owed).
+(Day-1 §19 items 10 and 12), F-38 attachment duplication (item 11). F-06's
+mechanism is UNRESOLVED (likely frontend dialog/state isolation; focused
+reproduction/source audit owed) — it is kept in RC-E for bookkeeping only and
+adds no confidence to RC-E's architectural root mechanism.
 
 **Environment/orchestration findings E-01…E-15 remain separately classified
 (ENV, not CVE product defects):** E-01 session-sync localStorage copy/reload
@@ -1180,11 +1188,17 @@ where mechanisms are independent.
   decided (what the UI shows between send and server truth).
 
 ### RC-C Authority / review / payout provenance
-- ROOT MECHANISM: `require_payout_authority` is role-only (ADMIN) on the
-  legacy path with no policy UI; approval and payout are one atomic command;
-  no pending-manager hold; the ledger records the executing actor, not the
-  deciding manager; no approval comment/condition field; no reversal writer
-  (§11/§12/§15).
+- ROOT MECHANISM: work decision and payout execution are coupled in one
+  atomic command, and payout authority depends on task-authoring provenance
+  rather than a separate explicit work-decision/economic-authorization state.
+  SOURCE FACT (`task_access.py:88-100`): a positive payout is executable by
+  ADMIN, or by an authorized manager when the task creator is ADMIN; when the
+  creator is not ADMIN, a non-admin reviewer fails closed with
+  `ECONOMIC_AUTHORITY_REQUIRED`. There is no policy UI, no pending-manager
+  hold; the ledger records the executing actor, not the deciding manager; no
+  approval comment/condition field; no reversal writer (§11/§12/§15).
+  Day-1 context: managers authored their own team's tasks, so every tested
+  manager review of rewarded work was blocked — the finding stands at P0.
 - FINDINGS: F-03 (P0), F-04 (P1), F-05 (P1).
 - SEVERITY COUNT: P0 1 / P1 2 / P2 0 / P3 0.
 - SOURCE FILES: `backend/app/task_access.py`, `backend/app/task_services.py`
@@ -1220,8 +1234,10 @@ where mechanisms are independent.
   attention (D4); immutable notification snapshots never re-derived (D7);
   per-surface `can_view`/`can_review` filtering applied to some projections
   and not others; per-cycle counters vs ledger Σ (§3/§4/§16).
-- FINDINGS: F-06 (P1, LOW), F-11 (P1), F-12 (P1), F-18, F-20, F-21 (sec),
-  F-30, F-37, F-51 (P2).
+- FINDINGS: F-11 (P1), F-12 (P1), F-18, F-20, F-21 (sec),
+  F-30, F-37, F-51 (P2). F-06 (P1) is associated here for BOOKKEEPING ONLY —
+  its mechanism is UNRESOLVED (likely frontend dialog/state isolation) and it
+  contributes NO confidence to this family's architectural root mechanism.
 - SEVERITY COUNT: P0 0 / P1 3 / P2 6 / P3 0.
 - SOURCE FILES: `src/App.tsx:114-129,157-159,234,247-249`,
   `src/domain/attention.ts`, `backend/app/attention/service.py`,
@@ -1236,8 +1252,13 @@ where mechanisms are independent.
 ### RC-F Task lifecycle / correction / version semantics
 - ROOT MECHANISM: no correction or supersession of submitted/approved records
   (only reopen-as-new-cycle); reopen resets counters without ledger reversal;
-  cycle/version display does not advance; progress values recorded once and
-  immutable; edit audit is a single line; no BLOCKED/interim state (§10/§15).
+  rework (reject→resume→resubmit) stays inside the SAME Task cycle by design
+  (`task_cycle_services.py:38-78`) — so "cycle 1" on a resubmission is
+  mechanically consistent and the mismatch is an unresolved PRODUCT SEMANTICS
+  question (rework = new Submission revision in the same WorkCycle vs a new
+  WorkCycle — §23 Q15), not a proven stale display; progress values recorded
+  once and immutable; edit audit is a single line; no BLOCKED/interim state
+  (§10/§15).
 - FINDINGS: F-13 (P1), F-15 (P1), F-22, F-32 (P2), F-53 (P3).
 - SEVERITY COUNT: P0 0 / P1 2 / P2 2 / P3 1.
 - SOURCE FILES: `backend/app/task_services.py`,
@@ -1245,8 +1266,8 @@ where mechanisms are independent.
   mutability map.
 - DAY-1 PERSONAS: 9 independent on F-13 and F-15 each.
 - ARCHITECTURAL (lifecycle model) with local display instances.
-- DEPENDS ON: RC-C provenance decisions; Q2 (REVERSAL intent) and Q7
-  (payout durability under reopen) from §23.
+- DEPENDS ON: RC-C provenance decisions; Q2 (REVERSAL intent), Q7
+  (payout durability under reopen) and Q15 (WorkCycle semantics) from §23.
 - BEFORE IT CAN BE TESTED: lifecycle semantics decision (correct vs supersede
   vs reopen; what cycle display must show).
 
@@ -1381,11 +1402,16 @@ available evidence.)
 12. What business context must live inside CVE so external chat is not the
     system of record? (F-14/F-16/F-19/F-45; gates RC-G — product-owner
     scope decision.)
-13. What is the F-06 mechanism (cross-dialog stale review text)? Not
-    verifiable from backend source; requires a frontend state audit.
-    UNRESOLVED.
+13. What is the F-06 mechanism (rejection box pre-filled with another
+    employee's review text)? UNRESOLVED — likely frontend dialog/state
+    isolation; requires focused reproduction/source audit. Not evidence for
+    RC-E's architectural root mechanism.
 14. Is F-43 a real locale-dependent rendering defect or a misread?
     UNRECONCILED in Day-1 evidence; requires reproduction.
+15. Should a rework/resubmission be (A) another Submission revision inside
+    the same WorkCycle, or (B) a new WorkCycle? (F-22; SOURCE FACT: reject→
+    resume→resubmit currently stays in the same cycle; only reopen/reactivate
+    increment `t.cycle`. Product-semantics decision; gates RC-F.)
 
 ## 24. Recovery Dependency Graph (rebuilt from full evidence)
 
@@ -1568,9 +1594,9 @@ What "closure" must mean for each class, stated as verifiable criteria
 - DAY-1 FINDINGS MAPPED: **53/53 (unmapped: 0)**; environment findings
   **E-01…E-15: 15/15 separately classified**, none merged into product
   defects.
-- UNRESOLVED ARCHITECTURE QUESTIONS: **14** (§23), including 2 carried
-  UNRECONCILED Day-1 evidence items (F-43, F-06 mechanism) plus F-25/F-38
-  sub-items.
+- UNRESOLVED ARCHITECTURE QUESTIONS: **15** (§23), including the carried
+  UNRECONCILED Day-1 evidence items (F-43; F-06 mechanism; F-25/F-38
+  sub-items) and the open WorkCycle product-semantics question (Q15).
 - ROOT-CAUSE FAMILY COUNT: **12** (RC-A…RC-L).
 - RA-0 CODE GATE: **PASS** — no production source, test, migration,
   dependency or Graphify source-state change was made; this pass modified
