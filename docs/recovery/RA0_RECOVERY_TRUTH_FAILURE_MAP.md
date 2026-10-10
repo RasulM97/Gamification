@@ -10,16 +10,16 @@ frozen-domain contract), INFERENCE (reasoned from source, not directly stated),
 DAY-1 EVIDENCE (observed in the Day-1 UAT run), or UNRESOLVED (source provides
 no answer).
 
-**Evidence limitation (stated once, applies throughout):** the 53-finding
-Day-1 log is NOT in this repository. `docs/uat/ISSUES.md` is an empty template
-("no participant sessions have been run yet"). The only Day-1 facts available
-to this audit are those restated in the RA-0 directive itself: F-01 backend
-froze twice with `/api/health` hanging and no 5xx, ~10 concurrent users,
-submits/progress/approval affected; F-03/F-04/F-05 authority failures; 19
-`TASK_REWARD` ledger rows with zero governance-pipeline rows; paid work still
-ACTION_REQUIRED; badge disagreements; Overview count ≠ Available Work; rework
-inconsistencies. Where a section needs the full finding log, it is marked
-UNRESOLVED rather than invented.
+**Evidence status (updated by the RA-0 evidence-closure pass):** the original
+audit ran WITHOUT the Day-1 finding log — `docs/uat/ISSUES.md` is an empty
+template. The full consolidated Day-1 report (`FINAL_DAY1_REPORT.md`, build
+`bcf3025f…`, Aster Dynamics, 10 personas) has since been supplied as evidence
+for this closure pass and is now the basis of §21–§27: **53 product findings
+(F-01…F-53: 3 P0, 14 P1, 27 P2, 9 P3)** plus **15 environment/orchestration
+findings (E-01…E-15)** which are classified separately and are NOT CVE product
+defects. Findings whose own evidence is unresolved in the Day-1 report (§19 of
+that report) keep UNRECONCILED status here. An observed symptom is not treated
+as a root cause.
 
 ---
 
@@ -42,19 +42,43 @@ UNRESOLVED rather than invented.
 The honest one-paragraph summary, before any detail:
 
 CVE is a single-process FastAPI application over synchronous SQLAlchemy/psycopg2
-with a connection pool of 10 (+5 overflow) (`backend/app/db.py:14`). Every
-business mutation runs as one transaction guarded by a **company-wide advisory
-lock** (`cve-organization:<company>`, `backend/app/organization/service.py:13-15`),
-and — critically — **every** task command takes that lock in **exclusive** mode
-(`backend/app/task_services.py:3` imports `exclusive_guarded as guarded`; same
-in `task_cycle_services.py:3`). Every mutating HTTP response then reserializes
-the **entire company state** (all tasks, ledger, notices, activity, rewards,
-redemptions — `backend/app/serializers.py:75-207`) inside the request. Five of
-the highest-traffic task routes (`create_task`, `submit`, `handoff`, `reopen`,
-`reactivate` — `backend/app/routes.py:109,195,224,248,273`) plus ~30 other
-routes are `async def` yet call fully synchronous SQLAlchemy services directly
-on the event loop; only `economic_effects/routes.py` uses `run_in_threadpool`.
-The frontend polls the full bootstrap every 8 s per visible tab plus on every
+with a connection pool of 10 (+5 overflow) (`backend/app/db.py:14`). Two locking
+regimes coexist and must not be conflated:
+
+- **LEGACY TASK / TASK-CYCLE PATH.** Every Task and Task-cycle command service
+  is wrapped in `exclusive_guarded`
+  (`backend/app/task_services.py:3`, `backend/app/task_cycle_services.py:3`),
+  which takes the **company-wide advisory lock** `cve-organization:<company>`
+  in EXCLUSIVE mode for the whole transaction
+  (`backend/app/organization/service.py:13-15,26-36`). The same exclusive key is
+  also taken by organization admin mutations (`organization/service.py:110,122,135`)
+  and GitHub project attribution (`github_connector/attribution.py:12`).
+  Scope-admission reads (`task_access.py:17`), org listing, collaboration routing,
+  connector delivery and Slack actions take the same key in SHARED mode.
+- **OTHER CVE DOMAINS use different schemes, NOT this lock:** rewards/
+  redemptions/admin-adjust use row locks only (`reward_services.py` FOR UPDATE
+  rows); capabilities, policy sets, safety, economic effects, shadow, Slack
+  exactly-once, trusted events and provisioning each use their own distinct
+  advisory keys (§7). It is therefore WRONG to say "every CVE business mutation
+  is guarded by one company-wide advisory lock" — that statement is true only
+  of the legacy Task/Task-cycle command path.
+
+Every mutating response on the legacy path then reserializes the **entire
+company state** (all tasks, ledger, notices, activity, rewards, redemptions —
+`backend/app/serializers.py:75-207`) inside the request. On the async-route
+question the earlier draft of this report was wrong: `run_in_threadpool` is
+NOT confined to `economic_effects`. The corrected re-audit (§6) shows eleven
+modules wrap their command bodies in `run_in_threadpool` (rules, policies,
+approvals, ingestion, organization, capabilities, collaboration,
+slack_connector, incentive_safety, github_connector, economic_effects), and
+all plain `def` routes run in Starlette's threadpool by FastAPI semantics.
+**Exactly five routes still execute synchronous SQLAlchemy, advisory-lock
+waits and filesystem writes directly on the single uvicorn event loop, and all
+five are on the legacy Task HTTP path**: `create_task`, `submit`, `handoff`,
+`reopen`, `reactivate` (`backend/app/routes.py:109,195,224,248,273`, async
+because they parse `Form`/`File`), plus their shared helper `stage_files`
+(`routes.py:65-83`) which performs sync DB reads and sync disk writes. The
+frontend polls the full bootstrap every 8 s per visible tab plus on every
 focus event (`src/refresh.ts:33-63`) and closes every command dialog before
 the server answers (`dispatch(...); onClose()` throughout, e.g.
 `src/views/Reviews.tsx:192,201`, `src/components/CreateTask.tsx:66-77`).
@@ -434,39 +458,55 @@ USER-VISIBLE FAILURE CONTRACT (all commands): DomainError → JSON
 attempt failed and refetches bootstrap (`store.tsx:274-283`), but dialogs have
 ALREADY closed (see §13). No command returns an operation id the UI can poll.
 
-## 6. Async / Sync Blocking Audit
+## 6. Async / Sync Blocking Audit (re-audited in the evidence-closure pass)
 
-FastAPI semantics (CONTRACT FACT): `def` routes run in the threadpool;
-`async def` routes run on the event loop. SQLAlchemy here is fully synchronous
-(psycopg2). Every `async def` route below performs blocking DB work **on the
-event loop** unless it delegates with `run_in_threadpool`.
+FastAPI semantics (CONTRACT FACT): `def` routes run in Starlette's threadpool
+automatically; `async def` routes run on the event loop. SQLAlchemy here is
+fully synchronous (psycopg2). An `async def` route blocks the event loop only
+if it performs blocking work WITHOUT delegating via `run_in_threadpool`.
 
-ASYNC BLOCKING RISK TABLE (all SOURCE FACT):
+CORRECTION (evidence-closure pass): the earlier draft claimed "only
+`economic_effects/routes.py` uses `run_in_threadpool`". That was wrong.
+SOURCE FACT — `run_in_threadpool` wraps the command bodies in eleven modules:
+`capabilities/routes.py:48`, `approvals/routes.py:59`,
+`economic_effects/routes.py:68,96`, `collaboration/routes.py:52,64,71`,
+`policies/routes.py:57,63`, `rules/routes.py:56,70`,
+`organization/routes.py:34,46`, `ingestion/routes.py:49,67,82,92`,
+`slack_connector/routes.py:69,81,98,117`, `github_connector/routes.py:47,58,74,93,101`,
+`incentive_safety/routes.py:36`. Every remaining route in those modules is a
+plain `def` (threadpool by default). The important question — which async
+routes STILL perform synchronous SQLAlchemy, advisory-lock waits, filesystem
+I/O or other blocking work directly on the event loop — has exactly one
+answer at baseline:
 
-| Route (async def) | Blocking work on event loop | Lock involvement | Duration risk | Event-loop risk | Tests covering | Day-1 relevance |
-|---|---|---|---|---|---|---|
-| POST /api/tasks (routes.py:109) | full `create_task` + commit + full bootstrap reserialize | org X advisory + cap S + user rows | grows with company size (bootstrap) | HIGH | test_approvals/task suites (functional, not concurrency) | submit/create affected per Day-1 |
-| POST /tasks/:id/submit (:195) | staging reads + `submit_work` + commit + bootstrap | same | HIGH | HIGH | same | direct F-01 suspect |
-| POST /tasks/:id/handoff (:224) | full `handoff` + bootstrap | same + ledger user lock | HIGH | HIGH | same | direct F-01 suspect |
-| POST /tasks/:id/reopen (:248), /reactivate (:273) | service + bootstrap | same | MED | HIGH | same | — |
-| collaboration create/help/action/appreciation (collaboration/routes.py:50,61,68) | service + commit | org S + retry advisory + row locks | MED | HIGH | collaboration tests | — |
-| organization create/membership (organization/routes.py:32,43) | service + commit | org X advisory | LOW | MED | organization tests | — |
-| rules/policies create+update (rules/routes.py:54,68; policies/routes.py:55,61) | service + commit | org S + policy-set X | LOW | MED | rules/policies tests | — |
-| approvals decision (approvals/routes.py:57) | service + commit | org S + safety advisory + request FOR UPDATE | LOW-MED | MED | approvals tests | approval-affected Day-1 |
-| capabilities change (capabilities/routes.py:33) | service + commit | capability X advisory | LOW | MED | capabilities tests | — |
-| ingestion register/set_active/manual/webhook (ingestion/routes.py:44,62,79,86) | service + commit | source row locks + advisory per event identity | MED (webhook normalize) | HIGH | ingestion tests | — |
-| slack command + github webhook (slack routes:108; github routes:83) | connector service + commit | org advisory + mapping locks | MED | HIGH | connector tests | — |
-| economic issue/reverse | **threadpool via run_in_threadpool** (economic_effects/routes.py:68,96) | economic advisory + user rows | MED | LOW (the only safe pattern) | economic tests | — |
-| safety configure (incentive_safety/routes.py:34) | service + commit | safety-settings advisory | LOW | MED | safety tests | — |
+ROUTES STILL BLOCKING THE EVENT LOOP (all SOURCE FACT, all in the legacy
+Task HTTP path, `backend/app/routes.py`; all are `async def` because they
+parse `Form`/`File` uploads):
 
-Filesystem blocking: `stage_files` reads uploads async but `storage.save`
-writes bytes synchronously (`storage.py:38-46`) — called inside async routes
-(create/submit/handoff/reopen/reactivate) → event-loop blocking disk I/O.
+| Route | Blocking work on the event loop | Lock involvement | Event-loop risk | Day-1 relevance |
+|---|---|---|---|---|
+| POST /api/tasks (:109) | `stage_files` (sync `require_capability` DB read + capability advisory S lock, sync `settings_of`, sync `storage.save` disk writes) then sync `mutate()`: full `create_task` + commit + full-bootstrap reserialize | org X advisory (whole tx) + capability S + user rows | HIGH | task creation affected in concurrent phase |
+| POST /tasks/:id/submit (:195) | same `stage_files` pattern + sync `mutate()` (`submit_work` + commit + bootstrap) | same | HIGH | direct F-01 suspect (named in ITA §2) |
+| POST /tasks/:id/handoff (:224) | same pattern + sync `mutate()` (`handoff` + ledger user lock + bootstrap) | same + ledger user row | HIGH | direct F-01 suspect |
+| POST /tasks/:id/reopen (:248) | same pattern + sync `mutate()` | same | HIGH | — |
+| POST /tasks/:id/reactivate (:273) | same pattern + sync `mutate()` | same | HIGH | — |
 
-`/api/health` is `def` (threadpool) BUT needs a pool connection
-(`main.py:127-131`): if all 10+5 pool connections are held by requests
-waiting on advisory locks, health hangs without any 5xx — matching Day-1
-F-01 symptoms exactly (INFERENCE, see §8).
+Everything else is off the loop: legacy Task `def` routes (claim, decline,
+return, edit, reassign, progress, resume, approve, reject, cancel), the
+economy `def` routes (redeem, redemption approve/fulfill/cancel,
+admin_adjust, rewards, categories, fulfill-permission), notice/settings/
+capacity `def` routes, `GET /api/bootstrap` (def), and all module routes
+listed above (threadpool-wrapped or plain `def`).
+
+Filesystem blocking: `stage_files` (`routes.py:65-83`) reads upload bytes with
+`await` but then calls `storage.save` synchronously (`storage.py`) inside the
+five async routes above → event-loop-blocking disk I/O, in addition to the
+blocking DB work.
+
+`/api/health` is a plain `def` (`main.py:127-131`) so it runs in the
+threadpool, BUT it needs a pool connection: if all 10+5 connections are held
+by requests waiting on advisory locks, health hangs without any 5xx —
+matching the Day-1 F-01 symptoms (see §8).
 
 ## 7. Lock Graph
 
@@ -476,7 +516,7 @@ xact-scoped unless noted):
 | Lock key | Mode | Acquired by | Duration | Protects |
 |---|---|---|---|---|
 | `cve-organization:<company>` | SHARED | `organization.guarded` (org listing, approvals, rules/policies eval…), `admit()`, `can_view` (scoped, during bootstrap serialization!), attention `allowed()` | whole tx | membership/unit consistency |
-| `cve-organization:<company>` | EXCLUSIVE | `exclusive_guarded` = **all** task commands (task_services, task_cycle_services); org create/close/membership | whole tx | org-wide serialization of task commands |
+| `cve-organization:<company>` | EXCLUSIVE | `exclusive_guarded` = **all legacy Task/Task-cycle commands** (`task_services.py:3`, `task_cycle_services.py:3`); org create/close/membership (`organization/service.py:110,122,135`); GitHub project attribution assign (`github_connector/attribution.py:12`). NOT used by rewards/redemptions/admin-adjust (those use row locks only) nor by the governance domains (own keys below) | whole tx | org-wide serialization of task commands |
 | `cve-capability:<company>:<cap>` | SHARED | `enabled()`/`require()` on every capability-gated command AND read paths (attention `_help_personal`, `_flow_help`, `_appreciation_personal`, bootstrap `capability_snapshot`? — no: `snapshot()` does not lock; `enabled()` does) | whole tx | capability state vs use |
 | `cve-capability:<company>:<cap>` | EXCLUSIVE | `capabilities.update` | whole tx | toggle |
 | `cve-policy-set:<company>` | SHARED/EXCLUSIVE | policy evaluate (S) / policy create+update (X) | whole tx | policy set version consistency |
@@ -520,13 +560,15 @@ ANALYSIS (INFERENCE from the orders above):
   (org before capability), which is an accident waiting for future paths.
   Mark UNRESOLVED for a full proof; no DB deadlock evidence from Day-1 (no
   5xx/deadlock errors reported).
-- **Company-wide contention — CONFIRMED BY SOURCE:** every task command
-  serializes on one exclusive advisory lock per company; concurrent claims/
-  submits/approvals from ~10 users queue single-file regardless of which task
-  they touch. Reads (bootstrap for scoped tasks, attention, listings) take the
-  shared mode and queue behind any exclusive holder (PG advisory shared locks
-  queue behind pending exclusive waiters — CONTRACT FACT of PG lock
-  compatibility + fair queueing).
+- **Company-wide contention on the LEGACY TASK PATH — CONFIRMED BY SOURCE:**
+  every Task/Task-cycle command serializes on one exclusive advisory lock per
+  company; concurrent claims/submits/approvals from ~10 users queue
+  single-file regardless of which task they touch. Reads that take the shared
+  mode (bootstrap `can_view` on scoped tasks, attention, org listings,
+  collaboration routing, connector delivery) queue behind any exclusive
+  holder or pending exclusive waiter (PG advisory-lock fair queueing —
+  CONTRACT FACT of PG lock compatibility). Other domains (rewards/
+  redemptions, governance, capabilities) do NOT serialize on this key.
 - **Lock upgrade risk:** deliberately engineered around with key_share
   (`lock_capacity_user`, `service_common.py:153-161` comment) — SOURCE FACT.
 - **Unnecessary read locking:** bootstrap (`serializers.py`) calls `can_view`
@@ -535,50 +577,66 @@ ANALYSIS (INFERENCE from the orders above):
 - **Event-loop starvation:** async routes block the loop while their
   transaction WAITS on the org exclusive lock — see §8.
 
-## 8. F-01 Reconstruction (Day-1 backend freeze)
+## 8. F-01 Reconstruction & Revalidation (Day-1 backend freeze)
 
-DAY-1 EVIDENCE: backend froze twice; `/api/health` also hung; no backend 5xx;
-kill/restart required; ~10 concurrent users; submits/progress/approval
-affected.
+DAY-1 EVIDENCE (now from the full Day-1 report, §11 Stability):
+backend froze twice (hang #1 last backend line 09:00:21; hang #2 09:11:43,
+about 2.5 min after restart #1); `/api/health` returned HTTP 000 (hung); no
+backend 5xx ever logged; recovery required killing the process (locks cleared
+by process death, no `pg_terminate_backend`); ~10 concurrent users. Observed
+DB state at 09:02–09:04: **two idle-in-transaction sessions holding the
+ShareLock on `cve-organization:co-uat-aster`** (last query
+`reward_categories`), **one waiter on the ExclusiveLock for ~4 minutes**, and
+**~72 queued TCP connections**. Hang #2 showed the same lock pattern
+(different holder/waiter PIDs). Affected mutations: submits, progress
+reports, approvals.
 
 CONFIRMED FROM SOURCE:
-1. All task commands take the company-wide EXCLUSIVE advisory xact lock and
-   hold it to commit (§7). Concurrent Day-1 submits/approvals therefore
-   serialize; each holder's transaction includes multi-user notification
-   fan-out and canonical-event recording.
+1. All legacy Task/Task-cycle commands take the company-wide EXCLUSIVE
+   advisory xact lock and hold it to commit (§7). Concurrent Day-1 submits/
+   approvals therefore serialize; each holder's transaction includes
+   multi-user notification fan-out and canonical-event recording.
 2. `submit`, `handoff`, `create_task`, `reopen`, `reactivate` are `async def`
-   running their entire sync DB transaction — including the advisory-lock WAIT
-   — on the single uvicorn event loop (§6).
+   running their entire sync DB transaction — including the advisory-lock
+   WAIT and synchronous file staging — on the single uvicorn event loop (§6).
 3. Every mutation response and every poll is a full-company bootstrap
-   serialization (`serializers.py:75-207`): all tasks + their lazy-loaded
-   submissions/contributions/cycles (N+1 pattern via relationships), all
-   ledger, all notices, all activity — cost grows with company data, not with
-   the affected entity.
+   serialization (`serializers.py:75-207`), and `GET /api/bootstrap` (a
+   threadpool `def` route) takes the org SHARED advisory lock via `can_view`
+   for scoped tasks (`task_access.py:14-17`), holding its transaction open
+   until `get_db` teardown (`db.py:32-37`).
 4. The frontend polls bootstrap every 8 s per visible tab + on focus
    (`refresh.ts`); ~10 users ⇒ ≥1.25 rps of full-company serializations plus
-   mutation-triggered ones.
-5. Pool is 10+5 connections (`db.py:14`); `/api/health` needs one.
+   mutation-triggered ones (Day-1 measured ~18 bootstrap-class calls per 15 s
+   across all clients around 09:24).
+5. Pool is 10+5 connections (`db.py:14`); `/api/health` needs one. No
+   `lock_timeout`, `statement_timeout`, `idle_in_transaction_session_timeout`
+   or request timeout is set anywhere (SOURCE FACT).
 
-HIGH-CONFIDENCE INFERENCE (mechanism):
-- Request A (submit, async): on the event loop, waits for org X advisory lock
-  (held by B's approval transaction). The event loop is now blocked — no other
-  async route progresses, and even threadpool routes cannot have their
-  responses returned promptly because response sending runs on the loop.
-- Meanwhile every poller's bootstrap and every sync `def` command occupies a
-  threadpool thread + a pooled connection, waiting on the same advisory lock
-  (shared reads queue behind the pending exclusive waiters as well). The pool
-  fills with waiters; `/api/health` cannot get a connection → health hangs
-  with zero 5xx. Load does not recover because every retry/poll adds more
-  waiters (no timeouts anywhere: no statement_timeout, no lock_timeout, no
-  request timeout configured — SOURCE FACT: none set in `db.py`/`main.py`).
-- Process kill is the only exit because xact locks are held by transactions
-  whose owning event loop is itself blocked.
+MECHANISM (Day-1 IT analysis, high confidence ~85-90%, consistent with this
+source audit — INFERENCE for the exact interleave):
+- An async task command (e.g. submit) on the event loop waits for the org
+  EXCLUSIVE advisory lock.
+- Meanwhile bootstrap requests (threadpool threads) hold the org SHARED lock
+  inside transactions that stay open until `get_db` teardown — and that
+  teardown must be scheduled back onto the event loop.
+- With the loop blocked on the lock wait, the loop never closes the bootstrap
+  transactions; the shared holders never release; the exclusive waiter never
+  proceeds. This is a **deadlock across the app/DB boundary that PostgreSQL's
+  deadlock detector cannot see** (no two PG sessions wait on each other).
+- The pool fills with queued waiters (~72 queued TCP connections observed);
+  `/api/health` cannot obtain a connection → health hangs with zero 5xx.
+  Every poll/retry adds more waiters; nothing times out; only process death
+  clears the xact locks — matching both observed hangs and the ~2.5-minute
+  recurrence after restart.
 
-NOT proven (honestly UNKNOWN): the exact interleaving that first blocked the
-loop (which command held the lock longest); whether any PostgreSQL deadlock
-also occurred (no deadlock log evidence; none needed for the freeze).
-Therefore this is named accurately: **event-loop starvation around DB lock
-wait + connection-pool exhaustion**, NOT a proven PostgreSQL deadlock.
+NOT proven (honestly UNKNOWN): which specific command held the lock longest
+at each onset; whether any intra-PostgreSQL deadlock also occurred (no
+deadlock log entries; none are needed for this freeze). Classification
+discipline kept: this is **event-loop starvation around DB lock wait +
+connection-pool exhaustion (cross-boundary application/DB deadlock)**, NOT a
+proven PostgreSQL deadlock. Day-1's own evidence limitations apply: no SQL
+statement history was captured, and requests during the hangs were never
+logged (Day-1 report §20 items 1 and 3).
 
 ## 9. Bootstrap Cost & Coupling Map
 
@@ -937,12 +995,12 @@ Gaps (SOURCE FACT — verified absence, not design proposals):
 
 ## 19. Human Expectation Failures
 
-DAY-1 EVIDENCE (as restated in the RA-0 mandate) mapped to mechanism:
+DAY-1 EVIDENCE (full report) mapped to mechanism:
 
 1. **Freeze (F-01)** — see §8. Mechanism: event-loop starvation around DB
-   lock wait + pool exhaustion under the company-wide exclusive advisory
-   lock; NOT a proven Postgres deadlock. Users experience: UI hangs, then
-   stale state.
+   lock wait + pool exhaustion on the legacy Task path's company-wide
+   exclusive advisory lock; NOT a proven Postgres deadlock. Users experience:
+   UI hangs, then stale state; 752 client-visible proxy errors at the kills.
 2. **Authority confusion (F-03/04/05)** — UI exposes review/payout actions
    whose server-side authority check fails late and atomically (§11);
    fire-and-forget dispatch (§13) means the user has already seen the
@@ -980,8 +1038,9 @@ SOURCE FACTS + INFERENCE (no load tests exist; UNRESOLVED as measurement):
 4. **Pool 10+5 with no timeouts** — a blocked writer starves the health
    endpoint too (health needs a pool connection; §6).
 5. **Async routes doing sync DB work on the event loop** (§6 inventory) —
-   concurrency collapses to serial under any slow query; only
-   economic_effects uses threadpool.
+   exactly five routes, all on the legacy Task path (create/submit/handoff/
+   reopen/reactivate + `stage_files` disk I/O); all other modules already
+   delegate to `run_in_threadpool` or use plain `def` routes.
 6. **Notification/activity/ledger tables are append-forever** with no
    archival path (workspace clear is the only bulk remover, and it REFUSES
    when collaboration or INCENTIVE_* rows exist — SOURCE FACT,
@@ -994,113 +1053,540 @@ SOURCE FACTS + INFERENCE (no load tests exist; UNRESOLVED as measurement):
    is actually switched on (event + candidate + decision + safety + effect
    + ledger per reward).
 
-## 21. Day-1 Root-Cause Clusters
+## 21. Day-1 Finding → Root-Cause Map (F-01…F-53)
 
-EVIDENCE LIMITATION (restated): the 53-finding Day-1 log is not in the
-repository (`docs/uat/ISSUES.md` is an empty template). Clusters below are
-built ONLY from the Day-1 facts restated in the RA-0 mandate; all other
-findings are UNRESOLVED and no finding IDs are invented.
+Source of findings: `FINAL_DAY1_REPORT.md` §7.2 (build `bcf3025f…`, Aster
+Dynamics, 10 personas). Categories per that report: FD functional defect,
+IPB incomplete product behavior, UX comprehension, WF workflow friction,
+SEC authorization/data/security. Family codes RC-A…RC-L are defined in §22.
+"Recovery dependency" refers to the ordering in §24. Confidence: HIGH =
+mechanism directly verified in source; MEDIUM = source-consistent inference;
+LOW/UNRECONCILED = evidence unresolved in the Day-1 report itself (preserved,
+not invented).
 
-| Cluster | Day-1 facts covered | Root mechanism (this report) |
-|---|---|---|
-| C1 Concurrency/freeze | F-01 freeze | §6 + §7 + §9: event-loop blocking + company-wide X lock + full-bootstrap reads, pool exhaustion; not a proven PG deadlock |
-| C2 Authority surfacing | F-03/04/05 | §11 + §13: late fail-closed authority checks behind fire-and-forget UI |
-| C3 Economic divergence | 19 TASK_REWARD / 0 governance | §12: governance economy is operator-gated; legacy is default |
-| C4 Stale attention | paid work ACTION_REQUIRED; badge disagreement; Overview ≠ Available Work | §16: D4 two attention implementations; D7 immutable notification snapshots |
-| C5 Lifecycle/history | rework inconsistency | §10 + §15: non-terminal REJECTED, reopen resets counters, ledger never reversed |
+| ID | Sev | Short title | Primary family | Secondary | Source mechanism | Confidence | Arch / Local / UX-content | Recovery dependency |
+|---|---|---|---|---|---|---|---|---|
+| F-01 | P0 | Backend deadlocks under concurrent load | RC-A | RC-B | §6/§7/§8: 5 async Task routes block the loop on sync DB + org X lock wait; bootstrap S-lock teardown needs the loop; pool 10+5; no timeouts | HIGH (IT ~85–90%) | Architectural | Root — first |
+| F-02 | P0 | Silent failure and data loss | RC-B | RC-A | Fire-and-forget dispatch closes dialogs before server answer; requests in flight lost at kills; no error surface (§13) | HIGH | Architectural (dispatch contract) | After/with RC-A |
+| F-03 | P0 | Managers cannot approve own team's work | RC-C | RC-B | `require_payout_authority` is role-only (ADMIN); approval+payout one atomic tx; unexplained lock text; no admin setting | HIGH | Architectural | After Q1 + RC-B |
+| F-04 | P1 | Admin can pay before/against manager decision | RC-C | RC-D | No pending-manager hold state; no reversal writer on legacy ledger (§11/§12) | HIGH | Architectural | After RC-C policy decision |
+| F-05 | P1 | Decision provenance wrong or missing | RC-C | RC-F | Ledger records executing admin, not deciding manager; no approval comment field; cycle not in ledger ref | HIGH | Architectural | With RC-C |
+| F-06 | P1 | Rejection box pre-filled with another employee's text | RC-E | RC-B | Mechanism NOT verified in source; consistent with stale client dialog state reused across reviews | LOW — needs frontend state audit | Local (UI state) | Independent; investigate with RC-E |
+| F-07 | P1 | 6 server sessions never revoked, valid 12 h | RC-I | — | Client drops token without server logout on failure/tab-close; logout revokes current session only; no orphan cleanup (§18) | HIGH | Local (auth module) | Independent |
+| F-08 | P1 | No login failed-attempt tracking/lockout/rate limit | RC-I | — | Verified absence in auth path (§18) | HIGH | Local (auth module) | Independent |
+| F-09 | P1 | Governance pipeline never exercised (0 rows) | RC-D | — | Rule evaluation/issuance are explicit admin commands; nothing configured; "no automatic replay" (§12) | HIGH | Architectural | Gated by Q1 economy decision |
+| F-10 | P1 | Governance/oversight screens contradict the ledger | RC-D | RC-E | Shadow/Audit/Team-Flow read governance tables (empty) while legacy ledger paid ◈585 | HIGH | Architectural + Local display | After Q1 |
+| F-11 | P1 | Notifications never resolve (32 stale ACTION REQUIRED) | RC-E | — | D7: notification snapshots never re-derived on subject change; only read/archive clears (§16) | HIGH | Architectural | After D7 decision |
+| F-12 | P1 | Counters contradict each other | RC-E | — | D4: two attention implementations (client derivation vs WS3 server composition) + per-viewer `can_review` (§16) | HIGH | Architectural | After D4 decision |
+| F-13 | P1 | Wrong progress values recorded; uncorrectable | RC-F | RC-B | Submit-dialog slider defaults inconsistent; recorded value immutable; list vs panel show different fields | MEDIUM (slider defaults not line-verified) | Local + Architectural (immutability) | With RC-F lifecycle decisions |
+| F-14 | P1 | Tasks carry no context (no comments/notes/drafts/withdraw) | RC-G | — | No comment/reply/note storage in task model; verified absence (§15/§17) | HIGH | Architectural | Product-scope decision |
+| F-15 | P1 | Submitted/approved records can't be corrected/superseded | RC-F | RC-C | Only reopen (new cycle) exists; no correction/supersession path (§10/§15) | HIGH | Architectural | After RC-C + Q2/Q7 |
+| F-16 | P1 | Help: no recipient, no task link, no reply field | RC-G | RC-E | Help model: opaque `submission_id`, no task FK, no reply storage; routing excludes requester (§17) | HIGH | Architectural | Product-scope decision |
+| F-17 | P1 | Contradictory eligibility (label vs scope vs 403) | RC-H | RC-B | Scope label, assignment picker and server enforcement derive from different checks; server fails closed at 403 | MEDIUM-HIGH | Architectural (semantics) + Local (labels) | Eligibility-semantics decision |
+| F-18 | P2 | Help state contradicts itself across surfaces | RC-E | RC-G | People>Help vs Needs Attention read different projections of help status (§16/§17) | MEDIUM | Local (projection) | After D4 |
+| F-19 | P2 | No reviewer/collaborator field; peer review unlinkable | RC-G | — | Task model has owner/assignee only; verified absence of reviewer/collaborator relation | HIGH | Architectural | Product-scope decision |
+| F-20 | P2 | My Work / task cards show ◈0 on paid tasks | RC-E | — | Card projection reads per-cycle `paid` (reset on reopen/cycle) while wallet reads ledger Σ | MEDIUM | Local (projection) | After D-register decisions |
+| F-21 | P2 | Status contradicts itself within one panel | RC-E | RC-F | Badge (task status) vs cycle header (cycle state) render different stores | MEDIUM | Local (projection) | After RC-F |
+| F-22 | P2 | Cycle counter never increments; titles stay v1 | RC-F | RC-E | Display reads first cycle/title snapshot; ledger records cycle 1; cycles exist as rows (§10/§15) | MEDIUM | Local (display) + Architectural (semantics) | With RC-F |
+| F-23 | P2 | Version history buried; no compare/diff | RC-K | RC-F | History-by-cycle exists (SOURCE: TaskCycle rows) but no navigation/compare affordance | HIGH (existence), UX cause | UX-content / Local | Wait (P2 polish) |
+| F-24 | P2 | Capacity data wrong (omissions, manager listed) | RC-H | — | Capacity card inputs differ from capacity enforcement (`require_capacity`/`active_owned_task_count`); assigned-not-accepted and rework counting inconsistent | MEDIUM | Architectural (counting rule) | Capacity-rule decision |
+| F-25 | P2 | Active-task limit opaque and inconsistent | RC-H | RC-B | In-review occupancy, silent claim-button disappearance; enforcement timing inconsistent (items 10,12 of Day-1 §19 UNRECONCILED) | MEDIUM (parts UNRECONCILED) | Local + Architectural | With F-24 |
+| F-26 | P2 | Assigned tasks also appear in open marketplace | RC-H | — | Audience vs assign-mode semantics: specific-assignee tasks still listed as OPEN/claimable | MEDIUM | Architectural (semantics) | With F-17 decision |
+| F-27 | P2 | Membership changes silent/unaudited in UI | RC-H | RC-E | DB row exists (`organization_changes`) but no UI confirmation/notification/audit surface | HIGH (UI absence), mechanism partial | Local (surfacing) | Independent |
+| F-28 | P2 | Reassign dropdown ignores create-form scope rule | RC-H | — | Reassign picker not filtered by membership rule the create form enforces (not executed on Day-1) | MEDIUM (unexecuted; code-level) | Local | Independent |
+| F-29 | P2 | Broad visibility, no privacy controls | RC-H | — | Help threads and company-wide earnings ledger readable cross-team by default; no privacy settings exist | HIGH | Architectural (policy) | Product-policy decision |
+| F-30 | P2 | Manager wallet view drops task titles on scoped payouts | RC-E | RC-H | Label rendering applies viewer `can_view` filtering to payout titles ("unlabelled +30") | MEDIUM | Local (projection) | After D-register decisions |
+| F-31 | P2 | Raw i18n keys shown (`task.outcome.sentToRework`) | RC-J | — | Missing locale keys fall through to raw key display | HIGH (class), line-level not audited | UX-content / Local | Wait |
+| F-32 | P2 | Live-task edit records no before/after or reason | RC-F | RC-C | Edit audit writes a single activity line; no field-level history (§15) | MEDIUM | Architectural (audit model) | With RC-F |
+| F-33 | P2 | No deep links; Back exits app; reload resets view | RC-K | — | SPA state-only navigation; URL never changes | HIGH | UX-content / Local (architectural-ish navigation) | Wait |
+| F-34 | P2 | Unexplained jargon ("Cycle 1", "ROUTED", "control plane") | RC-K | — | Engineering terms surfaced in UI copy | HIGH | UX-content | Wait |
+| F-35 | P2 | No confirmation/success feedback on irreversible actions | RC-B | RC-K | Dispatch contract has no success path; one-click irreversible actions | HIGH | Architectural (dispatch) + Local | With RC-B |
+| F-36 | P2 | Drawer/tip overlays swallow sidebar/list clicks | RC-K | — | Overlay event handling; frontend-only | MEDIUM (not line-audited) | Local | Wait |
+| F-37 | P2 | Thanks/Recognition tabs empty while Activity lists them | RC-E | — | Tabs read one store, Activity another; different filters | MEDIUM | Local (projection) | After D4 |
+| F-38 | P2 | Attachments: 0.0 MB shown, GUID names, no preview | RC-J | — | Display formatting/download-naming defects; item 11 of Day-1 §19 (duplicate attachment) UNRECONCILED | MEDIUM | Local | Wait |
+| F-39 | P2 | Language preference per-browser, not per-account | RC-J | RC-I | Locale stored in `localStorage` (`cve-locale`); no per-account preference field | HIGH | Architectural (small) | Independent |
+| F-40 | P2 | Localization quality gaps (zh-CN, ru, ar) | RC-J | — | Untranslated/mixed strings, plurals, digit systems, unmirrored arrows | HIGH (class) | UX-content | Wait |
+| F-41 | P2 | Real-time propagation unverified; no push channel | RC-L | RC-A | No WebSocket/push; 8 s polling + focus refetch only; test invalidated by F-01 | HIGH (absence), verdict UNTESTED | Architectural | Strictly after RC-A |
+| F-42 | P2 | Pages stuck on "Loading…" outside concurrent phase | RC-A | RC-B | Possibly same lock contention at low concurrency (Day-1 IT: inference, not established) | MEDIUM/UNRESOLVED | Architectural | With RC-A |
+| F-43 | P2 | Locale-dependent value discrepancies (Lyon 10 vs 15) | RC-J | RC-E | **UNRECONCILED** (Day-1 §19 item 3): DB says 15; not rechecked in English; display defect vs misread unknown | UNRECONCILED | Local (if real) | Reproduce first |
+| F-44 | P3 | Reward economy unfunded (empty catalogue) | RC-D | — | Seed/config: 0 rewards, 0 redemptions; misleading empty-state copy | HIGH | Local (config/content) | With Q1 |
+| F-45 | P3 | No customer-account/ownership entity | RC-G | — | Verified absence of such an entity; Day-1 marks it a product-owner scope question | HIGH (absence) | Architectural (scope) | Product-scope decision |
+| F-46 | P3 | Sign-out hidden behind "⇅" user card | RC-K | — | UX copy/affordance | HIGH | UX-content | Wait |
+| F-47 | P3 | Login errors uninformative (same message for wrong password and outage) | RC-K | RC-I | Single generic error path | HIGH | UX-content | Wait |
+| F-48 | P3 | Ledger CSV timestamps in UTC, unlabeled | RC-J | — | Export formatting; no TZ label | HIGH | Local | Wait |
+| F-49 | P3 | Buttons don't navigate; welcome card reappears | RC-K | — | Non-wired buttons; dismissal not persisted | HIGH | UX-content / Local | Wait |
+| F-50 | P3 | Task creation: no success message, no copy/template/bulk | RC-K | RC-B | Missing confirmation + convenience features | HIGH | UX-content | Wait |
+| F-51 | P2 | No reminders/warnings (due dates, unowned, escalations) | RC-E | RC-G | Feature ABSENCE: no reminder/escalation surface exists; manager escalations have no home | HIGH (absence) | Architectural | After D7/notification lifecycle |
+| F-52 | P3 | Admin configuration opaque (no add-person; connectors unexplained) | RC-K | — | Missing admin affordances and explanations | HIGH | UX-content | Wait |
+| F-53 | P3 | No interim/blocked state; partial credit only via Handoff | RC-F | — | State machine has no BLOCKED/dependency state (§10); partial payout only through handoff | HIGH | Architectural | With RC-F |
 
-INFERENCE: C1 is the only cluster requiring concurrency machinery; C2–C5
-are all SINGLE-THREAD-REPRODUCIBLE truth-ambiguity defects. The majority of
-Day-1 pain was duplicate truth, not races.
+**Coverage proof: F-01…F-53 mapped: 53/53. Unmapped: 0.** No finding IDs
+invented. UNRECONCILED items preserved: F-43 (Day-1 §19 item 3), F-25 items
+(Day-1 §19 items 10 and 12), F-38 attachment duplication (item 11), F-06
+mechanism (LOW confidence — frontend state audit owed).
 
-## 22. Unresolved Architecture Questions
+**Environment/orchestration findings E-01…E-15 remain separately classified
+(ENV, not CVE product defects):** E-01 session-sync localStorage copy/reload
+(P1), E-02 credential hygiene (P1), E-03 content-filter blocks (P2), E-04
+independence breaches (P2), E-05 credential-form misuse (P2), E-06 false STOP
+cascade (P2), E-07 browser-helper rate limiting (P2), E-08 orchestration gaps
+(P2), E-09 non-human pacing (P2), E-10 group-chat delivery gaps (P2), E-11
+snapshot helper failure (P3), E-12 shared-box password autofill (P3), E-13
+seed job titles mismatch (P3), E-14 evidence-storage drift (P3), E-15 IT
+operational deviations (P3). They constrain how much Day-1 evidence can prove
+(e.g. E-01 contaminated the language-switch test; E-09 invalidates timing
+data) but are not mapped to CVE root-cause families.
 
-(Self-challenge register. Each is stated as a question; none is answered
-beyond available evidence.)
+## 22. Root-Cause Families (rebuilt from SOURCE + full Day-1 evidence)
+
+Twelve families. Merged only where a common source mechanism exists; split
+where mechanisms are independent.
+
+### RC-A Concurrency / transaction reliability
+- ROOT MECHANISM: §6/§7/§8 — five async Task routes execute sync DB work,
+  advisory-lock waits and disk I/O on the single event loop; the legacy Task
+  path serializes on one company-wide exclusive advisory lock; bootstrap
+  shared-lock transactions need the blocked loop for teardown; pool 10+5; no
+  timeouts anywhere.
+- FINDINGS: F-01 (P0), F-42 (P2, MEDIUM confidence).
+- SEVERITY COUNT: P0 1 / P1 0 / P2 1 / P3 0.
+- SOURCE FILES: `backend/app/routes.py:65-83,109,195,224,248,273`,
+  `backend/app/organization/service.py:13-15,26-36`, `backend/app/db.py:14,32-37`,
+  `backend/app/task_access.py:14-17`, `backend/app/serializers.py:75-207`,
+  `backend/app/main.py:127-131`, `src/refresh.ts:33-63`.
+- DAY-1 PERSONAS: all 10 (F-01 independent 10/10).
+- ARCHITECTURAL.
+- DEPENDS ON: none — this is a root.
+- BEFORE IT CAN BE TESTED: freeze reproduced at baseline with instrumentation
+  (lock-wait vs loop-stall vs pool-exhaustion distinguished); the exact
+  runtime wait graph is otherwise unproven (§8).
+
+### RC-B Command acknowledgement / failure semantics
+- ROOT MECHANISM: fire-and-forget dispatch (`void enqueue(...)`, dialogs close
+  before server answer); no success/error contract; toggle-ambiguous retry;
+  no idempotency on legacy money commands (redeem/admin_adjust); no stale/
+  offline indicator (§13/§14).
+- FINDINGS: F-02 (P0), F-35 (P2).
+- SEVERITY COUNT: P0 1 / P1 0 / P2 1 / P3 0.
+- SOURCE FILES: `src/store.tsx` (dispatch queue), `src/views/Reviews.tsx:192,201`,
+  `src/components/CreateTask.tsx:66-77`, `src/refresh.ts`,
+  `backend/app/reward_services.py` (no dedupe on redeem/adjust).
+- DAY-1 PERSONAS: Aisha, Priya, Jonas, Noah, Dana, Mina, Leo (direct), Elena-R
+  (relayed); F-35 reported across reviewers.
+- ARCHITECTURAL (the dispatch contract), with local instances.
+- DEPENDS ON: RC-A (a lost response cannot be distinguished from a frozen
+  server until the freeze is fixed).
+- BEFORE IT CAN BE TESTED: RC-A resolved or bypassed; dispatch/ack contract
+  decided (what the UI shows between send and server truth).
+
+### RC-C Authority / review / payout provenance
+- ROOT MECHANISM: `require_payout_authority` is role-only (ADMIN) on the
+  legacy path with no policy UI; approval and payout are one atomic command;
+  no pending-manager hold; the ledger records the executing actor, not the
+  deciding manager; no approval comment/condition field; no reversal writer
+  (§11/§12/§15).
+- FINDINGS: F-03 (P0), F-04 (P1), F-05 (P1).
+- SEVERITY COUNT: P0 1 / P1 2 / P2 0 / P3 0.
+- SOURCE FILES: `backend/app/task_access.py`, `backend/app/task_services.py`
+  (`approve_work`), ledger writers, `backend/app/economic_effects/*`
+  (the unused provenance-rich path).
+- DAY-1 PERSONAS: all 10 (managers blocked; admin became the approval desk
+  for all 19 payouts).
+- ARCHITECTURAL.
+- DEPENDS ON: Q1 (which economy is canonical — §23) and RC-B (the false-
+  success window must close for authority errors to surface).
+- BEFORE IT CAN BE TESTED: founder decision on manager payout authority
+  (policy, threshold, delegation); ledger provenance requirement stated.
+
+### RC-D Legacy-vs-governance economic divergence
+- ROOT MECHANISM: two economies coexist; governance is admin-explicit at every
+  step with no automatic hook and was never configured (no rules/policies/
+  capabilities changed/reward catalogue); oversight screens read the empty
+  governance tables while money moved through the legacy ledger (§12).
+- FINDINGS: F-09 (P1), F-10 (P1), F-44 (P3).
+- SEVERITY COUNT: P0 0 / P1 2 / P2 0 / P3 1.
+- SOURCE FILES: `backend/app/rules/service.py` (docstring),
+  `backend/app/economic_effects/routes.py`, §12 chain; seed data (absence of
+  default governance configuration).
+- DAY-1 PERSONAS: Dana, Elena-R (screens), Jonas (empty catalogue), IT.
+- ARCHITECTURAL.
+- DEPENDS ON: Q1 economy-canonicality decision — the gate.
+- BEFORE IT CAN BE TESTED: Q1 decided; a configured governance scenario
+  (rules, policies, catalogue) seeded for UAT.
+
+### RC-E Duplicated operational truth / projections
+- ROOT MECHANISM: multiple independent derivations of the same concept with
+  no declared owner (register D1–D13): client-side attention vs WS3 server
+  attention (D4); immutable notification snapshots never re-derived (D7);
+  per-surface `can_view`/`can_review` filtering applied to some projections
+  and not others; per-cycle counters vs ledger Σ (§3/§4/§16).
+- FINDINGS: F-06 (P1, LOW), F-11 (P1), F-12 (P1), F-18, F-20, F-21 (sec),
+  F-30, F-37, F-51 (P2).
+- SEVERITY COUNT: P0 0 / P1 3 / P2 6 / P3 0.
+- SOURCE FILES: `src/App.tsx:114-129,157-159,234,247-249`,
+  `src/domain/attention.ts`, `backend/app/attention/service.py`,
+  `backend/app/notifications/*`, `backend/app/serializers.py`.
+- DAY-1 PERSONAS: all 10 (F-11, F-12 independent 10/10).
+- ARCHITECTURAL (truth ownership) with local projection instances.
+- DEPENDS ON: D4 and D7 decisions (§23 Q4/Q5) — fixing individual counters
+  before choosing the source of truth re-creates the disagreement.
+- BEFORE IT CAN BE TESTED: one declared source of truth per attention/
+  notification concept; notification lifecycle intent stated.
+
+### RC-F Task lifecycle / correction / version semantics
+- ROOT MECHANISM: no correction or supersession of submitted/approved records
+  (only reopen-as-new-cycle); reopen resets counters without ledger reversal;
+  cycle/version display does not advance; progress values recorded once and
+  immutable; edit audit is a single line; no BLOCKED/interim state (§10/§15).
+- FINDINGS: F-13 (P1), F-15 (P1), F-22, F-32 (P2), F-53 (P3).
+- SEVERITY COUNT: P0 0 / P1 2 / P2 2 / P3 1.
+- SOURCE FILES: `backend/app/task_services.py`,
+  `backend/app/task_cycle_services.py`, `backend/app/domain.py:16`, §15
+  mutability map.
+- DAY-1 PERSONAS: 9 independent on F-13 and F-15 each.
+- ARCHITECTURAL (lifecycle model) with local display instances.
+- DEPENDS ON: RC-C provenance decisions; Q2 (REVERSAL intent) and Q7
+  (payout durability under reopen) from §23.
+- BEFORE IT CAN BE TESTED: lifecycle semantics decision (correct vs supersede
+  vs reopen; what cycle display must show).
+
+### RC-G Collaboration / help / peer-work context
+- ROOT MECHANISM: tasks carry no content channel (no comments/replies/notes/
+  drafts/WIP attachments/withdraw); Help has no recipient, no task link, no
+  reply storage (opaque `submission_id` only); no reviewer/collaborator role;
+  no external-account ownership entity; escalation only via an operator-run
+  script (§17).
+- FINDINGS: F-14 (P1), F-16 (P1), F-19 (P2), F-45 (P3).
+- SEVERITY COUNT: P0 0 / P1 2 / P2 1 / P3 1.
+- SOURCE FILES: `backend/app/collaboration/help.py`, `routing.py`, `model.py`,
+  §17; absence verified in task model.
+- DAY-1 PERSONAS: 10 (F-14), 8 (F-16), Leo+Aisha (F-19), Marcus-R/Jonas/Noah
+  (F-45). Consequence observed: group chat became the system of record.
+- ARCHITECTURAL.
+- DEPENDS ON: none hard; product-scope decisions gate it.
+- BEFORE IT CAN BE TESTED: founder scope decision — what business context
+  must live inside CVE without external chat.
+
+### RC-H Eligibility / organization / visibility
+- ROOT MECHANISM: label, picker and enforcement derive from different checks
+  (scope label vs membership vs 403); capacity counting inputs inconsistent;
+  reassign picker not scope-filtered; membership changes surfaced nowhere in
+  the UI; broad default visibility with no privacy controls (§3 org entries,
+  §11).
+- FINDINGS: F-17 (P1), F-24, F-25 (parts UNRECONCILED), F-26, F-27, F-28,
+  F-29 (P2).
+- SEVERITY COUNT: P0 0 / P1 1 / P2 6 / P3 0.
+- SOURCE FILES: `backend/app/task_access.py`, `backend/app/organization/
+  service.py` + `model.py`, `backend/app/services.py` (capacity),
+  `backend/app/routes.py:176-186` (reassign).
+- DAY-1 PERSONAS: Dana, Marcus-R, Sara (F-17); Priya, Jonas, Sara (F-24);
+  Noah (F-25); Marcus-R (F-28); Commercial/Ops cross-reads (F-29).
+- MIXED: server eligibility semantics ARCHITECTURAL; picker/label
+  inconsistencies LOCAL.
+- DEPENDS ON: none hard; interacts with the D-register on visibility.
+- BEFORE IT CAN BE TESTED: one eligibility rule stated (label = scope =
+  enforcement); capacity counting rule decided; visibility policy decided.
+
+### RC-I Session / authentication security
+- ROOT MECHANISM: sessions persist 12 h with no revocation visibility; the
+  client drops its token without server logout on bootstrap failure or tab
+  close; no orphan cleanup; no login throttling/lockout (§18).
+- FINDINGS: F-07 (P1), F-08 (P1).
+- SEVERITY COUNT: P0 0 / P1 2 / P2 0 / P3 0.
+- SOURCE FILES: `backend/app/security.py`, `backend/app/auth_routes.py`,
+  config (`jwt_ttl_seconds`), frontend token storage (§18).
+- DAY-1 PERSONAS: IT-observed; orphaned sessions belonged to Noah, Elena,
+  Leo (×2), Sara, Mina.
+- LOCAL (bounded to the auth/session module), though security-baseline
+  severity.
+- DEPENDS ON: none.
+- BEFORE IT CAN BE TESTED: session policy stated (TTL, revocation visibility,
+  throttle limits).
+
+### RC-J Localization / presentation consistency
+- ROOT MECHANISM: missing locale keys fall through to raw key display; locale
+  preference stored per-browser (`localStorage`), not per-account;
+  translation quality gaps; one locale-dependent value discrepancy
+  UNRECONCILED; UTC timestamps unlabeled; attachment size/naming display
+  defects.
+- FINDINGS: F-31, F-38, F-39, F-40, F-43 (UNRECONCILED), F-48 (P3).
+- SEVERITY COUNT: P0 0 / P1 0 / P2 5 / P3 1.
+- SOURCE FILES: frontend i18n resources (not line-audited — flagged),
+  `src/refresh.ts`-adjacent locale storage, CSV export writer.
+- DAY-1 PERSONAS: 10 independent on F-40; Marcus-R on F-31/F-43; Jonas and
+  Marcus-R on RTL.
+- LOCAL / UX-CONTENT, except F-39 (preference storage location —
+  architectural, small).
+- DEPENDS ON: none; deliberately sequenced late.
+- BEFORE IT CAN BE TESTED: i18n key-coverage audit; F-43 reproduction attempt
+  (currently UNRECONCILED — DB says 15).
+
+### RC-K Navigation / interaction feedback / UX content
+- ROOT MECHANISM: state-only SPA navigation (no deep links, Back exits);
+  overlay click-swallowing; hidden sign-out; single generic login error;
+  non-wired buttons; unpersisted dismissals; jargon copy; admin configuration
+  opacity.
+- FINDINGS: F-23, F-33, F-34, F-36 (P2), F-46, F-47, F-49, F-50, F-52 (P3).
+- SEVERITY COUNT: P0 0 / P1 0 / P2 4 / P3 5.
+- SOURCE FILES: `src/App.tsx` (navigation state), view components (not
+  line-audited — flagged).
+- DAY-1 PERSONAS: spread across all 10 reports.
+- LOCAL / UX-CONTENT (navigation model is the one architectural-leaning item).
+- DEPENDS ON: none; deliberately sequenced after core reliability.
+- BEFORE IT CAN BE TESTED: navigation-model decision (routing vs SPA state).
+
+### RC-L Real-time propagation
+- ROOT MECHANISM: no push channel exists (no WebSocket; 8 s polling + focus
+  refetch only, `src/refresh.ts`); Day-1's propagation test was invalidated
+  by F-01 and remains UNTESTED.
+- FINDINGS: F-41 (P2).
+- SEVERITY COUNT: P0 0 / P1 0 / P2 1 / P3 0.
+- SOURCE FILES: `src/refresh.ts:33-63`, `src/store.tsx`; absence of any
+  server push channel (verified).
+- DAY-1 PERSONAS: Dana (PASS on 8 s-class propagation), Sara/Marcus-R/Leo/
+  Priya/Jonas (WARNING), Aisha/Mina (FAIL), Elena-R/Noah (no verdict).
+- ARCHITECTURAL.
+- DEPENDS ON: RC-A — strictly. Retesting propagation against the freezing
+  build measures the freeze, not propagation.
+- BEFORE IT CAN BE TESTED: RC-A resolved; push-vs-poll decision stated.
+
+## 23. Unresolved Architecture Questions
+
+(Self-challenge register. Carried over and extended; none answered beyond
+available evidence.)
 
 1. Which economy is canonical for production payouts — legacy ledger or
-   governance effects? (§12: currently ambiguous by construction.)
+   governance effects? (§12: ambiguous by construction; gates RC-D, RC-C.)
 2. Is REVERSAL in the legacy `LEDGER_TYPES` a promise or dead code?
    (SOURCE FACT: declared, never written.)
 3. Who is expected to run `escalate_help.py`, and is UAT/production
    escalation actually scheduled anywhere? (§17: no in-app scheduler.)
 4. Should a notification ever be re-derived when its subject changes, or is
-   snapshot-semantics the intended product contract? (D7 unresolved as
-   INTENT; mechanism is SOURCE FACT.)
+   snapshot-semantics the intended product contract? (D7; gates RC-E.)
 5. Is the client-side attention derivation or the WS3 server attention the
-   one the UI should trust? (D4.)
-6. Is the org-wide exclusive lock scoped correctly, or is it a placeholder
-   for scope-level locks? (§7: no source comment justifies the breadth.)
+   one the UI should trust? (D4; gates RC-E.)
+6. Is the org-wide exclusive lock scoped correctly for the legacy Task path,
+   or is it a placeholder for scope-level locks? (§7: no source comment
+   justifies the breadth.)
 7. What is the intended durability story for legacy payouts under
-   reopen/reactivate? (§15: counters reset, money stays — is that product
-   intent?)
+   reopen/reactivate? (§15: counters reset, money stays — product intent?)
 8. Are redeem/admin_adjust duplicates acceptable operational risk or a
    defect? (§13/§14.)
 9. Is 12 h session TTL with no revocation-visibility acceptable for the
-   admin role? (§18.)
+   admin role? (§18; Day-1 F-07 says no at pilot scale.)
 10. Does the bootstrap-everywhere read model have a stated scale target?
     (§9/§20: none found in source or docs.)
+11. What is the eligibility rule of record — label, scope, or enforcement?
+    (F-17/F-26; gates RC-H.)
+12. What business context must live inside CVE so external chat is not the
+    system of record? (F-14/F-16/F-19/F-45; gates RC-G — product-owner
+    scope decision.)
+13. What is the F-06 mechanism (cross-dialog stale review text)? Not
+    verifiable from backend source; requires a frontend state audit.
+    UNRESOLVED.
+14. Is F-43 a real locale-dependent rendering defect or a misread?
+    UNRECONCILED in Day-1 evidence; requires reproduction.
 
-## 23. Recovery Dependency Graph
+## 24. Recovery Dependency Graph (rebuilt from full evidence)
 
-ORDER ONLY — dependencies, not implementation design. Each arrow means
-"must be settled before".
+ORDER ONLY — dependencies, not implementation design.
 
-- **Q1 economy canonicality** → any payout-mutation work, any reversal
-  story, any UI that displays balances. (Everything economic depends on
-  knowing which economy is real.)
-- **D4 attention single-source decision** → badge/Overview fixes,
-  notification lifecycle work. (Fixing counters before choosing the source
-  of truth re-creates the disagreement.)
-- **D7 notification lifecycle intent** → "paid still ACTION_REQUIRED" class
-  of fixes. (Snapshot vs re-derived is a product contract decision.)
-- **F-01 mechanism class (lock scope + event-loop blocking + read model)**
-  → any scale claim, any UAT rerun with concurrent personas. (Re-running
-  UAT against the same mechanism would re-measure the same failure.)
-- **C2 authority surfacing** → UI dispatch semantics (fire-and-forget) and
-  late fail-closed checks must be addressed together; either alone leaves
-  the false-success window.
-- **Session/revocation visibility** → independent of the above; no
-  dependency.
-- **Escalation scheduling (§17)** → independent; operational decision, no
-  code dependency.
-- **Legacy ledger idempotency (redeem/admin_adjust)** → independent of
-  economy canonicality ONLY IF Q1 keeps the legacy economy; otherwise
-  subsumed by it. Flagged as conditional dependency.
+**Layer 0 (roots — nothing validly testable before these):**
+- **RC-A concurrency/transaction reliability** → every concurrent UAT rerun,
+  RC-B's lost-response semantics, RC-L's propagation retest. Re-running
+  concurrent UAT against the same mechanism re-measures the same failure.
+- **Q1 economy canonicality** (gates RC-D, and the payout side of RC-C) →
+  any payout-path change, balance/oversight UI truth, governance rollout.
+- **D4 + D7 truth decisions** (gate RC-E) → every notification/counter/
+  attention fix. Fixing projections before choosing the source of truth
+  re-creates the disagreement.
 
-INFERENCE: the graph has two roots — "which economy" (Q1) and "which
-attention truth" (D4). Every other Day-1 cluster hangs off one of those two
-or is standalone-operational (sessions, escalation, timeouts).
+**Layer 1 (core product loop):**
+- **RC-C authority/provenance** ← depends on Q1 (payout path) and RC-B
+  (outcome surfacing). Closes the manager-decision loop (F-03/04/05).
+- **RC-B failure semantics** ← depends on RC-A. Converts silent loss into
+  visible outcomes (F-02, F-35).
 
-## 24. Future Closure Standard
+**Layer 2 (semantics built on the core loop):**
+- **RC-F lifecycle/correction** ← RC-C provenance decisions + Q2/Q7 answers.
+- **RC-H eligibility/visibility** ← independent of RC-A..F for logic, but UI
+  surfaces should follow the RC-E truth decisions; semantics decision first.
+
+**Layer 3 (independent or deferrable):**
+- **RC-I session security** ← no dependency; required before any real
+  organizational use; can proceed in parallel any time.
+- **RC-G collaboration context** ← product-scope decision (Q12); large;
+  after core reliability proven.
+- **RC-L real-time** ← strictly after RC-A.
+- **RC-J localization/presentation, RC-K navigation/UX content** ←
+  deliberately WAIT until P0/P1 families are closed (P2/P3 polish); the one
+  exception is F-39 (locale storage location), which is small and
+  independent.
+
+**Disappear-together sets:**
+- Fix RC-A mechanism → F-01 closes; F-42 likely closes (INFERENCE — the
+  low-concurrency "Loading…" was never root-caused); F-41 becomes TESTABLE.
+- Decide + implement RC-E truth ownership → F-11, F-12 mechanism class
+  closes; F-18, F-20, F-21, F-30, F-37 projections have one source to align
+  to; F-51 gains the lifecycle it needs.
+- Decide + implement RC-C authority/provenance → F-03, F-04, F-05 close
+  together; they are one mechanism.
+
+**Wasted if done early:** individual counter/badge fixes before D4; reminder
+features (F-51) before the notification lifecycle decision (D7); governance
+screen copy fixes (F-10) before Q1; any concurrency-tuning that leaves the
+five event-loop-blocking routes in place.
+
+## 25. Recovery Test Obligations (future acceptance evidence — NOT tests to run now)
+
+For each family, the HUMAN BEHAVIOR evidence a future recovery block must
+produce (unit tests alone do not close a family):
+
+- **RC-A:** 10 personas act concurrently through the previous freeze window
+  (mass login, submits, progress, approvals, polling); the system stays
+  responsive; `/api/health` answers throughout; no process restart; no
+  queued-connection pileup; the 09:00/09:11 scenario does not reproduce.
+- **RC-B:** a persona performing submit/progress/approve during a forced
+  failure sees an explicit error or pending state — never a closed dialog
+  implying success; after recovery, the UI shows the true server state;
+  no silent loss is possible without a visible signal.
+- **RC-C:** Employee submits → the correct Manager decides (approve/reject)
+  with payout authority per the decided policy → Admin cannot silently bypass
+  or precede the manager → the ledger/provenance record names the true
+  decision/execution chain (decider ≠ executor where they differ) → a
+  mistaken payout has a visible correction path.
+- **RC-D:** in a configured governance scenario, a payout's journey through
+  rules → policy → safety → approval → effect is observable, and oversight
+  screens agree with the ledger (no "0 issued" beside ◈585 paid).
+- **RC-E:** Overview, Needs Attention, sidebar badges, task panels,
+  notifications and wallet show COMPATIBLE truth at the same moment for the
+  same viewer; paid/approved work shows no ACTION_REQUIRED; two viewers with
+  the same rights see the same counts.
+- **RC-F:** a persona corrects a submitted/approved record (or supersedes it)
+  and the correction is visible with before/after; cycle/version display
+  matches reality; a blocked task can be marked blocked without handoff.
+- **RC-G:** a persona asks for help, receives a reply, links peer review to
+  the reviewed work, and keeps the required business context inside CVE —
+  without using group chat as the system of record.
+- **RC-H:** label = picker = enforcement for every task a persona sees; an
+  action the server will refuse is never offered; capacity counts match
+  between card and enforcement; membership changes produce a visible,
+  auditable signal.
+- **RC-I:** closing a tab / a failed bootstrap does not leave a valid orphan
+  session (or leaves one that is visible and revocable); repeated failed
+  logins trigger the decided throttle/lockout behavior.
+- **RC-J:** switching to zh-CN/ru/ar shows no raw keys and consistent values
+  across surfaces (F-43 reproduced or retired); CSV exports label their
+  timezone.
+- **RC-K:** every visible button navigates or reports why not; sign-out is
+  discoverable; login errors distinguish credential failure from outage.
+- **RC-L:** with RC-A fixed, a change made by persona A appears for observer
+  B within the decided propagation bound, or the UI declares itself stale.
+
+## 26. Overfit-to-Day-1 Checks (per family)
+
+The mandated scenario list applied to each family. Answers from source where
+possible; UNRESOLVED where not.
+
+- **RC-A:** 10 users = proven failure (Day-1). 50/500 users = worse by
+  construction (single-lane writes, full-bootstrap reads; §20). Two
+  simultaneous decisions = serialized, correct but slow. Lost response after
+  commit = RC-B territory. Manager/admin race = serialized by the org lock;
+  outcome order is whoever commits first — no semantic guard (ties to RC-C).
+- **RC-B:** lost response after commit = the command applied but the user
+  believes it failed → retry risk; redeem/admin_adjust duplicate on retry
+  (no idempotency — SOURCE FACT); task commands fail closed on retry (state
+  precondition). Stale UI = full bootstrap refetch on error helps, but the
+  dialog is already gone.
+- **RC-C:** two simultaneous decisions on one submission = serialized;
+  first valid approver wins (state gate) — SOURCE FACT. Manager/admin race =
+  admin can precede the manager (F-04 — no hold state). Correction after
+  approval = no reversal path on the legacy ledger (Q2/Q7).
+- **RC-D:** at 50/500 users the governance chain multiplies write volume per
+  payout (§20 item 8); whether issuance stays admin-explicit at scale is a
+  product decision — UNRESOLVED.
+- **RC-E:** stale UI between polls = guaranteed disagreement windows of up to
+  ~8 s plus focus events; shared device = per-tab sessionStorage limits
+  cross-tab leakage but attention derivations still diverge per tab until
+  next bootstrap. 500 users: counter derivations stay client-side over a
+  growing bootstrap — cost grows (§20).
+- **RC-F:** correction after approval = impossible today except reopen
+  (which resets counters without reversing money) — the F-15/F-22/F-32 class
+  is structural, not load-dependent.
+- **RC-G:** no external chat available = Day-1's core flows (approval relay,
+  corrections, help replies, ownership records) have no in-product home —
+  the product currently assumes an out-of-band channel. UNRESOLVED as scope.
+- **RC-H:** manager/admin race on reassign/membership = serialized by the org
+  lock for org mutations; task reassign is a task command (org X) — order
+  decides, no semantic precedence rule. Shared device = eligibility confusion
+  compounds with F-39 (locale) and session gaps (RC-I).
+- **RC-I:** shared device = sessionStorage per-tab helps, but 12 h orphan
+  sessions remain valid server-side; no revocation visibility. Retry login =
+  unlimited attempts (F-08).
+- **RC-J/RC-K:** load-independent; shared-device locale inheritance (F-39) is
+  the one cross-account interaction.
+- **RC-L:** 50/500 users polling = read amplification (§9/§20); whether
+  polling or push is the target is UNRESOLVED (product/architecture
+  decision).
+
+## 27. Future Closure Standard & Final Status
 
 What "closure" must mean for each class, stated as verifiable criteria
 (without prescribing implementation):
 
-1. **F-01**: closure requires a reproduced freeze at baseline, a named
-   mechanism confirmed by instrumentation (lock-wait vs pool exhaustion vs
-   event-loop stall), and a post-change rerun of the same concurrent UAT
-   scenario showing absence — not merely "tests pass".
-2. **Economy divergence**: closure requires a documented canonical-economy
-   decision and a single observable payout path in a repeated Day-1-like
-   scenario (ledger and governance counts reconciled, not 19/0).
-3. **Attention duplicates (D4/D7)**: closure requires one declared source
-   of truth per attention concept and a UI state where paid work no longer
-   shows ACTION_REQUIRED in a repeated scenario.
-4. **Authority confusion (C2)**: closure requires the UI to reflect the
-   server outcome (no closed-dialog false success) in a repeated F-03/04/05
-   scenario.
+1. **F-01 / RC-A**: closure requires a reproduced freeze at baseline, the
+   named mechanism confirmed by instrumentation (lock-wait vs pool
+   exhaustion vs event-loop stall — the exact runtime wait graph is still
+   unproven), and a post-change rerun of the same concurrent UAT scenario
+   showing absence — not merely "tests pass".
+2. **Economy divergence (RC-D)**: closure requires a documented
+   canonical-economy decision (Q1) and a single observable payout path in a
+   repeated Day-1-like scenario (ledger and governance counts reconciled,
+   not 19/0).
+3. **Attention duplicates (RC-E, D4/D7)**: closure requires one declared
+   source of truth per attention concept and a UI state where paid work no
+   longer shows ACTION_REQUIRED in a repeated scenario.
+4. **Authority confusion (RC-C)**: closure requires the UI to reflect the
+   server outcome (no closed-dialog false success) and the ledger to name
+   the true decider in a repeated F-03/04/05 scenario.
 5. **Duplicate-truth register (D1–D13)**: each entry closes only by an
    explicit keep/merge/delegate decision recorded against source — never by
    silence.
-6. **Unresolved questions (§22)**: each must be answered by the founder or
+6. **Unresolved questions (§23)**: each must be answered by the founder or
    by source evidence before RA-1 design work that touches its domain.
-7. **Evidence gap**: closure of this phase requires the Day-1 53-finding
-   log to be supplied and mapped against clusters C1–C5; until then the
-   clustering is partial and labeled as such.
+7. **Evidence**: the Day-1 53-finding set is now ingested and mapped (§21);
+   UNRECONCILED items (F-43, F-25 items, F-38 item, F-06 mechanism) remain
+   open evidence obligations for the recovery phase that touches them.
+
+**FINAL STATUS**
+
+- SOURCE REALITY COVERAGE: complete for the audited domains with named
+  residuals — connector action internals (Slack/GitHub), ingestion service
+  internals, provenance service beyond its entry points, notification email
+  internals, frontend i18n resources and dashboard view components were not
+  line-audited; every claim made about them here is labeled accordingly.
+- DAY-1 FINDINGS MAPPED: **53/53 (unmapped: 0)**; environment findings
+  **E-01…E-15: 15/15 separately classified**, none merged into product
+  defects.
+- UNRESOLVED ARCHITECTURE QUESTIONS: **14** (§23), including 2 carried
+  UNRECONCILED Day-1 evidence items (F-43, F-06 mechanism) plus F-25/F-38
+  sub-items.
+- ROOT-CAUSE FAMILY COUNT: **12** (RC-A…RC-L).
+- RA-0 CODE GATE: **PASS** — no production source, test, migration,
+  dependency or Graphify source-state change was made; this pass modified
+  only this document.
+- RA-0 EVIDENCE GATE: **PASS** — the full Day-1 finding set was supplied and
+  mapped; unresolved evidence is preserved honestly and labeled.
+- RA-0 PRODUCT-REALITY GATE: **PASS** — both independent-review inaccuracies
+  corrected (threadpool claim, §2/§6; lock-scope overgeneralization,
+  §2/§7), dependency ordering rebuilt from full evidence (§24).
+
+**RA-0 VERDICT: FINAL CLOSED** (subject to independent review of this
+closure pass).
 
 ---
 
 END OF RA-0 REPORT — READ-ONLY. No code, test, migration, or configuration
-was changed by this audit. Next step per mandate: docs-only commit, push,
-report, STOP. RA-1 design work is NOT authorized by this document.
+was changed by this audit or its closure pass. Next step per mandate:
+docs-only commit, push, report, STOP. RA-1 design work is NOT authorized by
+this document.
