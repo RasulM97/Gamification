@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from sqlalchemy import select  # noqa: E402
 
 from app.db import session_scope  # noqa: E402
-from app.models import Task, now_ms  # noqa: E402
+from app.models import Task, User, now_ms  # noqa: E402
 from app.organization.model import Team, TeamMembership  # noqa: E402
 
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 400
@@ -27,6 +27,12 @@ with session_scope() as db:
         for uid in ('u-dana', 'u-marcus', 'u-priya', 'u-jonas', 'u-aisha'):
             db.add(TeamMembership(company_id='co-aster', team_id=team.id,
                                   user_id=uid, manager=uid == 'u-marcus'))
+    # Negative-control capacity headroom: the control employee must be able
+    # to claim regardless of seed occupancy (Gate B: control must be a
+    # genuinely eligible claim, not a hidden capacity rejection).
+    priya = db.get(User, 'u-priya')
+    if priya is not None:
+        priya.max_active_tasks = 50
     now = now_ms()
     for i in range(N):
         db.add(Task(id=f't-e1{TAG}-{i:04d}', company_id='co-aster',

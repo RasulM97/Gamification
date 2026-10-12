@@ -1,25 +1,35 @@
-"""E6 v2 — crash-orphan files (corrected after independent review).
+"""E6 v3 — crash-orphan files (corrected after independent review).
 
 Baseline storage fact (SOURCE FACT, storage.py:38-46): save() writes the
 FINAL uuid-prefixed name directly with open(dest,'wb') + f.write(data).
 There is no temp-write + rename step in the baseline.
 
-Method corrections vs v1:
+Method corrections vs v2 (Gate F):
+  - Quiescence is MANDATORY before classification: after the real kill, the
+    observer waits up to 30 s for zero active app backends
+    (application_name='ra11-app' on THIS disposable database only). If
+    quiescence is not achieved, the real-kill boundary is INCONCLUSIVE —
+    the absence of files/rows cannot be attributed while an operation may
+    still be in flight.
+  - Process death is confirmed (proc.poll()) and recorded, not assumed.
+  - The kill-boundary upload carries a unique upload ID (request-scoped
+    filename + title) so survivors/rows are attributable to this attempt.
+  - Client byte counting is explicitly NOT server-reception proof: the
+    client counter measures what httpx pushed into the socket; server-side
+    reception is bounded only by zero-file + zero-row + staging-boundary
+    evidence (staging follows the full multipart read).
+  - A successful NO-KILL control upload of the identical payload runs first.
+
+Carried over from v2:
   - Multipart transport is valid for the pinned HTTPX version (httpx
     0.28.1): the slow upload uses a manually framed multipart/form-data
     streaming body (Content-Type header + boundary, chunked generator),
     NOT a generator stuffed into files= (which httpx does not stream).
     Actual bytes sent are counted by the generator and recorded.
-  - A successful NO-KILL control upload of the identical payload runs first.
-  - Kill boundaries are explicit and verified: during-transfer kill is
-    confirmed by (a) counted bytes sent, (b) observer showing the server
-    never opened a transaction for the upload, (c) zero new files.
   - Simulated filesystem exceptions (patched storage.save) are reported
     SEPARATELY from real process termination.
   - Orphan detection scans for BOTH temp-name and final-name survivors.
-  - Quiescence: no file is labeled an orphan until the observer shows zero
-    active app backends (no operation still in flight, commit outcome
-    known). The harness itself never deletes anything.
+  - The harness itself never deletes anything.
 
 Boundaries covered:
   ctrl) successful slow upload, no kill — file + rows present.
@@ -54,12 +64,12 @@ def dir_listing(upload: Path):
 
 
 def multipart_stream(filename: str, total_chunks: int, counter: dict,
-                     delay: float = CHUNK_DELAY):
+                     delay: float = CHUNK_DELAY, title: str = 'E6 stream upload'):
     """Yield a valid multipart/form-data body for httpx content= streaming.
     Counts actual bytes sent into counter['sent']."""
     def gen():
         head = (f'--{BOUNDARY}\r\nContent-Disposition: form-data; '
-                f'name="title"\r\n\r\nE6 stream upload\r\n'
+                f'name="title"\r\n\r\n{title}\r\n'
                 f'--{BOUNDARY}\r\nContent-Disposition: form-data; '
                 f'name="reward"\r\n\r\n1\r\n'
                 f'--{BOUNDARY}\r\nContent-Disposition: form-data; '
@@ -77,12 +87,14 @@ def multipart_stream(filename: str, total_chunks: int, counter: dict,
     return gen()
 
 
-def post_stream(base, token, filename, chunks, counter, timeout=90):
+def post_stream(base, token, filename, chunks, counter, timeout=90,
+                title='E6 stream upload'):
     import httpx
     return httpx.post(f'{base}/api/tasks', headers={
         **lab.auth(token),
         'Content-Type': f'multipart/form-data; boundary={BOUNDARY}'},
-        content=multipart_stream(filename, chunks, counter), timeout=timeout)
+        content=multipart_stream(filename, chunks, counter, title=title),
+        timeout=timeout)
 
 
 def orphans_among(obs, files):
@@ -114,6 +126,7 @@ def main():
         # ══ subprocess app for real-transfer cases ══════════════════════
         env = lab.app_env(url, upload)
         engine.dispose()
+        quiescence_ok = False  # initialized; set by boundary (a)
         proc, wd = lab.spawn_app(env, lab.PORT_A, ev, watchdog_s=240)
         try:
             token = lab.login(BASE, 'dana@aster.demo')
@@ -131,14 +144,18 @@ def main():
                      expectation='200, one final-name file, one Attachment row')
 
             # ── a) REAL process kill during transfer ─────────────────────
+            upload_uid = lab.req_id()
+            kill_title = f'E6 stream upload kill-{upload_uid}'
+            kill_file = f'big-{upload_uid}.bin'
             counter2 = {'sent': 0}
             before = set(dir_listing(upload))
             outcome = {}
+            quiescence_ok = False
 
             def uploader():
                 try:
-                    r = post_stream(BASE, token, 'big.bin', CHUNKS, counter2,
-                                    timeout=60)
+                    r = post_stream(BASE, token, kill_file, CHUNKS, counter2,
+                                    timeout=60, title=kill_title)
                     outcome['http'] = r.status_code
                 except Exception as e:
                     outcome['exception'] = type(e).__name__
@@ -147,30 +164,56 @@ def main():
             t.start()
             time.sleep(1.6)  # labeled: timed kill, mid-transfer
             ev.event('latch', step='a-kill-app-mid-transfer',
+                     upload_id=upload_uid,
                      bytes_sent_so_far=counter2['sent'],
                      server_reached_staging=bool(
                          set(dir_listing(upload)) - before))
             lab.kill_tree(proc)
             wd.cancel()
+            try:
+                proc.wait(timeout=10)
+            except Exception:
+                pass
+            process_died = proc.poll() is not None
             t.join(timeout=15)
-            # quiescence: no app backends may remain before classification
+            # MANDATORY quiescence (Gate F): zero active backends belonging
+            # to THIS app (application_name='ra11-app') on THIS disposable
+            # database before any absence-of-file/row claim is made.
             obs.snap_activity('a-post-kill')
             deadline = time.time() + 30
             while time.time() < deadline and obs.app_backends_active() > 0:
                 time.sleep(0.5)
+            remaining = obs.app_backends_active()
+            quiescence_ok = (remaining == 0)
             obs.snap_activity('a-quiescence-end')
-            ev.event('a_quiescence', app_backends_active=obs.app_backends_active(),
-                     note='lingering backends after a kill are dead-but-'
-                          'unreaped sockets on Windows; see a-post-kill / '
-                          'a-quiescence-end snapshots for their identity')
+            ev.event('a_quiescence', upload_id=upload_uid,
+                     process_died=process_died,
+                     app_backends_active=remaining,
+                     quiesced=quiescence_ok,
+                     note=('quiescence achieved: no ra11-app backend on this '
+                           'disposable DB' if quiescence_ok else
+                           'QUISCENCE NOT ACHIEVED within 30s — real-kill '
+                           'boundary is INCONCLUSIVE; lingering entries are '
+                           'dead-but-unreaped sockets (see snapshots)'))
             new = sorted(set(dir_listing(upload)) - before)
-            ev.event('a_result', upload_thread=outcome,
-                     bytes_sent=counter2['sent'],
+            kill_rows = obs.scalar(
+                'SELECT count(*) FROM attachments a JOIN tasks t '
+                'ON a.task_id=t.id WHERE t.title=%s', (kill_title,))
+            ev.event('a_result', upload_id=upload_uid,
+                     upload_thread=outcome,
+                     bytes_sent_by_client=counter2['sent'],
                      survivors=new,
+                     attachment_rows_for_upload=kill_rows,
                      temp_name_survivors=[f for f in new
                                           if not f.split('-', 1)[0].isalnum()
                                           or '-' not in f],
                      final_name_survivors=[f for f in new if '-' in f],
+                     server_byte_verification='NOT AVAILABLE — client byte '
+                         'counter measures what httpx pushed into the '
+                         'socket, never what the server received; '
+                         'server-side reception is bounded only by '
+                         'zero-file + zero-row + the staging boundary '
+                         '(staging follows the full multipart read)',
                      note='REAL process termination during transfer; staging '
                           'follows the full multipart read, so a transfer-time '
                           'kill is expected to leave zero bytes')
@@ -265,15 +308,26 @@ def main():
             'e6',
             harness_validity='VALID',
             product_observation='DEFECT_OBSERVED',
-            causal_claim='CONFIRMED',
-            rationale=('Real-transfer kill (a) verified with byte accounting '
-                       'and quiescence: zero survivors. Simulated boundaries '
-                       '(a2/c/d) produce final-name orphans, including the '
-                       'multi-file staging gap (c) where mutate() cleanup '
-                       'never runs. Temp-name orphans: none possible at '
-                       'baseline (no temp+rename). Simulations labeled; no '
-                       'file was ever deleted by the harness on row-absence '
-                       'alone.'),
+            causal_claim=('CONFIRMED' if quiescence_ok else 'INCONCLUSIVE'),
+            rationale=(('Real-transfer kill (a): process death confirmed, '
+                        'quiescence achieved (zero ra11-app backends on the '
+                        'disposable DB), zero survivors, zero attachment '
+                        'rows for the tagged upload. '
+                        if quiescence_ok else
+                        'Real-transfer kill (a): QUiescence NOT achieved '
+                        'within 30s — zero-survivor observation for the '
+                        'kill boundary is INCONCLUSIVE (an operation may '
+                        'still have been in flight). ')
+                       + 'Simulated boundaries (a2/c/d) produce final-name '
+                       'orphans, including the multi-file staging gap (c) '
+                       'where mutate() cleanup never runs. Temp-name '
+                       'orphans: none possible at baseline (no '
+                       'temp+rename). Client byte counters measure socket '
+                       'writes, never server reception; server-side '
+                       'reception is bounded by zero-file + zero-row + the '
+                       'staging boundary. Simulations labeled; the harness '
+                       'never deleted anything.'),
+            quiescence_achieved=quiescence_ok,
             boundaries=['ctrl', 'a-real-kill', 'a2-sim-write-crash',
                         'b-not-applicable', 'c-sim-multifile', 'd-sim-abandon'])
         ev.event('e6_done')
@@ -281,7 +335,7 @@ def main():
         obs.close()
         pg.stop()
     ev.finish()
-    print('E6 v2 evidence at', base)
+    print('E6 v3 evidence at', base)
 
 
 if __name__ == '__main__':

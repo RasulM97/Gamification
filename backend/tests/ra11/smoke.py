@@ -34,7 +34,9 @@ def main():
             checks['evidence_isolation'] = True
 
         # ── DB safety: unique db + identity + refusal of stale dir ───────
-        pg = lab.DisposablePG(base / 'pg', db_tag='smoke')
+        lab.verify_run_paths(base, rid, base / 'uploads')
+        pg = lab.DisposablePG(base / 'pg', db_tag='smoke',
+                              run_dir=lab.OUT_ROOT / rid)
         url = pg.start()
         checks['db_unique_name'] = pg.db_name.startswith('ra11_')
         ev.event('pg_started', db_name=pg.db_name,
@@ -43,7 +45,8 @@ def main():
         checks['db_identity'] = obs.scalar('SELECT current_database()') == pg.db_name
         pg2_refused = False
         try:
-            lab.DisposablePG(base / 'pg', db_tag='smoke2')
+            lab.DisposablePG(base / 'pg', db_tag='smoke2',
+                             run_dir=lab.OUT_ROOT / rid)
         except ValueError:
             pg2_refused = True
         checks['preexisting_cluster_refused'] = pg2_refused
@@ -51,10 +54,18 @@ def main():
         # ── path containment: safe_rmtree refuses outside paths ──────────
         refused = False
         try:
-            lab.safe_rmtree(lab.REPO / 'backend')
+            lab.safe_rmtree(lab.REPO / 'backend', lab.OUT_ROOT / rid)
         except ValueError:
             refused = True
+        try:
+            lab.safe_rmtree(lab.OUT_ROOT / 'final-20261012',
+                            lab.OUT_ROOT / rid)  # historical run dir
+            refused = False
+        except ValueError:
+            pass
         checks['rmtree_containment'] = refused
+        checks['historical_run_preserved'] = (lab.OUT_ROOT
+                                              / 'final-20261012').exists()
 
         # ── process safety: one worker, port ownership, watchdog ─────────
         env = lab.app_env(url, base / 'uploads')

@@ -69,6 +69,11 @@ IS_WIN = platform.system() == 'Windows'
 
 RUN_ID_RE = re.compile(r'^[a-z0-9][a-z0-9-]{1,60}$')
 
+
+class HarnessError(RuntimeError):
+    """Containment/startup failure. NEVER treated as a successful run;
+    experiments must stop immediately."""
+
 # ── runner-crash cleanup registry (Gate 1) ───────────────────────────────────
 _LIVE_PROCS: list = []
 _LIVE_PGS: list = []
@@ -96,15 +101,35 @@ def validate_run_id(rid: str) -> str:
     return rid
 
 
-def safe_rmtree(path: Path):
-    """Recursive deletion with containment proof (Gate 1)."""
+def safe_rmtree(path: Path, run_dir: Path | None = None):
+    """Recursive deletion restricted to the CURRENT run-owned directory.
+    Rejects previous runs, sibling/ancestor directories and unverified
+    paths. Fails closed: any doubt -> ValueError, nothing deleted."""
     p = Path(path).resolve()
     root = OUT_ROOT.resolve()
-    if root not in p.parents:
-        raise ValueError(f'refusing to delete outside {root}: {p}')
-    if p == root:
-        raise ValueError('refusing to delete the evidence root itself')
+    if run_dir is None:
+        raise ValueError('run_dir is required: deletion is run-scoped')
+    rd = Path(run_dir).resolve()
+    if root not in rd.parents:
+        raise ValueError(f'run dir outside evidence root: {rd}')
+    if rd not in p.parents:
+        raise ValueError(f'refusing to delete outside current run dir: {p}')
+    if p == rd or p == root:
+        raise ValueError('refusing to delete a run/root directory itself')
     shutil.rmtree(p, ignore_errors=True)
+
+
+def verify_run_paths(base_dir: Path, rid: str, upload_dir: Path | None = None):
+    """Upload/cluster/evidence paths must live under OUT_ROOT/<rid>/."""
+    base = Path(base_dir).resolve()
+    run_root = (OUT_ROOT / rid).resolve()
+    if base.parent != run_root and base != run_root:
+        raise HarnessError(f'experiment dir {base} not under run root {run_root}')
+    if upload_dir is not None:
+        up = Path(upload_dir).resolve()
+        if base not in up.parents:
+            raise HarnessError(f'upload dir {up} not under experiment dir {base}')
+    return True
 
 
 def harness_hash() -> str:
@@ -124,9 +149,15 @@ class Evidence:
     events.jsonl is opened with mode 'x': a second run can never append to
     a previous run's event stream (Gate 1 evidence isolation)."""
 
+    # v3: 'INVALID' added to PRODUCT/CAUSAL so a broken control/setup can be
+    # classified INVALID end-to-end (a false CONFIRMED is never acceptable);
+    # 'NO_DEFECT_OBSERVED' distinguishes a clean measured run from a merely
+    # expected one.
     VALID_HARNESS = ('VALID', 'INVALID', 'INCONCLUSIVE')
-    VALID_PRODUCT = ('DEFECT_OBSERVED', 'EXPECTED_BEHAVIOR', 'INCONCLUSIVE')
-    VALID_CAUSAL = ('CONFIRMED', 'SUPPORTED', 'REFUTED', 'INCONCLUSIVE')
+    VALID_PRODUCT = ('DEFECT_OBSERVED', 'NO_DEFECT_OBSERVED',
+                     'EXPECTED_BEHAVIOR', 'INCONCLUSIVE', 'INVALID')
+    VALID_CAUSAL = ('CONFIRMED', 'SUPPORTED', 'REFUTED', 'INCONCLUSIVE',
+                    'INVALID')
 
     def __init__(self, directory: Path):
         self.dir = Path(directory)
@@ -136,7 +167,11 @@ class Evidence:
         self.t0 = time.perf_counter()
 
     def event(self, kind: str, **data):
+        # t_epoch (Unix seconds) is the documented shared time reference for
+        # correlation with pool logs and observer snapshots; t_ms is the
+        # run-relative convenience clock.
         rec = {'t_ms': round((time.perf_counter() - self.t0) * 1000, 2),
+               't_epoch': round(time.time(), 3),
                'kind': kind, **data}
         with self._lock:
             self._log.write(json.dumps(rec, default=str) + '\n')
@@ -208,11 +243,15 @@ class DisposablePG:
     experiment. Refuses pre-existing cluster dirs; verifies identity via an
     independent connection; bounded, containment-checked cleanup."""
 
-    def __init__(self, directory: Path, db_tag: str = 'db'):
+    def __init__(self, directory: Path, db_tag: str = 'db',
+                 run_dir: Path | None = None):
         self.dir = Path(directory).resolve()
         root = OUT_ROOT.resolve()
         if root not in self.dir.parents:
             raise ValueError(f'cluster dir outside evidence root: {self.dir}')
+        self.run_dir = Path(run_dir).resolve() if run_dir else None
+        if self.run_dir is not None and self.run_dir not in self.dir.parents:
+            raise ValueError(f'cluster dir outside current run dir: {self.dir}')
         if (self.dir / 'cluster').exists():
             raise ValueError(f'refusing pre-existing cluster dir: {self.dir}')
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -267,18 +306,23 @@ class DisposablePG:
             self._server = None
         if self in _LIVE_PGS:
             _LIVE_PGS.remove(self)
-        safe_rmtree(self.dir)
+        safe_rmtree(self.dir, self.run_dir)
 
 
 def app_env(db_url: str, upload_dir: Path) -> dict:
     """Environment for a disposable app instance. Secrets are test-only,
     fixed, and never real credentials. Worker-count overrides are stripped
-    so exactly one worker runs (Gate 1)."""
+    so exactly one worker runs (Gate 1). The DB URL is tagged with
+    application_name=ra11-app so observers can distinguish app backends
+    from unrelated PostgreSQL background processes (harness-side config;
+    no production change)."""
     env = dict(os.environ)
     for k in ('WEB_CONCURRENCY', 'UVICORN_WORKERS', 'WEB_WORKERS'):
         env.pop(k, None)
+    sep = '&' if '?' in db_url else '?'
+    tagged_url = db_url + sep + 'application_name=ra11-app'
     env.update({
-        'CVE_DATABASE_URL': db_url,
+        'CVE_DATABASE_URL': tagged_url,
         'CVE_UPLOAD_DIR': str(upload_dir),
         'CVE_DEV_MODE': 'true',
         'CVE_ALLOW_WEAK_DEV_PASSWORDS': 'true',
@@ -397,17 +441,24 @@ def spawn_app(env: dict, port: int, ev: Evidence, watchdog_s: float = 240.0):
     wd = Watchdog(proc, watchdog_s, ev)
     ev.event('app_spawned', pid=proc.pid, port=port, watchdog_s=watchdog_s,
              workers=1, worker_env_overrides_stripped=True)
-    if wait_port(port, 30):
-        owner_ok = verify_port_owner(port, proc.pid)
-        import psutil as _ps
-        owners = [c.pid for c in _ps.net_connections(kind='tcp')
-                  if c.status == 'LISTEN' and c.laddr and c.laddr.port == port]
-        ev.event('port_owner_check', port=port, spawned_pid=proc.pid,
-                 listener_pids=owners, ok=owner_ok)
-        if not owner_ok:
-            kill_tree(proc)
-            raise RuntimeError(f'port {port} is not owned by spawned pid '
-                               f'{proc.pid}; refusing to continue')
+    if not wait_port(port, 30):
+        ev.event('app_start_failed', pid=proc.pid, port=port,
+                 harness_error=True, reason='readiness timeout')
+        kill_tree(proc)
+        raise HarnessError(f'app never opened port {port} within 30s '
+                           '(HARNESS_ERROR, not a successful start)')
+    owner_ok = verify_port_owner(port, proc.pid)
+    import psutil as _ps
+    owners = [c.pid for c in _ps.net_connections(kind='tcp')
+              if c.status == 'LISTEN' and c.laddr and c.laddr.port == port]
+    ev.event('port_owner_check', port=port, spawned_pid=proc.pid,
+             listener_pids=owners, ok=owner_ok)
+    if not owner_ok:
+        ev.event('app_start_failed', pid=proc.pid, port=port,
+                 harness_error=True, reason='port not owned by spawned tree')
+        kill_tree(proc)
+        raise HarnessError(f'port {port} is not owned by the spawned process '
+                           f'tree (HARNESS_ERROR; refusing to continue)')
     return proc, wd
 
 
@@ -443,6 +494,8 @@ class Observer:
     def __init__(self, db_url: str, ev: Evidence):
         import psycopg2
         self._url = db_url.replace('postgresql+psycopg2://', 'postgresql://')
+        # database identity: only this disposable database's activity counts
+        self.db_name = self._url.split('?')[0].rsplit('/', 1)[-1]
         self.conn = psycopg2.connect(self._url, application_name='ra11-observer')
         self.conn.autocommit = True
         self.ev = ev
@@ -472,11 +525,29 @@ class Observer:
                        state_change, backend_xid, pg_blocking_pids(pid),
                        left(query, 160)
                 FROM pg_stat_activity
-                WHERE application_name NOT LIKE 'ra11-%'
+                WHERE datname = %s
                 ORDER BY pid
-            """)
+            """, (self.db_name,))
             rows = c.fetchall()
         self.ev.event('pg_stat_activity', label=label,
+                      rows=[[str(x) for x in r] for r in rows])
+        return rows
+
+    def snap_locks_filtered(self, label: str):
+        """Locks held/waited by backends of THIS disposable database."""
+        with self.conn.cursor() as c:
+            c.execute("""
+                SELECT now() AS at, l.locktype, l.mode, l.granted, l.pid,
+                       a.application_name, a.state, a.wait_event_type,
+                       a.wait_event, pg_blocking_pids(l.pid),
+                       left(a.query, 120)
+                FROM pg_locks l
+                JOIN pg_stat_activity a ON a.pid = l.pid
+                WHERE a.datname = %s
+                ORDER BY l.pid, l.locktype
+            """, (self.db_name,))
+            rows = c.fetchall()
+        self.ev.event('pg_locks_joined', label=label,
                       rows=[[str(x) for x in r] for r in rows])
         return rows
 
@@ -486,9 +557,13 @@ class Observer:
             return c.fetchone()[0]
 
     def app_backends_active(self) -> int:
+        """Only backends of the harness-tagged application on THIS
+        disposable database count; PostgreSQL background processes and
+        unrelated clients never do (Gate F)."""
         return self.scalar(
             "SELECT count(*) FROM pg_stat_activity "
-            "WHERE application_name NOT LIKE 'ra11-%' AND pid <> pg_backend_pid()")
+            "WHERE datname = %s AND application_name = 'ra11-app'",
+            (self.db_name,))
 
     def close(self):
         try:
@@ -501,7 +576,15 @@ class Observer:
 
 class LoopProbe:
     """External loop-liveness probe: a no-DB path (expected 404) proves the
-    event loop itself is scheduling; /api/health adds the pool dimension."""
+    event loop itself is scheduling; /api/health adds the pool dimension.
+
+    Per-request timeout is 2s (v3 calibration): healthy local responses are
+    <50ms, so 2s is generous, while a wedged loop yields >=3 consecutive
+    failures inside a 12-15s observation window (the v2 5s timeout could
+    record only ~1 in-window failure, hiding a real wedge from the
+    bounded-window detector)."""
+
+    PROBE_TIMEOUT_S = 2
 
     def __init__(self, port: int, ev: Evidence, interval_s: float = 0.05):
         self.port = port
@@ -522,7 +605,7 @@ class LoopProbe:
                     try:
                         req = urllib.request.Request(
                             f'http://127.0.0.1:{self.port}{path}')
-                        urllib.request.urlopen(req, timeout=5).read()
+                        urllib.request.urlopen(req, timeout=self.PROBE_TIMEOUT_S).read()
                         ms = (time.perf_counter() - t0) * 1000
                         self.ev.event('probe', probe=tag, ok=True, ms=round(ms, 2))
                     except urllib.error.HTTPError as e:
@@ -546,49 +629,93 @@ class LoopProbe:
             self._thread.join(timeout=10)
 
 
+def load_probes(ev_dir: Path, probe: str):
+    """All probe events for one probe kind, ordered by time."""
+    out = []
+    with open(Path(ev_dir) / 'events.jsonl', encoding='utf-8') as f:
+        for line in f:
+            r = json.loads(line)
+            if r.get('kind') == 'probe' and r.get('probe') == probe:
+                out.append({'t_ms': r['t_ms'], 'ok': bool(r.get('ok'))})
+    return out
+
+
 def probe_fail_count(ev_dir: Path, probe: str, since_ms: float = 0) -> int:
-    fails = 0
-    with open(Path(ev_dir) / 'events.jsonl', encoding='utf-8') as f:
-        for line in f:
-            r = json.loads(line)
-            if (r.get('kind') == 'probe' and r.get('probe') == probe
-                    and not r.get('ok') and r.get('t_ms', 0) >= since_ms):
-                fails += 1
-    return fails
+    return sum(1 for x in load_probes(ev_dir, probe)
+               if not x['ok'] and x['t_ms'] >= since_ms)
 
 
-def probe_max_consecutive_fails(ev_dir: Path, probe: str,
-                                since_ms: float = 0) -> int:
-    """Each failed probe costs one full probe timeout (~5 s), so raw fail
-    counts under-report duration; consecutive-failure runs are the honest
-    unresponsiveness metric."""
+def detect_wedge(probes, process_alive: bool, window: tuple,
+                 *, latches_released: bool, min_consec_fails: int = 3) -> dict:
+    """Pure bounded-window wedge detector (Gate B). Unit-tested in
+    oracle_tests.py.
+
+    probes: [{'t_ms', 'ok'}] loop-probe history. window: (start_ms, end_ms)
+    measured ONLY after every injected latch was released.
+
+    non_recovery_observed requires ALL of:
+      1. healthy pre-window loop probes (>=1 ok before the window);
+      2. process alive at assessment time;
+      3. >= min_consec_fails consecutive failures INSIDE the window
+         (each failure ~= one full probe timeout of unresponsiveness);
+      4. ZERO successful loop probes inside the window (no recovery);
+      5. every injected latch released before the window started.
+    Historical failures before the window never count. Two ordinary
+    connection exceptions never imply a wedge. A dead process is never
+    'alive but wedged'."""
+    start_ms, end_ms = window
+    in_window = [p for p in probes if start_ms <= p['t_ms'] <= end_ms]
+    before = [p for p in probes if p['t_ms'] < start_ms]
+    healthy_before = any(p['ok'] for p in before)
+    oks = sum(1 for p in in_window if p['ok'])
     best = cur = 0
-    with open(Path(ev_dir) / 'events.jsonl', encoding='utf-8') as f:
+    for p in in_window:
+        cur = 0 if p['ok'] else cur + 1
+        best = max(best, cur)
+    non_recovery = (healthy_before and process_alive
+                    and best >= min_consec_fails and oks == 0
+                    and latches_released)
+    return {
+        'window_start_ms': round(start_ms, 1), 'window_end_ms': round(end_ms, 1),
+        'healthy_pre_window_probes': healthy_before,
+        'process_alive': process_alive,
+        'latches_released': latches_released,
+        'loop_fails_in_window': sum(1 for p in in_window if not p['ok']),
+        'loop_oks_in_window': oks,
+        'loop_max_consecutive_fails_in_window': best,
+        'non_recovery_observed': non_recovery,
+    }
+
+
+def assess_wedge(ev: Evidence, proc, window_start_ms: float,
+                 window_end_ms: float | None = None, *,
+                 latches_released: bool = True,
+                 min_consec_fails: int = 3) -> dict:
+    """Bounded-window wedge assessment over recorded probes.
+
+    The detector outcome is about REQUEST PROGRESSION only. A lock-causality
+    claim additionally requires lock/snapshot evidence inside the window —
+    checked here via the presence of pg_locks/pg_stat_activity events —
+    and is reported separately (lock_causality_evidence_present)."""
+    if window_end_ms is None:
+        window_end_ms = (time.perf_counter() - ev.t0) * 1000
+    result = detect_wedge(load_probes(ev.dir, 'loop'), process_alive(proc),
+                          (window_start_ms, window_end_ms),
+                          latches_released=latches_released,
+                          min_consec_fails=min_consec_fails)
+    # lock-causality evidence must exist to claim lock causality
+    lock_evidence = False
+    with open(ev.dir / 'events.jsonl', encoding='utf-8') as f:
         for line in f:
             r = json.loads(line)
-            if (r.get('kind') == 'probe' and r.get('probe') == probe
-                    and r.get('t_ms', 0) >= since_ms):
-                cur = 0 if r.get('ok') else cur + 1
-                best = max(best, cur)
-    return best
-
-
-def assess_wedge(ev: Evidence, proc, since_ms: float = 0,
-                 min_consec_loop_fails: int = 3) -> dict:
-    """Gate-3 wedge criteria: server process alive AND event loop repeatedly
-    unresponsive (consecutive loop-probe failures; each failure ≈ one full
-    5 s probe timeout) — correlated with the pg_locks/pg_stat_activity
-    snapshots recorded alongside. Two request exceptions alone are NEVER
-    a wedge."""
-    alive = process_alive(proc)
-    consec = probe_max_consecutive_fails(ev.dir, 'loop', since_ms)
-    return {
-        'process_alive': alive,
-        'loop_probe_fails': probe_fail_count(ev.dir, 'loop', since_ms),
-        'loop_probe_max_consecutive_fails': consec,
-        'health_probe_fails': probe_fail_count(ev.dir, 'health', since_ms),
-        'wedge_criteria_met': alive and consec >= min_consec_loop_fails,
-    }
+            if (r.get('kind') in ('pg_locks', 'pg_stat_activity')
+                    and window_start_ms <= r['t_ms'] <= result['window_end_ms']):
+                lock_evidence = True
+                break
+    result['lock_causality_evidence_present'] = lock_evidence
+    result['window_s'] = round((result['window_end_ms']
+                                - result['window_start_ms']) / 1000, 1)
+    return result
 
 
 # ── HTTP helpers ─────────────────────────────────────────────────────────────

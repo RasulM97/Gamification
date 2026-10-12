@@ -17,8 +17,11 @@ def setup(base_dir: Path):
     import importlib
 
     ev = lab.Evidence(base_dir)
+    rid = Path(base_dir).parent.name
+    lab.verify_run_paths(base_dir, rid, Path(base_dir) / 'uploads')
     pg = lab.DisposablePG(Path(base_dir) / 'pg',
-                          db_tag=Path(base_dir).name)
+                          db_tag=Path(base_dir).name,
+                          run_dir=lab.OUT_ROOT / rid)
     upload = Path(base_dir) / 'uploads'
     upload.mkdir(parents=True, exist_ok=True)
     url = pg.start()
@@ -26,7 +29,8 @@ def setup(base_dir: Path):
     ev.event('pg_started', db_name=pg.db_name,
              server_version=pg.server_version)
 
-    os.environ['CVE_DATABASE_URL'] = url
+    os.environ['CVE_DATABASE_URL'] = url + (
+        '&' if '?' in url else '?') + 'application_name=ra11-app'
     os.environ['CVE_UPLOAD_DIR'] = str(upload)
     os.environ['CVE_DEV_MODE'] = 'true'
     os.environ['CVE_ALLOW_WEAK_DEV_PASSWORDS'] = 'true'

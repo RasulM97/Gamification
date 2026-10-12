@@ -1,4 +1,4 @@
-"""E1 v2 — event-loop wedge hypothesis (corrected after independent review).
+"""E1 v3 — event-loop wedge hypothesis (corrected after independent review).
 
 Hypothesis chain (RA-0 §8 / RA-1 v2 §2):
   bootstrap holds organization SHARED advisory lock (via can_view on scoped
@@ -10,20 +10,26 @@ Hypothesis chain (RA-0 §8 / RA-1 v2 §2):
   self-sustaining.
 
 Corrections vs v1:
-  - A wedge is NOT two request exceptions. Wedge criteria (lab.assess_wedge):
-    server process ALIVE + loop probe repeatedly failing + correlated
-    pg_locks/pg_stat_activity snapshots. Independently measured by the
-    external probe thread.
+  - A wedge is NOT two request exceptions. Wedge detection is the
+    bounded-window detector lab.assess_wedge/detect_wedge (unit-tested in
+    oracle_tests.py): healthy pre-window probes + process alive + >=3
+    consecutive in-window probe failures + zero in-window recovery, measured
+    only after every injected latch was released.
   - Independent repetitions: REPS fresh rounds, each with a FRESH app
     process and FRESH scoped-task fixture (same disposable cluster).
-  - The negative control uses a MATCHING SUCCESSFUL Task command (a real
-    claim that returns 200), not a 404/no-op.
+  - The negative control is a genuinely ELIGIBLE EMPLOYEE (priya, capacity
+    headroom fixture-bumped to 50) performing a REAL claim that must return
+    HTTP 200 AND be DB-verified (owner=u-priya, status=IN_PROGRESS). A
+    failed control invalidates the experiment (harness_validity=INVALID),
+    it is never silently absorbed.
   - No synchronization latches in this experiment; the single timing
     injection (0.10 s delay before firing the command) is recorded as an
-    injection boundary. Persistence is measured only after all clients
-    have timed out (no harness thread holds anything).
+    injection boundary. The observation window starts only after all
+    clients have returned or timed out (no harness thread holds anything).
   - Non-recovery is reported as "did not recover within the observed
     N-second window" — never "permanent".
+  - Lock-causality is claimed only when lock/snapshot evidence exists
+    inside the window (assess_wedge.lock_causality_evidence_present).
 """
 import os
 import sys
@@ -39,8 +45,8 @@ SCOPED_TASKS = int(os.environ.get('RA11_E1_TASKS', '150'))
 FANOUT = 10
 REPS = int(os.environ.get('RA11_E1_REPS', '3'))
 REQ_TIMEOUT = 30
-NON_RECOVERY_WINDOW_S = 15
-NEGATIVE_ROUNDS = 2
+NON_RECOVERY_WINDOW_S = 12
+NEGATIVE_ROUNDS = 1  # one eligible-employee control round per rep
 
 
 def fixture_scoped_tasks(env, tag: str, ev):
@@ -106,20 +112,31 @@ def run_positive_round(ev, token, rep: int):
 
 
 def run_negative_round(ev, admin_token, employee_token, rep: int, rnd: int):
-    """Matching SUCCESSFUL command control: claim a real task (threadpool
-    route) under identical bootstrap load. Expected: 200, loop healthy."""
+    """Eligible-employee control: priya (capacity fixture-bumped to 50)
+    claims a real unscoped task under identical bootstrap load.
+    Expected: HTTP 200 + DB-verified ownership; loop healthy.
+    The caller DB-verifies the claim — a failed control INVALIDates E1."""
     import httpx
     r = httpx.post(f'{BASE}/api/tasks', headers=lab.auth(admin_token),
                    data={'title': f'E1-neg-{rep}-{rnd}', 'reward': '1'},
                    timeout=REQ_TIMEOUT)
+    if r.status_code != 200:
+        ev.event('negative_control_setup_failed', rep=rep, round=rnd,
+                 status=r.status_code, body=r.text[:300])
+        return None, None
     tid = r.json().get('task', {}).get('id') or r.json().get('id')
     if not tid:
         # locate by title via bootstrap
         bt = httpx.get(f'{BASE}/api/bootstrap', headers=lab.auth(admin_token),
                        timeout=REQ_TIMEOUT).json()
-        tid = next(t['id'] for t in bt['tasks']
-                   if t['title'] == f'E1-neg-{rep}-{rnd}')
-    ev.event('negative_control_task', rep=rep, round=rnd, task=tid)
+        tid = next((t['id'] for t in bt['tasks']
+                    if t['title'] == f'E1-neg-{rep}-{rnd}'), None)
+    if not tid:
+        ev.event('negative_control_setup_failed', rep=rep, round=rnd,
+                 reason='task id not resolvable')
+        return None, None
+    ev.event('negative_control_task', rep=rep, round=rnd, task=tid,
+             claimer='u-priya (eligible employee, capacity headroom 50)')
     results = {}
     threads = [threading.Thread(target=fire,
                                 args=(ev, employee_token, 'bootstrap',
@@ -133,7 +150,7 @@ def run_negative_round(ev, admin_token, employee_token, rep: int, rnd: int):
         t.start()
     time.sleep(0.10)  # same injection boundary as the positive phase
     ev.event('command_fired', rep=rep, command='threadpool_claim',
-             control='matching successful command (real claim -> 200)')
+             control='eligible employee real claim (must be 200 + DB-owned)')
     cmd.start()
     cmd.join()
     for t in threads:
@@ -141,7 +158,7 @@ def run_negative_round(ev, admin_token, employee_token, rep: int, rnd: int):
     ev.event('negative_round_done', rep=rep, round=rnd,
              wall_ms=round((time.perf_counter() - t_start) * 1000, 1),
              results=results)
-    return results
+    return tid, results
 
 
 def main():
@@ -152,11 +169,13 @@ def main():
         extra={'req_timeout_s': REQ_TIMEOUT, 'fanout': FANOUT, 'reps': REPS,
                'scoped_tasks_per_rep': SCOPED_TASKS,
                'non_recovery_window_s': NON_RECOVERY_WINDOW_S}))
-    pg = lab.DisposablePG(base / 'pg', db_tag='e1')
+    lab.verify_run_paths(base, rid, base / 'uploads')
+    pg = lab.DisposablePG(base / 'pg', db_tag='e1', run_dir=lab.OUT_ROOT / rid)
     upload = base / 'uploads'
     upload.mkdir(parents=True, exist_ok=True)
     proc = obs = probe = None
     rep_summaries = []
+    control_ok = True
     try:
         url = pg.start()
         ev.event('pg_started', db_name=pg.db_name,
@@ -171,7 +190,6 @@ def main():
             # ── positive phase: async command under bootstrap load ───────
             proc, wd = lab.spawn_app(env, lab.PORT_A, ev, watchdog_s=240)
             token = lab.login(BASE, 'dana@aster.demo')
-            admin = token
             import httpx
             t0 = time.perf_counter()
             httpx.get(f'{BASE}/api/bootstrap', headers=lab.auth(token),
@@ -181,26 +199,36 @@ def main():
 
             probe = lab.LoopProbe(lab.PORT_A, ev, interval_s=0.05)
             probe.start()
-            pos_since = (time.perf_counter() - ev.t0) * 1000
 
             obs.snap_activity(f'r{rep}-positive-pre')
             run_positive_round(ev, token, rep)
             obs.snap_locks(f'r{rep}-positive-post')
             obs.snap_activity(f'r{rep}-positive-post')
 
-            # persistence: no harness latch is held; all clients have
-            # already returned/timed out. Observe the window.
-            wedge0 = lab.assess_wedge(ev, proc, pos_since)
-            ev.event('wedge_observation_start', rep=rep, **wedge0)
+            # All clients have returned or timed out; the injection latch
+            # (0.10s sleep) was released before the command fired. The
+            # bounded observation window starts NOW.
+            win_start = (time.perf_counter() - ev.t0) * 1000
+            ev.event('observation_window_start', rep=rep,
+                     window_start_ms=round(win_start, 1),
+                     latches_released=True,
+                     note='all harness clients returned or timed out; '
+                          'no harness thread holds anything')
             time.sleep(NON_RECOVERY_WINDOW_S)
             obs.snap_locks(f'r{rep}-plus-{NON_RECOVERY_WINDOW_S}s')
             obs.snap_activity(f'r{rep}-plus-{NON_RECOVERY_WINDOW_S}s')
-            wedge1 = lab.assess_wedge(ev, proc, pos_since)
+            win_end = (time.perf_counter() - ev.t0) * 1000
+            wedge1 = lab.assess_wedge(ev, proc, win_start, win_end,
+                                      latches_released=True)
             ev.event('wedge_assessment', rep=rep, **wedge1,
                      statement=(f"did not recover within the observed "
                                 f"{NON_RECOVERY_WINDOW_S}-second window"
-                                if wedge1['wedge_criteria_met'] else
-                                'recovered or never wedged'))
+                                if wedge1['non_recovery_observed'] else
+                                'recovered or never wedged'),
+                     causality=('lock-causality evidence present in window'
+                                if wedge1['lock_causality_evidence_present']
+                                else 'no in-window lock evidence; progression '
+                                     'observation only'))
 
             # stack evidence attempt: CTRL_BREAK interrupts the blocked
             # loop thread and Python prints tracebacks to the console log.
@@ -218,36 +246,79 @@ def main():
             proc = None
             rep_summaries.append({'rep': rep, 'wedge': wedge1})
 
-            # ── negative phase: matching successful threadpool command ───
+            # ── negative phase: eligible-employee real claim ─────────────
             proc, wd = lab.spawn_app(env, lab.PORT_A, ev, watchdog_s=240)
             admin = lab.login(BASE, 'dana@aster.demo')
+            priya = lab.login(BASE, 'priya@aster.demo')
             probe = lab.LoopProbe(lab.PORT_A, ev, interval_s=0.05)
             probe.start()
-            neg_since = (time.perf_counter() - ev.t0) * 1000
             for rnd in range(NEGATIVE_ROUNDS):
                 obs.snap_activity(f'r{rep}-neg-pre-{rnd}')
-                run_negative_round(ev, admin, admin, rep, rnd)
+                tid, results = run_negative_round(ev, admin, priya, rep, rnd)
                 obs.snap_locks(f'r{rep}-neg-post-{rnd}')
-            neg = lab.assess_wedge(ev, proc, neg_since)
+                if tid is None:
+                    control_ok = False
+                    ev.event('negative_control_invalid', rep=rep, round=rnd,
+                             reason='control task setup failed')
+                    continue
+                claim = results.get(tid)
+                owner = obs.scalar('SELECT owner_id FROM tasks WHERE id=%s',
+                                   (tid,))
+                status = obs.scalar('SELECT status FROM tasks WHERE id=%s',
+                                    (tid,))
+                verified = (claim is not None and claim[0] == 200
+                            and owner == 'u-priya' and status == 'IN_PROGRESS')
+                ev.event('negative_control_verification', rep=rep, round=rnd,
+                         task=tid, http=(claim[0] if claim else None),
+                         db_owner=owner, db_status=status,
+                         verified=verified)
+                if not verified:
+                    control_ok = False
+                    ev.event('negative_control_invalid', rep=rep, round=rnd,
+                             reason='control claim failed HTTP/DB verification')
+            neg_win_start = (time.perf_counter() - ev.t0) * 1000
+            time.sleep(5)
+            neg = lab.assess_wedge(ev, proc, neg_win_start,
+                                   latches_released=True)
             ev.event('negative_assessment', rep=rep, **neg,
-                     expectation='loop healthy; claims 200')
+                     expectation='loop healthy; claims 200 + DB-owned')
             probe.stop()
             probe = None
             lab.stop_app(proc, wd, ev)
             proc = None
 
-        wedged = [s for s in rep_summaries if s['wedge']['wedge_criteria_met']]
-        ev.classify(
-            'e1',
-            harness_validity='VALID',
-            product_observation=('DEFECT_OBSERVED' if wedged
-                                 else 'INCONCLUSIVE'),
-            causal_claim=('CONFIRMED' if wedged else 'INCONCLUSIVE'),
-            rationale=(f'{len(wedged)}/{REPS} fresh repetitions met the '
-                       f'wedge criteria (process alive + loop unresponsive '
-                       f'+ lock signature). Non-recovery stated per window: '
-                       f'{NON_RECOVERY_WINDOW_S}s.'),
-            reps=REPS, wedged_reps=len(wedged))
+        wedged = [s for s in rep_summaries
+                  if s['wedge']['non_recovery_observed']]
+        if not control_ok:
+            ev.classify(
+                'e1',
+                harness_validity='INVALID',
+                product_observation='INVALID',
+                causal_claim='INVALID',
+                rationale=('Negative control failed: the eligible-employee '
+                           'claim did not return 200 with DB-verified '
+                           'ownership. The wedge observation is not '
+                           'interpretable against a failing control.'),
+                reps=REPS, wedged_reps=len(wedged))
+        else:
+            ev.classify(
+                'e1',
+                harness_validity='VALID',
+                product_observation=('DEFECT_OBSERVED' if wedged
+                                     else 'INCONCLUSIVE'),
+                causal_claim=('CONFIRMED'
+                              if wedged and all(
+                                  s['wedge']['lock_causality_evidence_present']
+                                  for s in wedged)
+                              else 'INCONCLUSIVE'),
+                rationale=(f'{len(wedged)}/{REPS} fresh repetitions met the '
+                           f'bounded-window non-recovery criteria (process '
+                           f'alive + >=3 consecutive in-window loop failures '
+                           f'+ zero in-window recovery, window '
+                           f'{NON_RECOVERY_WINDOW_S}s, latches released). '
+                           f'Negative control (eligible employee claim) '
+                           f'passed HTTP+DB verification.'),
+                reps=REPS, wedged_reps=len(wedged))
         ev.event('e1_done')
     finally:
         if probe:
@@ -258,7 +329,7 @@ def main():
             obs.close()
         pg.stop()
     ev.finish()
-    print('E1 v2 evidence at', base)
+    print('E1 v3 evidence at', base)
 
 
 if __name__ == '__main__':

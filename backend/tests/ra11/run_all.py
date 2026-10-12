@@ -24,6 +24,7 @@ EXPERIMENTS = {
     'e5': 'e5_commit_outcomes.py',
     'e6': 'e6_orphans.py',
     'e7': 'e7_races.py',
+    'e7r6': 'e7_r6.py',
 }
 
 

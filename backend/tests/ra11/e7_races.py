@@ -1,27 +1,30 @@
-"""E7 v2 — business-rule race matrix (corrected after independent review).
+"""E7 v3 — business-rule race matrix (corrected after independent review).
 
 Command inventory (routes.py): create, claim, decline, return, edit,
 reassign, progress, submit, resume, approve, reject, handoff, reopen,
 cancel, reactivate.
 
-Method corrections vs v1:
-  - Every race asserts fixture setup and INDEPENDENTLY verifies the initial
-    DB state via the observer before firing.
-  - Capacity, occupancy, task status and ledger state are reset between
-    repetitions where the race depends on them (R2 resets occupancy AND
-    exercises both valid serial orders as controls before the race).
-  - R3 verifies both reviewers' actual review/payout authority first.
-  - R5 treats two 200s as a legal serial sequence (cancel allows SUBMITTED).
-  - R6 is a STANDALONE scenario: dedicated scoped fixture, fresh app
-    process, and wedge detection via lab.assess_wedge (process alive +
-    consecutive loop-probe failures + lock snapshots) — never inferred
-    from two request exceptions. Non-recovery stated per window.
-  - R7 is classified as a PRECONDITION test unless both operations are
-    legal from the same starting state (serial controls establish this).
-  - Final state verified via observer: Task status/owner, Submission state,
-    TaskCycle, capacity/occupancy, ledger amount/payee/duplicates where
-    relevant.
-  - Only real backend error codes are used (DomainError codes).
+Method corrections vs v2 (Gate D):
+  - Occupancy uses the CANONICAL counting policy (capacity_policy.json,
+    active_owned_task_count in app/service_common.py): owned tasks with
+    status IN ('IN_PROGRESS','SUBMITTED'). The v2 harness counted only
+    IN_PROGRESS and therefore did not measure what the product enforces.
+  - R2 serial controls now establish BOTH valid orders from IDENTICAL
+    fresh initial states (occupancy exactly 1, capacity 2, second task
+    claimable), with committed DB state verified after each step:
+      Order A claim->reduce: both 200, final occupancy 2 > capacity 1.
+      Order B reduce->claim: reduce 200, claim 409 CAPACITY_REACHED.
+    The concurrent race then starts from the SAME initial state and its
+    final committed state must equal one of the two serially reachable
+    end states.
+  - R3 verifies the payout ledger row exactly: one TASK_REWARD row,
+    amount == 5.0, payee == u-priya, cycle == 1 (duplicate/cycle check).
+  - Fixture/setup HTTP calls are asserted; a setup failure classifies the
+    experiment harness_validity=INVALID (recorded, no mid-suite crash).
+  - Final-state invariants are enforced: every violation is recorded and
+    reflected in the classification rationale.
+  - R6 (concurrent double-submit) moved to e7_r6.py: a standalone
+    disposable cluster + fixture, inheriting no R4/R5 state.
   - A 15-command coverage map artifact distinguishes TESTED / PARTIALLY
     TESTED / NOT TESTED; listing a command never counts as testing it.
 """
@@ -42,13 +45,18 @@ COMMANDS = ['create', 'claim', 'decline', 'return', 'edit', 'reassign',
             'reopen', 'cancel', 'reactivate']
 
 
+class SetupFailure(Exception):
+    """A fixture/setup step failed: evidence gathered afterwards is not
+    interpretable; the experiment classifies INVALID."""
+
+
 def main():
     rid = lab.validate_run_id(sys.argv[1])
     base = lab.OUT_ROOT / rid / 'e7'
     ev, pg, url, engine, SessionLocal = _inproc.setup(base)
     obs = lab.Observer(url, ev)
     proc = wd = None
-    probe = None
+    invariant_failures = []
     try:
         from app.models import User
         with SessionLocal() as db:
@@ -61,18 +69,14 @@ def main():
         env = lab.app_env(url, base / 'uploads')
         (base / 'uploads').mkdir(exist_ok=True)
 
-        def spawn():
-            p, w = lab.spawn_app(env, lab.PORT_A, ev, watchdog_s=280)
-            tokens = {
-                'admin': lab.login(BASE, 'dana@aster.demo'),
-                'mgr': lab.login(BASE, 'marcus@aster.demo'),
-                'priya': lab.login(BASE, 'priya@aster.demo'),
-                'aisha': lab.login(BASE, 'aisha@aster.demo'),
-                'jonas': lab.login(BASE, 'jonas@aster.demo'),
-            }
-            return p, w, tokens
-
-        proc, wd, TOK = spawn()
+        proc, wd = lab.spawn_app(env, lab.PORT_A, ev, watchdog_s=280)
+        TOK = {
+            'admin': lab.login(BASE, 'dana@aster.demo'),
+            'mgr': lab.login(BASE, 'marcus@aster.demo'),
+            'priya': lab.login(BASE, 'priya@aster.demo'),
+            'aisha': lab.login(BASE, 'aisha@aster.demo'),
+            'jonas': lab.login(BASE, 'jonas@aster.demo'),
+        }
 
         def api(token, method, path, **kw):
             r = getattr(httpx, method)(f'{BASE}{path}', headers=lab.auth(token),
@@ -85,6 +89,16 @@ def main():
             return r.status_code, code
 
         from app.models import Task as TaskModel, now_ms
+
+        def require_setup(cond, name, **detail):
+            if not cond:
+                ev.event('setup_failed', name=name, **detail)
+                raise SetupFailure(name)
+
+        def invariant(name, cond, **detail):
+            ev.event('invariant', name=name, ok=bool(cond), **detail)
+            if not cond:
+                invariant_failures.append(name)
 
         def mk_task(title, reward=5, created_by='u-dana', team_id=None):
             """Fixture insert via DB (fast); existence and state are then
@@ -102,8 +116,10 @@ def main():
                                  created_at=now, updated_at=now,
                                  created_by=created_by, team_id=team_id))
                 db.commit()
-            assert obs.scalar('SELECT count(*) FROM tasks WHERE id=%s',
-                              (tid,)) == 1, f'fixture insert failed: {tid}'
+            require_setup(
+                obs.scalar('SELECT count(*) FROM tasks WHERE id=%s',
+                           (tid,)) == 1,
+                'fixture_insert', task=tid)
             return tid
 
         def db_task(tid):
@@ -114,9 +130,12 @@ def main():
                 'paid': obs.scalar('SELECT paid FROM tasks WHERE id=%s', (tid,)),
             }
 
+        # Canonical counting policy (capacity_policy.json):
+        # occupancy counts owned tasks with status IN ('IN_PROGRESS','SUBMITTED').
         def occupancy(uid):
             return obs.scalar("SELECT count(*) FROM tasks WHERE owner_id=%s "
-                              "AND status='IN_PROGRESS'", (uid,))
+                              "AND status IN ('IN_PROGRESS','SUBMITTED')",
+                              (uid,))
 
         def race(name, fn1, fn2):
             gate = threading.Event()
@@ -142,343 +161,425 @@ def main():
                      hung=[k for k in ('A', 'B') if k not in out])
             return out
 
-        # ── R1 claim vs claim ────────────────────────────────────────────
-        for i in range(3):
-            tid = mk_task(f'E7-R1-{i}')
-            init = db_task(tid)
-            assert init['status'] == 'OPEN' and init['owner'] is None
-            ev.event('race_setup', name=f'R1-{i}', task=tid, verified_initial=init,
-                     actors='priya+aisha (both eligible, capacity 50)',
-                     valid_outcomes=['one 200 + one 409 BAD_STATE'])
-            race(f'R1-claim-claim-{i}',
-                 lambda tid=tid: api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim'),
-                 lambda tid=tid: api(TOK['aisha'], 'post', f'/api/tasks/{tid}/claim'))
-            final = db_task(tid)
-            ev.event('race_verify', name=f'R1-{i}', task=tid, final=final,
-                     invariant='exactly one owner, status IN_PROGRESS',
-                     ok=final['status'] == 'IN_PROGRESS'
-                        and final['owner'] in ('u-priya', 'u-aisha'))
+        try:
+            # ── R1 claim vs claim ────────────────────────────────────────
+            for i in range(3):
+                tid = mk_task(f'E7-R1-{i}')
+                init = db_task(tid)
+                require_setup(init['status'] == 'OPEN' and init['owner'] is None,
+                              'r1_initial', task=tid, state=init)
+                ev.event('race_setup', name=f'R1-{i}', task=tid,
+                         verified_initial=init,
+                         actors='priya+aisha (both eligible, capacity 50)',
+                         valid_outcomes=['one 200 + one 409 BAD_STATE'])
+                race(f'R1-claim-claim-{i}',
+                     lambda tid=tid: api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim'),
+                     lambda tid=tid: api(TOK['aisha'], 'post', f'/api/tasks/{tid}/claim'))
+                final = db_task(tid)
+                invariant(f'R1-{i}-final',
+                          final['status'] == 'IN_PROGRESS'
+                          and final['owner'] in ('u-priya', 'u-aisha'),
+                          task=tid, final=final,
+                          rule='exactly one owner, status IN_PROGRESS')
 
-        # ── R2 claim vs capacity reduction ───────────────────────────────
-        def set_cap(uid, n):
-            st = api(TOK['admin'], 'patch', f'/api/users/{uid}/capacity',
-                     json={'maxActiveTasks': n})
-            assert st[0] == 200, f'capacity reset failed: {st}'
+            # ── R2 claim vs capacity reduction ───────────────────────────
+            def set_cap(uid, n):
+                st = api(TOK['admin'], 'patch', f'/api/users/{uid}/capacity',
+                         json={'maxActiveTasks': n})
+                require_setup(st[0] == 200, 'capacity_reset', user=uid, n=n,
+                              result=st)
 
-        def clear_occupancy(uid):
-            """Return every IN_PROGRESS task of uid (fresh per-trial state).
-            Each return result is recorded; the reset is verified."""
-            rows = obs.scalar("SELECT COALESCE(string_agg(id, ','), '') "
-                              "FROM tasks WHERE owner_id=%s AND status='IN_PROGRESS'",
-                              (uid,))
-            results = {}
-            for tid in filter(None, rows.split(',')):
-                # admin cancel is legal from every non-terminal state;
-                # 'return' is not (seed tasks are assignee-owned, 409).
-                results[tid] = api(TOK['admin'], 'post',
-                                   f'/api/tasks/{tid}/cancel',
-                                   json={'reason': 'E7 occupancy reset'})
-            ev.event('occupancy_reset', user=uid, returned=results,
-                     occupancy_after=occupancy(uid))
+            def clear_occupancy(uid):
+                """Cancel every active task of uid (fresh per-trial state).
+                Admin cancel is legal from every non-terminal state;
+                'return' is not (seed tasks are assignee-owned, 409)."""
+                rows = obs.scalar(
+                    "SELECT COALESCE(string_agg(id, ','), '') FROM tasks "
+                    "WHERE owner_id=%s AND status IN ('IN_PROGRESS','SUBMITTED')",
+                    (uid,))
+                results = {}
+                for tid in filter(None, rows.split(',')):
+                    results[tid] = api(TOK['admin'], 'post',
+                                       f'/api/tasks/{tid}/cancel',
+                                       json={'reason': 'E7 occupancy reset'})
+                ev.event('occupancy_reset', user=uid, cancelled=results,
+                         occupancy_after=occupancy(uid))
+                require_setup(occupancy(uid) == 0, 'occupancy_reset_verify',
+                              user=uid)
 
-        clear_occupancy('u-jonas')  # seed assigns jonas active tasks
-        set_cap('u-jonas', 2)
-        assert occupancy('u-jonas') == 0, 'R2 initial reset failed'
-        # serial control 1: claim THEN reduce (both legal)
-        tid = mk_task('E7-R2-ctrl-claim-first')
-        c1 = api(TOK['jonas'], 'post', f'/api/tasks/{tid}/claim')
-        set_cap('u-jonas', 1)
-        occ = occupancy('u-jonas')
-        ev.event('R2_serial_control_claim_first', claim=c1, reduce='200',
-                 occupancy=occ, limit=1,
-                 note='legal: over-limit occupancy preserved')
-        clear_occupancy('u-jonas')
-        set_cap('u-jonas', 2)
-        # serial control 2: reduce THEN claim (second claim refused at limit)
-        tA = mk_task('E7-R2-ctrl2-a')
-        cA = api(TOK['jonas'], 'post', f'/api/tasks/{tA}/claim')
-        assert cA[0] == 200
-        set_cap('u-jonas', 1)  # reduce while occupancy == 1 (legal)
-        tB = mk_task('E7-R2-ctrl2-b')
-        c2 = api(TOK['jonas'], 'post', f'/api/tasks/{tB}/claim')
-        ev.event('R2_serial_control_reduce_first', occupancy=occupancy('u-jonas'),
-                 limit=1, claim=c2, expected='409 CAPACITY_REACHED',
-                 ok=c2 == (409, 'CAPACITY_REACHED'))
-        clear_occupancy('u-jonas')
-        set_cap('u-jonas', 2)
+            def r2_fresh_state(tag):
+                """Identical fresh initial state for every R2 trial:
+                occupancy EXACTLY 1 (jonas holds task A), capacity 2, and a
+                second claimable task B. Returns (tA, tB)."""
+                clear_occupancy('u-jonas')
+                set_cap('u-jonas', 2)
+                tA = mk_task(f'E7-R2-{tag}-a')
+                cA = api(TOK['jonas'], 'post', f'/api/tasks/{tA}/claim')
+                require_setup(cA[0] == 200, 'r2_setup_claim_a', task=tA,
+                              result=cA)
+                tB = mk_task(f'E7-R2-{tag}-b')
+                occ = occupancy('u-jonas')
+                cap = obs.scalar("SELECT max_active_tasks FROM users "
+                                 "WHERE id='u-jonas'")
+                stB = db_task(tB)
+                require_setup(occ == 1 and cap == 2
+                              and stB['status'] == 'OPEN'
+                              and stB['owner'] is None,
+                              'r2_fresh_state', occupancy=occ, capacity=cap,
+                              taskB=stB)
+                ev.event('race_setup', name=f'R2-{tag}',
+                         verified_initial={'occupancy': occ, 'capacity': cap,
+                                           'taskA': db_task(tA),
+                                           'taskB': stB},
+                         policy="occupancy = owned tasks with status IN "
+                                "('IN_PROGRESS','SUBMITTED')")
+                return tA, tB
 
-        for i in range(3):
+            # Serial Order A: claim -> reduce (both legal; over-limit
+            # occupancy is preserved).
+            tA, tB = r2_fresh_state('ordA')
+            c1 = api(TOK['jonas'], 'post', f'/api/tasks/{tB}/claim')
+            r1 = api(TOK['admin'], 'patch', '/api/users/u-jonas/capacity',
+                     json={'maxActiveTasks': 1})
+            occA = occupancy('u-jonas')
+            capA = obs.scalar("SELECT max_active_tasks FROM users "
+                              "WHERE id='u-jonas'")
+            ev.event('R2_serial_orderA_claim_then_reduce', claim=c1, reduce=r1,
+                     occupancy=occA, capacity=capA,
+                     expected='both 200; occupancy 2 > capacity 1 preserved')
+            invariant('R2-orderA',
+                      c1[0] == 200 and r1[0] == 200 and occA == 2 and capA == 1,
+                      claim=c1, reduce=r1, occupancy=occA, capacity=capA,
+                      rule='claim->reduce: both succeed, occupancy 2 > cap 1')
+
+            # Serial Order B: reduce -> claim (claim refused at the limit).
+            tA, tB = r2_fresh_state('ordB')
+            r2 = api(TOK['admin'], 'patch', '/api/users/u-jonas/capacity',
+                     json={'maxActiveTasks': 1})
+            c2 = api(TOK['jonas'], 'post', f'/api/tasks/{tB}/claim')
+            occB = occupancy('u-jonas')
+            capB = obs.scalar("SELECT max_active_tasks FROM users "
+                              "WHERE id='u-jonas'")
+            stB = db_task(tB)
+            ev.event('R2_serial_orderB_reduce_then_claim', reduce=r2, claim=c2,
+                     occupancy=occB, capacity=capB,
+                     expected='reduce 200; claim 409 CAPACITY_REACHED')
+            invariant('R2-orderB',
+                      r2[0] == 200 and c2 == (409, 'CAPACITY_REACHED')
+                      and occB == 1 and capB == 1 and stB['status'] == 'OPEN',
+                      reduce=r2, claim=c2, occupancy=occB, capacity=capB,
+                      taskB=stB,
+                      rule='reduce->claim: reduce succeeds, claim refused')
+
+            # Concurrent race from the SAME fresh initial state. The final
+            # committed state must equal one of the two serially reachable
+            # end states established above.
+            for i in range(3):
+                tA, tB = r2_fresh_state(f'race{i}')
+                out = race(
+                    f'R2-claim-vs-reduce-{i}',
+                    lambda tB=tB: api(TOK['jonas'], 'post',
+                                      f'/api/tasks/{tB}/claim'),
+                    lambda: api(TOK['admin'], 'patch',
+                                '/api/users/u-jonas/capacity',
+                                json={'maxActiveTasks': 1}))
+                occ = occupancy('u-jonas')
+                cap = obs.scalar("SELECT max_active_tasks FROM users "
+                                 "WHERE id='u-jonas'")
+                stB = db_task(tB)
+                endA = (occ == 2 and cap == 1
+                        and stB['status'] == 'IN_PROGRESS'
+                        and stB['owner'] == 'u-jonas')
+                endB = (occ == 1 and cap == 1 and stB['status'] == 'OPEN')
+                ev.event('race_verify', name=f'R2-{i}', outcome=out,
+                         final={'occupancy': occ, 'capacity': cap,
+                                'taskB': stB},
+                         serially_reachable=('orderA end state' if endA else
+                                             'orderB end state' if endB else
+                                             'NEITHER'))
+                invariant(f'R2-race-{i}-final-state', endA or endB,
+                          outcome=out, occupancy=occ, capacity=cap,
+                          taskB=stB,
+                          rule='race end state equals a serially reachable '
+                               'end state')
             clear_occupancy('u-jonas')
             set_cap('u-jonas', 2)
-            tid = mk_task(f'E7-R2-{i}')
-            occ0 = occupancy('u-jonas')
-            assert occ0 == 0, f'occupancy reset failed: {occ0}'
-            ev.event('race_setup', name=f'R2-{i}', task=tid,
-                     verified_initial={'occupancy': occ0, 'limit': 2,
-                                       'task': db_task(tid)},
-                     valid_outcomes=[
-                         'claim 200 then reduce 200 (over-limit preserved)',
-                         'reduce 200 then claim 409 CAPACITY_REACHED'])
-            race(f'R2-claim-vs-reduce-{i}',
-                 lambda tid=tid: api(TOK['jonas'], 'post', f'/api/tasks/{tid}/claim'),
-                 lambda: api(TOK['admin'], 'patch', '/api/users/u-jonas/capacity',
-                             json={'maxActiveTasks': 1}))
-            ev.event('race_verify', name=f'R2-{i}', task=tid,
-                     final={'task': db_task(tid), 'occupancy': occupancy('u-jonas'),
-                            'limit': obs.scalar("SELECT max_active_tasks FROM users WHERE id='u-jonas'")})
-        clear_occupancy('u-jonas')
-        set_cap('u-jonas', 2)
 
-        # ── R3 approve vs approve ────────────────────────────────────────
-        # authority verification first: marcus gets a reviewer grant on the
-        # task; admin holds economic authority. Verified by behavior.
-        for i in range(3):
-            tid = mk_task(f'E7-R3-{i}', reward=5)  # authored by ADMIN
-            api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim')
-            api(TOK['priya'], 'post', f'/api/tasks/{tid}/submit',
-                data={'note': 'done'})
-            api(TOK['admin'], 'put', f'/api/tasks/{tid}/access',
-                json={'viewerIds': [], 'reviewerIds': ['u-marcus']})
-            init = db_task(tid)
-            grant = obs.scalar("SELECT reviewer_ids FROM tasks WHERE id=%s",
-                               (tid,))
-            assert 'u-marcus' in (grant or []), f'reviewer grant missing: {grant}'
-            ev.event('race_setup', name=f'R3-{i}', task=tid,
-                     verified_initial={**init, 'reviewer_ids': grant},
-                     authority='admin: economic+review; marcus: reviewer grant '
-                               'on ADMIN-authored task -> payout authorized',
-                     valid_outcomes=['one 200 + one 409 BAD_STATE; exactly one payout'])
-            race(f'R3-approve-approve-{i}',
-                 lambda tid=tid: api(TOK['admin'], 'post', f'/api/tasks/{tid}/approve'),
-                 lambda tid=tid: api(TOK['mgr'], 'post', f'/api/tasks/{tid}/approve'))
-            payout_rows = obs.scalar("SELECT count(*) FROM ledger WHERE task_id=%s "
-                                     "AND type='TASK_REWARD'", (tid,))
-            payout_amount = obs.scalar("SELECT COALESCE(sum(amount),0) FROM ledger "
-                                       "WHERE task_id=%s AND type='TASK_REWARD'", (tid,))
-            payee = obs.scalar("SELECT COALESCE(string_agg(DISTINCT user_id, ','), '') "
-                               "FROM ledger WHERE task_id=%s AND type='TASK_REWARD'",
-                               (tid,))
-            ev.event('race_verify', name=f'R3-{i}', task=tid, final=db_task(tid),
-                     payout_rows=payout_rows, payout_amount=payout_amount,
-                     payees=payee,
-                     invariant='exactly one TASK_REWARD row, payee=u-priya',
-                     ok=payout_rows == 1 and payee == 'u-priya')
+            # ── R3 approve vs approve ────────────────────────────────────
+            # authority verification first: marcus gets a reviewer grant on
+            # the task; admin holds economic authority. Verified by behavior.
+            for i in range(3):
+                tid = mk_task(f'E7-R3-{i}', reward=5)  # authored by ADMIN
+                c = api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim')
+                require_setup(c[0] == 200, 'r3_setup_claim', task=tid, result=c)
+                s = api(TOK['priya'], 'post', f'/api/tasks/{tid}/submit',
+                        data={'note': 'done'})
+                require_setup(s[0] == 200, 'r3_setup_submit', task=tid,
+                              result=s)
+                g = api(TOK['admin'], 'put', f'/api/tasks/{tid}/access',
+                        json={'viewerIds': [], 'reviewerIds': ['u-marcus']})
+                require_setup(g[0] == 200, 'r3_setup_grant', task=tid,
+                              result=g)
+                init = db_task(tid)
+                grant = obs.scalar("SELECT reviewer_ids FROM tasks WHERE id=%s",
+                                   (tid,))
+                require_setup('u-marcus' in (grant or []),
+                              'r3_grant_verify', task=tid, grant=grant)
+                ev.event('race_setup', name=f'R3-{i}', task=tid,
+                         verified_initial={**init, 'reviewer_ids': grant},
+                         authority='admin: economic+review; marcus: reviewer '
+                                   'grant on ADMIN-authored task -> payout '
+                                   'authorized',
+                         valid_outcomes=['one 200 + one 409 BAD_STATE; '
+                                         'exactly one payout'])
+                race(f'R3-approve-approve-{i}',
+                     lambda tid=tid: api(TOK['admin'], 'post',
+                                         f'/api/tasks/{tid}/approve'),
+                     lambda tid=tid: api(TOK['mgr'], 'post',
+                                         f'/api/tasks/{tid}/approve'))
+                payout_rows = obs.scalar(
+                    "SELECT count(*) FROM ledger WHERE task_id=%s "
+                    "AND type='TASK_REWARD'", (tid,))
+                payout_amount = obs.scalar(
+                    "SELECT COALESCE(sum(amount),0) FROM ledger "
+                    "WHERE task_id=%s AND type='TASK_REWARD'", (tid,))
+                payee = obs.scalar(
+                    "SELECT COALESCE(string_agg(DISTINCT user_id, ','), '') "
+                    "FROM ledger WHERE task_id=%s AND type='TASK_REWARD'",
+                    (tid,))
+                cycles = obs.scalar(
+                    "SELECT COALESCE(string_agg(DISTINCT cycle::text, ','), '') "
+                    "FROM ledger WHERE task_id=%s AND type='TASK_REWARD'",
+                    (tid,))
+                invariant(f'R3-{i}-payout',
+                          payout_rows == 1 and float(payout_amount) == 5.0
+                          and payee == 'u-priya' and cycles == '1',
+                          task=tid, final=db_task(tid),
+                          payout_rows=payout_rows,
+                          payout_amount=float(payout_amount),
+                          payee=payee, cycles=cycles,
+                          rule='exactly one TASK_REWARD row: amount 5.0, '
+                               'payee u-priya, cycle 1, no duplicates')
 
-        # ── R4 authorization oracles (not races) ─────────────────────────
-        tid = mk_task('E7-R4-nogrant', reward=5)
-        api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim')
-        api(TOK['priya'], 'post', f'/api/tasks/{tid}/submit', data={'note': 'x'})
-        st = api(TOK['mgr'], 'post', f'/api/tasks/{tid}/approve')
-        ev.event('oracle', name='R4-manager-without-grant', result=st,
-                 expected='403 REVIEW_AUTHORITY_REQUIRED',
-                 ok=st == (403, 'REVIEW_AUTHORITY_REQUIRED'))
+            # ── R4 authorization oracles (not races) ─────────────────────
+            tid = mk_task('E7-R4-nogrant', reward=5)
+            c = api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim')
+            require_setup(c[0] == 200, 'r4_setup_claim', task=tid, result=c)
+            s = api(TOK['priya'], 'post', f'/api/tasks/{tid}/submit',
+                    data={'note': 'x'})
+            require_setup(s[0] == 200, 'r4_setup_submit', task=tid, result=s)
+            st = api(TOK['mgr'], 'post', f'/api/tasks/{tid}/approve')
+            invariant('R4-manager-without-grant',
+                      st == (403, 'REVIEW_AUTHORITY_REQUIRED'),
+                      result=st,
+                      rule='403 REVIEW_AUTHORITY_REQUIRED')
 
-        with SessionLocal() as db:
-            from app.organization.model import Team, TeamMembership
-            team = Team(company_id='co-aster', name='E7 Team')
-            db.add(team)
-            db.flush()
-            db.add(TeamMembership(company_id='co-aster', team_id=team.id,
-                                  user_id='u-marcus', manager=True))
-            db.add(TeamMembership(company_id='co-aster', team_id=team.id,
-                                  user_id='u-priya'))
-            db.commit()
-            team_id = team.id
-        tid = mk_task('E7-R4-mgr-authored', reward=5,
-                      created_by='u-marcus', team_id=team_id)
-        api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim')
-        api(TOK['priya'], 'post', f'/api/tasks/{tid}/submit', data={'note': 'x'})
-        st = api(TOK['mgr'], 'post', f'/api/tasks/{tid}/approve')
-        ev.event('oracle', name='R4-manager-authored-positive-payout', result=st,
-                 expected='403 ECONOMIC_AUTHORITY_REQUIRED',
-                 ok=st == (403, 'ECONOMIC_AUTHORITY_REQUIRED'))
-        st = api(TOK['admin'], 'post', f'/api/tasks/{tid}/approve')
-        ev.event('oracle', name='R4-admin-approves-same', result=st,
-                 expected='200', ok=st[0] == 200)
-
-        # ── R5 submit vs cancel ──────────────────────────────────────────
-        for i in range(3):
-            tid = mk_task(f'E7-R5-{i}')
-            api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim')
-            init = db_task(tid)
-            assert init['status'] == 'IN_PROGRESS' and init['owner'] == 'u-priya'
-            ev.event('race_setup', name=f'R5-{i}', task=tid, verified_initial=init,
-                     valid_outcomes=[
-                         'submit 200 + cancel 200 (legal serial: cancel allows SUBMITTED)',
-                         'cancel 200 + submit 409 BAD_STATE (cancel first)'])
-            race(f'R5-submit-vs-cancel-{i}',
-                 lambda tid=tid: api(TOK['priya'], 'post', f'/api/tasks/{tid}/submit',
-                                     data={'note': 'work'}),
-                 lambda tid=tid: api(TOK['admin'], 'post', f'/api/tasks/{tid}/cancel',
-                                     json={'reason': 'pulled'}))
-            final = db_task(tid)
-            subs = obs.scalar("SELECT COALESCE(string_agg(outcome, ','), '') "
-                              "FROM submissions WHERE task_id=%s", (tid,))
-            ev.event('race_verify', name=f'R5-{i}', task=tid, final=final,
-                     submission_states=subs)
-
-        # ── R6 double submit — STANDALONE scenario ───────────────────────
-        # fresh app + dedicated scoped fixture; nothing inherited from R4/R5.
-        lab.stop_app(proc, wd, ev)
-        proc = None
-        with SessionLocal() as db:
-            from app.organization.model import Team as T2, TeamMembership as TM2
-            from sqlalchemy import select as sel
-            # one-team-per-user schema: reuse priya's existing team if any
-            team6 = db.scalar(sel(T2).join(
-                TM2, TM2.team_id == T2.id).where(
-                TM2.company_id == 'co-aster', TM2.user_id == 'u-priya',
-                TM2.left_at.is_(None)))
-            if team6 is None:
-                team6 = T2(company_id='co-aster', name='E7-R6 Team')
-                db.add(team6)
+            with SessionLocal() as db:
+                from app.organization.model import Team, TeamMembership
+                team = Team(company_id='co-aster', name='E7 Team')
+                db.add(team)
                 db.flush()
-                db.add(TM2(company_id='co-aster', team_id=team6.id,
-                           user_id='u-priya'))
-            from app.models import Task, now_ms
-            now = now_ms()
-            for i in range(120):
-                db.add(Task(id=f't-e7r6-{i:03d}', company_id='co-aster',
-                            title=f'E7 R6 scoped {i}', description='',
-                            priority='NORMAL', deadline=None, reward=1,
-                            audience='EMPLOYEES', assign_mode='ALL_EMPLOYEES',
-                            assignee_id=None, status='OPEN', owner_id=None,
-                            cycle=1, verified=0, reported=0, paid=0,
-                            created_at=now, updated_at=now,
-                            created_by='u-marcus', team_id=team6.id))
-            db.commit()
-        proc, wd, TOK = spawn()
-        probe = lab.LoopProbe(lab.PORT_A, ev, interval_s=0.05)
-        probe.start()
-        r6_since = (time.perf_counter() - ev.t0) * 1000
+                db.add(TeamMembership(company_id='co-aster', team_id=team.id,
+                                      user_id='u-marcus', manager=True))
+                db.add(TeamMembership(company_id='co-aster', team_id=team.id,
+                                      user_id='u-priya'))
+                db.commit()
+                team_id = team.id
+            tid = mk_task('E7-R4-mgr-authored', reward=5,
+                          created_by='u-marcus', team_id=team_id)
+            c = api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim')
+            require_setup(c[0] == 200, 'r4b_setup_claim', task=tid, result=c)
+            s = api(TOK['priya'], 'post', f'/api/tasks/{tid}/submit',
+                    data={'note': 'x'})
+            require_setup(s[0] == 200, 'r4b_setup_submit', task=tid, result=s)
+            st = api(TOK['mgr'], 'post', f'/api/tasks/{tid}/approve')
+            invariant('R4-manager-authored-positive-payout',
+                      st == (403, 'ECONOMIC_AUTHORITY_REQUIRED'),
+                      result=st,
+                      rule='403 ECONOMIC_AUTHORITY_REQUIRED')
+            st = api(TOK['admin'], 'post', f'/api/tasks/{tid}/approve')
+            invariant('R4-admin-approves-same', st[0] == 200, result=st,
+                      rule='admin approve succeeds')
 
-        tid = mk_task('E7-R6-concurrent')
-        api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim')
-        init = db_task(tid)
-        assert init['status'] == 'IN_PROGRESS' and init['owner'] == 'u-priya'
-        ev.event('race_setup', name='R6-concurrent', task=tid,
-                 verified_initial=init,
-                 standalone_fixture='E7-R6 Team, 120 scoped tasks, fresh app',
-                 valid_outcomes=['one 200 + one 409 BAD_STATE',
-                                 'wedge (E1-class) = defect evidence'])
-        out = race('R6-double-submit-concurrent',
-                   lambda: api(TOK['priya'], 'post', f'/api/tasks/{tid}/submit',
-                               data={'note': 'first'}),
-                   lambda: api(TOK['priya'], 'post', f'/api/tasks/{tid}/submit',
-                               data={'note': 'second'}))
-        # independent wedge detection: process alive + loop unresponsive
-        # + lock/activity snapshots, observed over a window
-        obs.snap_locks('R6-post-race')
-        obs.snap_activity('R6-post-race')
-        time.sleep(12)
-        obs.snap_locks('R6-plus-12s')
-        obs.snap_activity('R6-plus-12s')
-        w = lab.assess_wedge(ev, proc, r6_since)
-        ev.event('R6_wedge_assessment', **w,
-                 statement=('did not recover within the observed 12-second '
-                            'window' if w['wedge_criteria_met']
-                            else 'recovered or never wedged'))
-        probe.stop()
-        probe = None
-        lab.stop_app(proc, wd, ev)
-        proc = None
+            # ── R5 submit vs cancel ──────────────────────────────────────
+            for i in range(3):
+                tid = mk_task(f'E7-R5-{i}')
+                c = api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim')
+                require_setup(c[0] == 200, 'r5_setup_claim', task=tid,
+                              result=c)
+                init = db_task(tid)
+                require_setup(init['status'] == 'IN_PROGRESS'
+                              and init['owner'] == 'u-priya',
+                              'r5_initial', task=tid, state=init)
+                ev.event('race_setup', name=f'R5-{i}', task=tid,
+                         verified_initial=init,
+                         valid_outcomes=[
+                             'submit 200 + cancel 200 (legal serial: cancel '
+                             'allows SUBMITTED)',
+                             'cancel 200 + submit 409 BAD_STATE (cancel '
+                             'first)'])
+                race(f'R5-submit-vs-cancel-{i}',
+                     lambda tid=tid: api(TOK['priya'], 'post',
+                                         f'/api/tasks/{tid}/submit',
+                                         data={'note': 'work'}),
+                     lambda tid=tid: api(TOK['admin'], 'post',
+                                         f'/api/tasks/{tid}/cancel',
+                                         json={'reason': 'pulled'}))
+                final = db_task(tid)
+                subs = obs.scalar(
+                    "SELECT COALESCE(string_agg(outcome, ','), '') "
+                    "FROM submissions WHERE task_id=%s", (tid,))
+                ev.event('race_verify', name=f'R5-{i}', task=tid,
+                         final=final, submission_states=subs)
+                invariant(f'R5-{i}-final',
+                          final['status'] in ('CANCELLED', 'SUBMITTED')
+                          and final['cycle'] is not None,
+                          task=tid, final=final, submissions=subs,
+                          rule='legal serial end state (cancel allows '
+                               'SUBMITTED)')
 
-        # sequential oracle on a fresh app
-        proc, wd, TOK = spawn()
-        tid = mk_task('E7-R6-sequential')
-        api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim')
-        r1 = api(TOK['priya'], 'post', f'/api/tasks/{tid}/submit', data={'note': 'one'})
-        r2 = api(TOK['priya'], 'post', f'/api/tasks/{tid}/submit', data={'note': 'two'})
-        ev.event('oracle', name='R6-sequential-double-submit',
-                 result={'first': r1, 'second': r2},
-                 expected='first 200, second 409 BAD_STATE',
-                 ok=r1[0] == 200 and r2 == (409, 'BAD_STATE'))
+            # ── R7 resume vs reassign — precondition test ────────────────
+            # serial controls establish which operations are even LEGAL from
+            # REJECTED; the race is classified accordingly.
+            tid = mk_task('E7-R7-ctrl')
+            require_setup(api(TOK['priya'], 'post',
+                              f'/api/tasks/{tid}/claim')[0] == 200,
+                          'r7_ctrl_claim', task=tid)
+            require_setup(api(TOK['priya'], 'post', f'/api/tasks/{tid}/submit',
+                              data={'note': 'w'})[0] == 200,
+                          'r7_ctrl_submit', task=tid)
+            require_setup(api(TOK['admin'], 'post', f'/api/tasks/{tid}/reject',
+                              json={'reason': 'redo'})[0] == 200,
+                          'r7_ctrl_reject', task=tid)
+            ctrl_resume = api(TOK['priya'], 'post', f'/api/tasks/{tid}/resume')
+            tid2 = mk_task('E7-R7-ctrl2')
+            require_setup(api(TOK['priya'], 'post',
+                              f'/api/tasks/{tid2}/claim')[0] == 200,
+                          'r7_ctrl2_claim', task=tid2)
+            require_setup(api(TOK['priya'], 'post',
+                              f'/api/tasks/{tid2}/submit',
+                              data={'note': 'w'})[0] == 200,
+                          'r7_ctrl2_submit', task=tid2)
+            require_setup(api(TOK['admin'], 'post',
+                              f'/api/tasks/{tid2}/reject',
+                              json={'reason': 'redo'})[0] == 200,
+                          'r7_ctrl2_reject', task=tid2)
+            ctrl_reassign = api(TOK['admin'], 'post',
+                                f'/api/tasks/{tid2}/reassign',
+                                json={'assigneeId': 'u-aisha'})
+            both_legal = ctrl_resume[0] == 200 and ctrl_reassign[0] == 200
+            ev.event('R7_precondition_controls',
+                     resume_from_rejected=ctrl_resume,
+                     reassign_from_rejected=ctrl_reassign,
+                     classification=('race candidate' if both_legal else
+                                     'PRECONDITION TEST — operations are not '
+                                     'both legal from REJECTED; no '
+                                     'race-safety claim'))
+            for i in range(3):
+                tid = mk_task(f'E7-R7-{i}')
+                require_setup(api(TOK['priya'], 'post',
+                                  f'/api/tasks/{tid}/claim')[0] == 200,
+                              'r7_setup_claim', task=tid)
+                require_setup(api(TOK['priya'], 'post',
+                                  f'/api/tasks/{tid}/submit',
+                                  data={'note': 'w'})[0] == 200,
+                              'r7_setup_submit', task=tid)
+                require_setup(api(TOK['admin'], 'post',
+                                  f'/api/tasks/{tid}/reject',
+                                  json={'reason': 'redo'})[0] == 200,
+                              'r7_setup_reject', task=tid)
+                init = db_task(tid)
+                require_setup(init['status'] == 'REJECTED',
+                              'r7_initial', task=tid, state=init)
+                ev.event('race_setup', name=f'R7-{i}', task=tid,
+                         verified_initial=init,
+                         precondition_classification='precondition test'
+                         if not both_legal else 'race',
+                         valid_outcomes=['legal serial outcomes per controls'])
+                race(f'R7-resume-vs-reassign-{i}',
+                     lambda tid=tid: api(TOK['priya'], 'post',
+                                         f'/api/tasks/{tid}/resume'),
+                     lambda tid=tid: api(TOK['admin'], 'post',
+                                         f'/api/tasks/{tid}/reassign',
+                                         json={'assigneeId': 'u-aisha'}))
+                final = db_task(tid)
+                cycles = obs.scalar(
+                    "SELECT COALESCE(string_agg("
+                    "cycle::text || ':' || COALESCE(outcome,'open') "
+                    "|| ':paid=' || paid::text, ','), '') "
+                    "FROM task_cycles WHERE task_id=%s", (tid,))
+                ev.event('race_verify', name=f'R7-{i}', task=tid,
+                         final=final, cycle_rows=cycles)
 
-        # ── R7 resume vs reassign — precondition test ────────────────────
-        # serial controls establish which operations are even LEGAL from
-        # REJECTED; the race is classified accordingly.
-        tid = mk_task('E7-R7-ctrl')
-        api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim')
-        api(TOK['priya'], 'post', f'/api/tasks/{tid}/submit', data={'note': 'w'})
-        api(TOK['admin'], 'post', f'/api/tasks/{tid}/reject', json={'reason': 'redo'})
-        ctrl_resume = api(TOK['priya'], 'post', f'/api/tasks/{tid}/resume')
-        tid2 = mk_task('E7-R7-ctrl2')
-        api(TOK['priya'], 'post', f'/api/tasks/{tid2}/claim')
-        api(TOK['priya'], 'post', f'/api/tasks/{tid2}/submit', data={'note': 'w'})
-        api(TOK['admin'], 'post', f'/api/tasks/{tid2}/reject', json={'reason': 'redo'})
-        ctrl_reassign = api(TOK['admin'], 'post', f'/api/tasks/{tid2}/reassign',
-                            json={'assigneeId': 'u-aisha'})
-        both_legal = ctrl_resume[0] == 200 and ctrl_reassign[0] == 200
-        ev.event('R7_precondition_controls',
-                 resume_from_rejected=ctrl_resume,
-                 reassign_from_rejected=ctrl_reassign,
-                 classification=('race candidate' if both_legal else
-                                 'PRECONDITION TEST — operations are not both '
-                                 'legal from REJECTED; no race-safety claim'))
-        for i in range(3):
-            tid = mk_task(f'E7-R7-{i}')
-            api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim')
-            api(TOK['priya'], 'post', f'/api/tasks/{tid}/submit', data={'note': 'w'})
-            api(TOK['admin'], 'post', f'/api/tasks/{tid}/reject', json={'reason': 'redo'})
-            init = db_task(tid)
-            assert init['status'] == 'REJECTED'
-            ev.event('race_setup', name=f'R7-{i}', task=tid, verified_initial=init,
-                     precondition_classification='precondition test'
-                     if not both_legal else 'race',
-                     valid_outcomes=['legal serial outcomes per controls'])
-            race(f'R7-resume-vs-reassign-{i}',
-                 lambda tid=tid: api(TOK['priya'], 'post', f'/api/tasks/{tid}/resume'),
-                 lambda tid=tid: api(TOK['admin'], 'post', f'/api/tasks/{tid}/reassign',
-                                     json={'assigneeId': 'u-aisha'}))
-            final = db_task(tid)
-            cycles = obs.scalar("SELECT COALESCE(string_agg("
-                                "cycle::text || ':' || COALESCE(outcome,'open') "
-                                "|| ':paid=' || paid::text, ','), '') "
-                                "FROM task_cycles WHERE task_id=%s", (tid,))
-            ev.event('race_verify', name=f'R7-{i}', task=tid, final=final,
-                     cycle_rows=cycles)
+            # ── 15-command coverage map ──────────────────────────────────
+            coverage = {
+                'create':     ('PARTIALLY TESTED', 'fixture creation + E1/E5/E6 commands; no create-vs-create race'),
+                'claim':      ('TESTED', 'R1 claim-claim x3; R2 claim-vs-reduce x3 with serial controls'),
+                'decline':    ('NOT TESTED', ''),
+                'return':     ('PARTIALLY TESTED', 'used as occupancy reset; no race'),
+                'edit':       ('NOT TESTED', ''),
+                'reassign':   ('PARTIALLY TESTED', 'R7 vs resume; precondition controls limit the claim'),
+                'progress':   ('NOT TESTED', ''),
+                'submit':     ('TESTED', 'R5 submit-vs-cancel x3; R6 double-submit concurrent + sequential (standalone module e7_r6.py, own cluster/fixture)'),
+                'resume':     ('PARTIALLY TESTED', 'R7 vs reassign; precondition controls limit the claim'),
+                'approve':    ('TESTED', 'R3 approve-approve x3 with ledger amount/payee/cycle/duplicate verification; R4 authority oracles'),
+                'reject':     ('PARTIALLY TESTED', 'used in R7 setup; no race'),
+                'handoff':    ('NOT TESTED', ''),
+                'reopen':     ('NOT TESTED', ''),
+                'cancel':     ('TESTED', 'R5 cancel-vs-submit x3'),
+                'reactivate': ('NOT TESTED', ''),
+            }
+            ev.artifact('command_coverage_map.txt',
+                        'RA-1.1 E7 15-command coverage map\n'
+                        '(listing a command never counts as testing it)\n\n' +
+                        '\n'.join(f'{c:12s} {st:18s} {note}'
+                                  for c, (st, note) in coverage.items()))
+            ev.event('coverage_map',
+                     coverage={c: st for c, (st, _) in coverage.items()})
 
-        # ── 15-command coverage map ──────────────────────────────────────
-        coverage = {
-            'create':     ('PARTIALLY TESTED', 'fixture creation + E1/E5/E6 commands; no create-vs-create race'),
-            'claim':      ('TESTED', 'R1 claim-claim x3; R2 claim-vs-reduce x3 with serial controls'),
-            'decline':    ('NOT TESTED', ''),
-            'return':     ('PARTIALLY TESTED', 'used as occupancy reset; no race'),
-            'edit':       ('NOT TESTED', ''),
-            'reassign':   ('PARTIALLY TESTED', 'R7 vs resume; precondition controls limit the claim'),
-            'progress':   ('NOT TESTED', ''),
-            'submit':     ('TESTED', 'R5 submit-vs-cancel x3; R6 double-submit concurrent + sequential'),
-            'resume':     ('PARTIALLY TESTED', 'R7 vs reassign; precondition controls limit the claim'),
-            'approve':    ('TESTED', 'R3 approve-approve x3 with ledger verification; R4 authority oracles'),
-            'reject':     ('PARTIALLY TESTED', 'used in R7 setup; no race'),
-            'handoff':    ('NOT TESTED', ''),
-            'reopen':     ('NOT TESTED', ''),
-            'cancel':     ('TESTED', 'R5 cancel-vs-submit x3'),
-            'reactivate': ('NOT TESTED', ''),
-        }
-        ev.artifact('command_coverage_map.txt',
-                    'RA-1.1 E7 15-command coverage map\n'
-                    '(listing a command never counts as testing it)\n\n' +
-                    '\n'.join(f'{c:12s} {st:18s} {note}'
-                              for c, (st, note) in coverage.items()))
-        ev.event('coverage_map', coverage={c: st for c, (st, _) in coverage.items()})
-
-        ev.classify(
-            'e7',
-            harness_validity='VALID',
-            product_observation='DEFECT_OBSERVED',
-            causal_claim='SUPPORTED',
-            rationale=('Race matrix with verified initial states, resets, '
-                       'serial controls and observer-verified final states. '
-                       'R6 concurrent double-submit assessed with the '
-                       'corrected wedge criteria on a standalone fixture. '
-                       'Coverage is partial: see command_coverage_map.txt; '
-                       '"race matrix complete" is withdrawn.'),
-            coverage_tested=[c for c, (s, _) in coverage.items() if s == 'TESTED'])
-        ev.event('e7_done')
+            if invariant_failures:
+                ev.classify(
+                    'e7',
+                    harness_validity='VALID',
+                    product_observation='DEFECT_OBSERVED',
+                    causal_claim='SUPPORTED',
+                    rationale=('Enforced invariant violations: '
+                               + ', '.join(invariant_failures)
+                               + '. All races ran from verified initial '
+                                 'states with serial controls; final states '
+                                 'observer-verified.'),
+                    failed_invariants=invariant_failures,
+                    coverage_tested=[c for c, (s, _) in coverage.items()
+                                     if s == 'TESTED'])
+            else:
+                ev.classify(
+                    'e7',
+                    harness_validity='VALID',
+                    product_observation='NO_DEFECT_OBSERVED',
+                    causal_claim='SUPPORTED',
+                    rationale=('All enforced invariants held: R1 single '
+                               'ownership; R2 race end states serially '
+                               'reachable under the canonical occupancy '
+                               "policy ('IN_PROGRESS','SUBMITTED'); R3 "
+                               'single payout amount 5.0 / payee u-priya / '
+                               'cycle 1; R4 authority oracles; R5/R7 legal '
+                               'serial end states. Coverage is partial: see '
+                               'command_coverage_map.txt; "race matrix '
+                               'complete" is withdrawn.'),
+                    coverage_tested=[c for c, (s, _) in coverage.items()
+                                     if s == 'TESTED'])
+            ev.event('e7_done')
+        except SetupFailure as e:
+            ev.classify(
+                'e7',
+                harness_validity='INVALID',
+                product_observation='INVALID',
+                causal_claim='INVALID',
+                rationale=(f'Fixture/setup assertion failed at {e}; race '
+                           f'evidence gathered after a broken setup is not '
+                           f'interpretable.'))
+            ev.event('e7_aborted', reason=f'setup failure: {e}')
     finally:
-        if probe:
-            probe.stop()
         if proc:
             lab.kill_tree(proc)
             if proc in lab._LIVE_PROCS:
@@ -486,7 +587,7 @@ def main():
         obs.close()
         pg.stop()
     ev.finish()
-    print('E7 v2 evidence at', base)
+    print('E7 v3 evidence at', base)
 
 
 if __name__ == '__main__':

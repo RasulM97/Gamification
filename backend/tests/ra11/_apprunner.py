@@ -29,6 +29,9 @@ def _pool_log(event: str, conn_id: int):
             with open(_LOG_PATH, 'a', encoding='utf-8') as f:
                 f.write(json.dumps({
                     't_ms': round((time.perf_counter() - _T0) * 1000, 2),
+                    # shared wall-clock reference so pool events can be
+                    # correlated with harness events (which carry t_epoch)
+                    't_epoch': round(time.time(), 4),
                     'event': event, 'conn': conn_id,
                     'pid': os.getpid(), 'thread': threading.get_ident(),
                 }) + '\n')

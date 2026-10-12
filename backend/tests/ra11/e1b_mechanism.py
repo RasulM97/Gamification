@@ -26,7 +26,8 @@ BASE = lab.OUT_ROOT / RID / 'e1b'
 ev = lab.Evidence(BASE)
 ev.event('fingerprint', **lab.fingerprint())
 
-pg = lab.DisposablePG(BASE / 'pg')
+pg = lab.DisposablePG(BASE / 'pg', db_tag='e1b',
+                     run_dir=lab.OUT_ROOT / RID)
 UPLOAD = BASE / 'uploads'
 UPLOAD.mkdir(parents=True, exist_ok=True)
 
