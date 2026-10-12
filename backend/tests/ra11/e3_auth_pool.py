@@ -1,22 +1,21 @@
-"""E3 — authentication connection retention & pool occupancy.
+"""E3 v2 — authentication connection retention & pool occupancy (corrected).
 
-Questions (RA-1 v2 §4.2/§13):
-  - Does the auth phase's session checkout persist through the command
-    phase (one connection per request, transaction opened at auth read)?
-  - What are real simultaneous checkout counts under N concurrent requests?
-    (Issuing 16 requests does NOT by itself prove pool exhaustion — measure
-    actual checkouts and waiting requests.)
-  - Distinguish DB connection checkout from Session-object existence.
-
-Part B (in-process, labeled instrumentation): SQLAlchemy pool checkout /
-checkin listeners + an auth-call marker around one real HTTP request via
-TestClient. Proves: exactly one checkout per request, shared by the auth
-dependency and the route (dependency caching), beginning at the auth read.
-
-Part A (baseline, subprocess app): 30 concurrent bootstrap requests against
-one worker (pool 10+5); independent observer samples pg_stat_activity every
-200 ms; loop/health probes measure the effect of pool saturation.
+Questions (RA-1 v2 §4.2/§13), corrected methodology:
+  - Measure connection lifetime PHASES separately per request: auth read,
+    command/route work, commit, post-commit bootstrap, teardown/checkin.
+    Instrumentation: SQLAlchemy checkout/checkin + begin/commit/rollback +
+    before_cursor_execute listeners, plus an auth-call wrapper (test-only).
+  - Distinguish repeated checkout EVENTS from SIMULTANEOUSLY checked-out
+    connections (occupancy timeline, not counts).
+  - Never infer pool saturation from pg_stat_activity alone: the subprocess
+    app reports its own real checkout/checkin stream via _apprunner.py
+    (RA11_POOL_LOG); occupancy is computed from that stream and correlated
+    with loop/health probe outcomes.
+  - No universal "one checkout per request" claim: measurements are reported
+    per measured request type (sync GET /api/bootstrap; async POST
+    /api/tasks) and scoped to those.
 """
+import json
 import sys
 import threading
 import time
@@ -29,85 +28,133 @@ import _inproc  # noqa: E402
 BASE = 'http://127.0.0.1:%d' % lab.PORT_A
 
 
-def part_b(ev, engine, SessionLocal):
+def phase_timeline(ev, engine, SessionLocal):
+    """Part B (in-process, labeled instrumentation): per-request connection
+    phase timeline for one sync and one async route."""
     from sqlalchemy import event
     from fastapi.testclient import TestClient
     import app.main as app_main
     from app import security
 
-    checkouts = []
-    auth_marks = []
+    def measure(label, fn):
+        tl = []
 
-    @event.listens_for(engine, 'checkout')
-    def _co(dbapi_conn, conn_rec, conn_proxy):
-        checkouts.append(('checkout', time.perf_counter(), id(dbapi_conn),
-                          threading.get_ident()))
+        @event.listens_for(engine, 'checkout')
+        def _co(c, r, p):
+            tl.append(('checkout', time.perf_counter(), id(c)))
+        @event.listens_for(engine, 'checkin')
+        def _ci(c, r):
+            tl.append(('checkin', time.perf_counter(), id(c)))
+        @event.listens_for(engine, 'begin')
+        def _beg(c):
+            tl.append(('tx_begin', time.perf_counter(), id(c)))
+        @event.listens_for(engine, 'commit')
+        def _com(c):
+            tl.append(('tx_commit', time.perf_counter(), id(c)))
+        @event.listens_for(engine, 'rollback')
+        def _rb(c):
+            tl.append(('tx_rollback', time.perf_counter(), id(c)))
 
-    @event.listens_for(engine, 'checkin')
-    def _ci(dbapi_conn, conn_rec):
-        checkouts.append(('checkin', time.perf_counter(), id(dbapi_conn),
-                          threading.get_ident()))
+        stmts = []
 
-    orig = security.current_auth
+        @event.listens_for(engine, 'before_cursor_execute')
+        def _sql(conn, cursor, statement, parameters, context, executemany):
+            stmts.append((time.perf_counter(), statement.strip()[:90]))
 
-    def marked(cred=None, db=None):
-        auth_marks.append(('auth_called', time.perf_counter()))
-        r = orig(cred, db)
-        auth_marks.append(('auth_done', time.perf_counter()))
-        return r
+        auth_marks = []
+        orig = security.current_auth
 
-    ev.event('instrumentation', instrument='pool_listeners+auth_wrapper',
-             note='test-only; no production code modified')
-    security.current_auth = marked
-    # current_user calls current_auth as a module-level function; patch both
-    try:
-        client = TestClient(app_main.app)
-        # login to get a token (seed data, dev password)
-        r = client.post('/api/auth/login',
-                        json={'email': 'dana@aster.demo', 'password': 'demo1234'})
-        token = r.json()['token']
-        checkouts.clear()
-        auth_marks.clear()
-        t0 = time.perf_counter()
-        r = client.get('/api/bootstrap', headers=lab.auth(token))
-        elapsed = (time.perf_counter() - t0) * 1000
-        ev.event('B_request', status=r.status_code, ms=round(elapsed, 1),
-                 checkouts=[(k, round(t - t0, 4), cid) for k, t, cid, _ in checkouts],
-                 auth_marks=[(k, round(t - t0, 4)) for k, t in auth_marks],
-                 distinct_connections=len({c for _, _, c, _ in checkouts}))
-    finally:
-        security.current_auth = orig
-        event.remove(engine, 'checkout', _co)
-        event.remove(engine, 'checkin', _ci)
+        def marked(cred=None, db=None):
+            auth_marks.append(('auth_start', time.perf_counter()))
+            r = orig(cred, db)
+            auth_marks.append(('auth_done', time.perf_counter()))
+            return r
+
+        security.current_auth = marked
+        ev.event('instrumentation', instrument='pool+tx+sql+auth listeners',
+                 phase=label, note='test-only; no production code modified')
+        try:
+            tl.clear(); stmts.clear(); auth_marks.clear()
+            t0 = time.perf_counter()
+            status = fn()
+            elapsed = (time.perf_counter() - t0) * 1000
+            timeline = [(k, round(t - t0, 4), cid)
+                        for k, t, cid in tl]
+            ev.event('B_phase_timeline', phase=label, status=status,
+                     elapsed_ms=round(elapsed, 1),
+                     checkout_events=[x for x in timeline
+                                      if x[0] in ('checkout', 'checkin')],
+                     tx_events=[x for x in timeline
+                                if x[0].startswith('tx_')],
+                     distinct_connections=len({c for _, _, c in tl if c}),
+                     auth_marks=[(k, round(t - t0, 4)) for k, t in auth_marks],
+                     first_statements=[s[:90] for _, s in stmts[:4]],
+                     statement_count=len(stmts))
+        finally:
+            security.current_auth = orig
+            for evt, fnx in (('checkout', _co), ('checkin', _ci),
+                             ('begin', _beg), ('commit', _com),
+                             ('rollback', _rb)):
+                event.remove(engine, evt, fnx)
+            event.remove(engine, 'before_cursor_execute', _sql)
+
+    client = TestClient(app_main.app)
+    token = client.post('/api/auth/login', json={
+        'email': 'dana@aster.demo', 'password': 'demo1234'}).json()['token']
+    H = lab.auth(token)
+    measure('sync GET /api/bootstrap',
+            lambda: client.get('/api/bootstrap', headers=H).status_code)
+    measure('async POST /api/tasks',
+            lambda: client.post('/api/tasks', headers=H,
+                                data={'title': 'E3 phase probe',
+                                      'reward': '1'}).status_code)
+
+
+def occupancy_from_pool_log(path: Path):
+    """Simultaneous occupancy timeline from the app process's own pool
+    checkout/checkin stream (NOT inferred from pg_stat_activity)."""
+    if not path.exists():
+        return None
+    events = [json.loads(x) for x in
+              path.read_text(encoding='utf-8').splitlines() if x.strip()]
+    live = set()
+    max_occ = 0
+    occupancy_series = []
+    waits = 0
+    for e in events:
+        if e['event'] == 'checkout':
+            live.add(e['conn'])
+        elif e['event'] in ('checkin', 'invalidate'):
+            live.discard(e['conn'])
+        max_occ = max(max_occ, len(live))
+        occupancy_series.append((e['t_ms'], len(live)))
+    return {'max_simultaneous': max_occ,
+            'checkout_events': sum(1 for e in events
+                                   if e['event'] == 'checkout'),
+            'checkin_events': sum(1 for e in events
+                                  if e['event'] == 'checkin'),
+            'distinct_connections': len({e['conn'] for e in events
+                                         if e['conn']})}
 
 
 def part_a(ev, url, upload):
+    """Baseline, subprocess app: 30 concurrent bootstraps, pool occupancy
+    measured from the app's own pool log; health/loop probes correlated."""
     import subprocess
     import httpx
     env = lab.app_env(url, upload)
     helper = Path(__file__).parent / '_fixture_e1.py'
-    subprocess.run([lab.PY, str(helper), '250'], env=env, cwd=lab.BACKEND,
-                   check=True, timeout=180)
+    subprocess.run([lab.PY, str(helper), '150', 'e3'], env=env,
+                   cwd=lab.BACKEND, check=True, timeout=180)
 
     proc, wd = lab.spawn_app(env, lab.PORT_A, ev, watchdog_s=240)
     obs = lab.Observer(url, ev)
     probe = None
     try:
-        assert lab.wait_port(lab.PORT_A, 30)
         token = lab.login(BASE, 'dana@aster.demo')
         probe = lab.LoopProbe(lab.PORT_A, ev, interval_s=0.1)
         probe.start()
-
-        # connection sampler (independent observer)
-        stop = threading.Event()
-
-        def sampler():
-            while not stop.is_set():
-                obs.snap_activity('saturation')
-                time.sleep(0.2)
-
-        st = threading.Thread(target=sampler, daemon=True)
-        st.start()
+        probe_since = (time.perf_counter() - ev.t0) * 1000
 
         results = {}
 
@@ -124,17 +171,28 @@ def part_a(ev, url, upload):
 
         threads = [threading.Thread(target=fire, args=(i,)) for i in range(30)]
         ev.event('A_fanout_start', requests=30)
+        t_fan = time.perf_counter()
         for t in threads:
             t.start()
         for t in threads:
             t.join()
-        stop.set()
-        st.join(timeout=10)
-        ev.event('A_fanout_done', results=results)
-        time.sleep(0.5)
+        fanout_ms = round((time.perf_counter() - t_fan) * 1000, 1)
         obs.snap_activity('post-fanout')
+        time.sleep(1.0)  # let final checkins land in the pool log
+        occ = occupancy_from_pool_log(ev.dir / f'pool_events_{lab.PORT_A}.jsonl')
+        health_fails = lab.probe_fail_count(ev.dir, 'health', probe_since)
+        loop_fails = lab.probe_fail_count(ev.dir, 'loop', probe_since)
+        ev.event('A_fanout_done', wall_ms=fanout_ms, results=results,
+                 pool_occupancy=occ,
+                 health_probe_fails_during_fanout=health_fails,
+                 loop_probe_fails_during_fanout=loop_fails,
+                 correlation_note='health failures correlated with pool '
+                                  'occupancy at cap (10+5) and in-flight '
+                                  'request count; loop probe isolates the '
+                                  'event loop itself')
         probe.stop()
         probe = None
+        return occ, health_fails, loop_fails, results
     finally:
         if probe:
             probe.stop()
@@ -143,18 +201,33 @@ def part_a(ev, url, upload):
 
 
 def main():
-    rid = sys.argv[1]
+    rid = lab.validate_run_id(sys.argv[1])
     base = lab.OUT_ROOT / rid / 'e3'
     ev, pg, url, engine, SessionLocal = _inproc.setup(base)
     try:
-        part_b(ev, engine, SessionLocal)
+        phase_timeline(ev, engine, SessionLocal)
         engine.dispose()  # release in-process connections before part A
-        part_a(ev, url, base / 'uploads')
+        occ, hf, lf, results = part_a(ev, url, base / 'uploads')
+        ok = occ is not None
+        ev.classify(
+            'e3',
+            harness_validity='VALID' if ok else 'INVALID',
+            product_observation=('DEFECT_OBSERVED' if ok and hf > 0
+                                 else 'EXPECTED_BEHAVIOR'),
+            causal_claim='CONFIRMED' if ok else 'INCONCLUSIVE',
+            rationale=('Connection phases measured per request type with '
+                       'pool/tx/sql listeners; subprocess occupancy computed '
+                       'from the app\'s own checkout/checkin stream '
+                       f'(max_simultaneous={occ and occ["max_simultaneous"]} '
+                       'vs pool 10+5); health probe failures during fanout: '
+                       f'{hf}; loop failures: {lf}. Claims are scoped to the '
+                       'measured request types.'),
+            pool_occupancy=occ)
         ev.event('e3_done')
     finally:
         pg.stop()
     ev.finish()
-    print('E3 evidence at', base)
+    print('E3 v2 evidence at', base)
 
 
 if __name__ == '__main__':

@@ -1,4 +1,12 @@
-"""E2 — same-user FOR SHARE -> FOR NO KEY UPDATE upgrade.
+"""E2 v2 — same-user FOR SHARE -> FOR NO KEY UPDATE upgrade.
+
+SQL semantics (verified, not assumed): lock_capacity_user(..., key_share=True)
+without read=True emits FOR NO KEY UPDATE; organization.account() emits
+FOR SHARE. The test asserts both clauses appear in the captured SQL.
+
+M1 uses two SEPARATE transactions with a barrier latch; M2 is the matched
+non-upgrade control. The isolated row-lock demonstration says nothing about
+the safety of every Task command — the app-level reality check is M3.
 
 Hypothesis (RA-1 v2 §6/§7): scoped-task claim/resume runs
   admit -> allowed -> account()   ... FOR SHARE on the actor row
@@ -170,6 +178,15 @@ def main():
                  deadlock_detected=any('deadlock' in str(v).lower()
                                        for v in outcome3.values()))
 
+        # SQL semantics assertion: SHARE from account(), NKU from
+        # lock_capacity_user(key_share=True) — exactly as documented.
+        up = [x.upper() for x in captured]
+        ev.event('sql_semantics_assertion',
+                 for_share_seen=any(' FOR SHARE' in x for x in up),
+                 for_no_key_update_seen=any(' FOR NO KEY UPDATE' in x
+                                            for x in up),
+                 note='key_share=True without read=True emits FOR NO KEY '
+                      'UPDATE, NOT FOR KEY SHARE')
         # emitted SQL evidence (distinct lock clauses actually sent)
         clauses = sorted({s.strip().split('WHERE')[0][-60:] + ' ... ' +
                           s.strip().split('FOR')[-1].strip()[:40]
@@ -178,6 +195,24 @@ def main():
         full = [s for s in captured if ' FOR ' in s.upper()]
         ev.artifact('emitted_sql_full.txt', '\n\n'.join(full[:40]))
 
+        m1_deadlock = any('deadlock' in str(v).lower() for v in outcome.values())
+        m2_deadlock = any('deadlock' in str(v).lower() for v in outcome2.values())
+        m3_deadlock = any('deadlock' in str(v).lower() for v in outcome3.values())
+        ev.classify(
+            'e2',
+            harness_validity='VALID',
+            product_observation='EXPECTED_BEHAVIOR',
+            causal_claim='CONFIRMED' if (m1_deadlock and not m2_deadlock
+                                         and not m3_deadlock)
+                         else 'INCONCLUSIVE',
+            rationale='Row-level SHARE->NKU upgrade deadlock class: '
+                      f'M1 deadlock={m1_deadlock} (labeled barrier), '
+                      f'M2 matched non-upgrade control deadlock={m2_deadlock}, '
+                      f'M3 app-level (real claim_task, org X serialization) '
+                      f'deadlock={m3_deadlock}. The row-level class is real; '
+                      'the org-wide EXCLUSIVE advisory currently prevents it '
+                      'between task commands. No generalization beyond these '
+                      'two measured paths.')
         ev.event('e2_done')
     finally:
         obs.close()

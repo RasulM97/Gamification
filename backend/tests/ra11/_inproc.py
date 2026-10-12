@@ -17,11 +17,14 @@ def setup(base_dir: Path):
     import importlib
 
     ev = lab.Evidence(base_dir)
-    ev.event('fingerprint', **lab.fingerprint())
-    pg = lab.DisposablePG(Path(base_dir) / 'pg')
+    pg = lab.DisposablePG(Path(base_dir) / 'pg',
+                          db_tag=Path(base_dir).name)
     upload = Path(base_dir) / 'uploads'
     upload.mkdir(parents=True, exist_ok=True)
     url = pg.start()
+    ev.event('fingerprint', **lab.fingerprint())
+    ev.event('pg_started', db_name=pg.db_name,
+             server_version=pg.server_version)
 
     os.environ['CVE_DATABASE_URL'] = url
     os.environ['CVE_UPLOAD_DIR'] = str(upload)

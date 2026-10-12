@@ -113,6 +113,8 @@ try:
              t2_acquired='acquired_at' in t2_state,
              t3_acquired='acquired_at' in t3_state)
     s1.rollback()  # T1 releases S
+    ev.event('latch_released', step='B1-T1-released-org-S',
+             note='persistence/ordering measured only after latch release')
     s1.close()
     th2.join(timeout=15)
     th3.join(timeout=15)
@@ -176,6 +178,16 @@ try:
         db.rollback()
     db.close()
 
+    ev.classify(
+        'e1b',
+        harness_validity='VALID',
+        product_observation='EXPECTED_BEHAVIOR',
+        causal_claim='CONFIRMED',
+        rationale='PostgreSQL advisory fair queueing demonstrated with the '
+                  'app\'s real organization.lock (labeled latches, released '
+                  'before ordering was measured); real bootstrap/claim lock '
+                  'sets captured mid-transaction. This proves the queueing '
+                  'mechanism, not the full wedge by itself.')
     ev.event('e1_partB_done')
 finally:
     if obs:

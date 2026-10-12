@@ -1,5 +1,14 @@
-"""Smoke test for the RA-1.1 lab core: disposable cluster, schema+seed,
-one-worker app spawn, login, observer, probe, watchdog, bounded cleanup."""
+"""Smoke + Gate-1 containment checks for the RA-1.1 lab core.
+
+Verifies, before any concurrency experiment may run:
+  - disposable cluster refuses a pre-existing directory;
+  - uniquely named disposable database, identity verified;
+  - evidence isolation (events.jsonl mode 'x' refuses a second open);
+  - exactly one worker; listening port owned by the spawned PID;
+  - watchdog fires and kills only the harness-owned tree;
+  - bounded cleanup (no live app process, no leftover cluster dir).
+"""
+import json
 import sys
 import time
 from pathlib import Path
@@ -9,39 +18,66 @@ import lab  # noqa: E402
 
 
 def main():
-    rid = sys.argv[1] if len(sys.argv) > 1 else lab.run_id()
+    rid = lab.validate_run_id(sys.argv[1] if len(sys.argv) > 1 else lab.run_id())
     base = lab.OUT_ROOT / rid / 'smoke'
     ev = lab.Evidence(base)
-    ev.event('fingerprint', **lab.fingerprint())
+    checks = {}
 
-    pg = lab.DisposablePG(base / 'pg')
-    upload = base / 'uploads'
-    upload.mkdir(parents=True, exist_ok=True)
-    proc = None
-    obs = None
-    probe = None
     try:
+        ev.event('fingerprint', **lab.fingerprint())
+
+        # ── evidence isolation: second Evidence on same dir must fail ────
+        try:
+            lab.Evidence(base)
+            checks['evidence_isolation'] = False
+        except FileExistsError:
+            checks['evidence_isolation'] = True
+
+        # ── DB safety: unique db + identity + refusal of stale dir ───────
+        pg = lab.DisposablePG(base / 'pg', db_tag='smoke')
         url = pg.start()
-        ev.event('pg_started', url_host=url.split('@')[-1][:40])
-        env = lab.app_env(url, upload)
-        t0 = time.time()
-        lab.provision_schema_and_seed(env)
-        ev.event('provisioned', seconds=round(time.time() - t0, 2))
-
-        proc, wd = lab.spawn_app(env, lab.PORT_A, ev, watchdog_s=120)
-        assert lab.wait_port(lab.PORT_A, 30), 'app port never opened'
-        ev.event('app_ready')
-
+        checks['db_unique_name'] = pg.db_name.startswith('ra11_')
+        ev.event('pg_started', db_name=pg.db_name,
+                 server_version=pg.server_version)
         obs = lab.Observer(url, ev)
-        obs.snap_activity('after-boot')
+        checks['db_identity'] = obs.scalar('SELECT current_database()') == pg.db_name
+        pg2_refused = False
+        try:
+            lab.DisposablePG(base / 'pg', db_tag='smoke2')
+        except ValueError:
+            pg2_refused = True
+        checks['preexisting_cluster_refused'] = pg2_refused
 
+        # ── path containment: safe_rmtree refuses outside paths ──────────
+        refused = False
+        try:
+            lab.safe_rmtree(lab.REPO / 'backend')
+        except ValueError:
+            refused = True
+        checks['rmtree_containment'] = refused
+
+        # ── process safety: one worker, port ownership, watchdog ─────────
+        env = lab.app_env(url, base / 'uploads')
+        (base / 'uploads').mkdir(exist_ok=True)
+        env['WEB_CONCURRENCY'] = '9'  # must be stripped by app_env
+        env = lab.app_env(url, base / 'uploads')  # rebuilt: overrides stripped
+        checks['worker_env_stripped'] = 'WEB_CONCURRENCY' not in env
+        lab.provision_schema_and_seed(env)
+        proc, wd = lab.spawn_app(env, lab.PORT_A, ev, watchdog_s=120)
+        checks['port_owner_verified'] = lab.verify_port_owner(lab.PORT_A,
+                                                              proc.pid)
         token = lab.login(f'http://127.0.0.1:{lab.PORT_A}', 'dana@aster.demo')
-        ev.event('login_ok', user='dana')
         import httpx
         r = httpx.get(f'http://127.0.0.1:{lab.PORT_A}/api/bootstrap',
                       headers=lab.auth(token), timeout=30)
-        ev.event('bootstrap', status=r.status_code,
-                 bytes=len(r.content))
+        checks['bootstrap_ok'] = r.status_code == 200
+        # pool instrumentation proof: launcher writes checkout events
+        time.sleep(0.5)
+        pool_log = base / f'pool_events_{lab.PORT_A}.jsonl'
+        pool_events = [json.loads(x) for x in pool_log.read_text().splitlines()] \
+            if pool_log.exists() else []
+        checks['pool_checkout_events'] = any(
+            e.get('event') == 'checkout' for e in pool_events)
 
         probe = lab.LoopProbe(lab.PORT_A, ev)
         probe.start()
@@ -49,22 +85,24 @@ def main():
         probe.stop()
         obs.snap_locks('idle')
         lab.stop_app(proc, wd, ev)
-        proc = None
+        checks['app_stopped'] = not lab.process_alive(proc)
+
         obs.close()
-        obs = None
-        ev.event('smoke_result', result='PASS')
-    except Exception as e:
-        ev.event('smoke_result', result='FAIL', error=repr(e))
-        raise
-    finally:
-        if probe:
-            probe.stop()
-        if proc:
-            kill = getattr(lab, 'kill_tree')
-            kill(proc)
-        if obs:
-            obs.close()
         pg.stop()
+        checks['cluster_removed'] = not (base / 'pg' / 'cluster').exists()
+        checks['no_live_app'] = len(lab._LIVE_PROCS) == 0
+
+        ev.event('gate1_checks', **checks)
+        ok = all(checks.values())
+        ev.classify('smoke-gate1',
+                    harness_validity='VALID' if ok else 'INVALID',
+                    product_observation='EXPECTED_BEHAVIOR',
+                    causal_claim='INCONCLUSIVE',
+                    rationale='Gate-1 containment self-check; no product claim.')
+        if not ok:
+            raise SystemExit(f'GATE 1 FAILED: {checks}')
+        print('SMOKE + GATE 1 PASS')
+    finally:
         m = ev.finish()
         print(f'evidence at {base} ({len(m)} artifacts)')
 
