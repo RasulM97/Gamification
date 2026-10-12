@@ -510,6 +510,27 @@ matching the Day-1 F-01 symptoms (see §8).
 
 ## 7. Lock Graph
 
+> **[ERRATUM — added under the RA-1 design correction gate, after RA-0
+> closure]** Compilation of the actual emitted SQL (repo venv, SQLAlchemy
+> 2.0.52, PostgreSQL dialect, `literal_binds`) proves that
+> `.with_for_update(key_share=True)` emits **FOR NO KEY UPDATE**, not
+> `FOR KEY SHARE`. Therefore, everywhere in this document where
+> `lock_capacity_user`, `ledger()`, or `update_capacity` is described as
+> taking "FOR KEY SHARE" / "FKS" / "KS" on a user row (including the §6
+> command table and the row-lock line in this section's inventory), the
+> correct emitted lock is **FOR NO KEY UPDATE**. The §7 analysis bullet
+> "row S/KS compatible, no proven cycle" (and its echo in §20 item 7) is
+> **superseded**: FOR SHARE and FOR NO KEY UPDATE **conflict** in
+> PostgreSQL, so the real hazard is a same-row **upgrade cycle** —
+> `account()` takes FOR SHARE on the actor, then `require_capacity`
+> takes FOR NO KEY UPDATE on the same row; two concurrent commands on
+> different tasks for the same user (T1 SHARE(u), T2 SHARE(u), both then
+> wanting NKU(u)) form a detectable row-level deadlock class. This is
+> what `exclusive_guarded`'s docstring (`guards.py:27-31`) actually
+> exists to prevent. Corrected analysis lives in
+> `RA1_RELIABILITY_CONCURRENCY_DESIGN.md` v2 §6/§7. All other RA-0
+> findings are unchanged.
+
 LOCK INVENTORY (all SOURCE FACT; advisory keys via `hashtextextended(key,0)`
 xact-scoped unless noted):
 
@@ -528,7 +549,7 @@ xact-scoped unless noted):
 | `trusted-event:<dedupe>` | EXCLUSIVE | source_authority.record_trusted_event | whole tx | trusted event identity |
 | `cve-source-event:<…>` (ingestion/github/slack delivery paths) | EXCLUSIVE | connector delivery (`github_connector/delivery.py:59`, `slack_connector/actions.py:237`, source_authority) | whole tx | external delivery dedupe |
 | `provision:<name>` (hashtext, not xact-extended) | EXCLUSIVE | provisioning CLI | tx | company provisioning |
-| Row locks | task FOR UPDATE; reward/redemption FOR UPDATE; users FOR SHARE (`account()`) / FOR KEY SHARE (`lock_capacity_user`, ledger); company FOR UPDATE (admin lifecycle, onboarding); help FOR UPDATE; policy/rule FOR UPDATE (edit) / FOR SHARE (eval); notification deliveries FOR UPDATE SKIP LOCKED (drain) | — | — |
+| Row locks | task FOR UPDATE; reward/redemption FOR UPDATE; users FOR SHARE (`account()`) / FOR NO KEY UPDATE (`lock_capacity_user`, ledger — see ERRATUM above: `key_share=True` emits FOR NO KEY UPDATE, not FOR KEY SHARE); company FOR UPDATE (admin lifecycle, onboarding); help FOR UPDATE; policy/rule FOR UPDATE (edit) / FOR SHARE (eval); notification deliveries FOR UPDATE SKIP LOCKED (drain) | — | — |
 
 LOCK ORDER GRAPH (observed acquisition orders):
 
@@ -552,7 +573,12 @@ ANALYSIS (INFERENCE from the orders above):
   second. Because capability keys are per-capability-name, an actual advisory
   cycle needs same-key contention: `capabilities.update(TASK_LITE)` (holds cap
   X(TASK_LITE), wants user S) vs a task command (holds org X, user KS via
-  admit/account, wants cap S(TASK_LITE)). Row-level S/KS are mutually
+  admit/account, wants cap S(TASK_LITE)). [ERRATUM: the following
+  compatibility claim is superseded — the capacity lock is FOR NO KEY
+  UPDATE, which conflicts with FOR SHARE; see ERRATUM at top of §7. The
+  real cycle class is the same-row SHARE→NKU upgrade on the actor, not
+  this advisory pair. Original text preserved for the record:] Row-level
+  S/KS are mutually
   compatible, so the row half does not close the cycle; cap X vs cap S on the
   same key: the toggle waits for the command's cap S; the command does not
   wait on anything the toggle holds except the user row (compatible). → No
@@ -569,8 +595,14 @@ ANALYSIS (INFERENCE from the orders above):
   holder or pending exclusive waiter (PG advisory-lock fair queueing —
   CONTRACT FACT of PG lock compatibility). Other domains (rewards/
   redemptions, governance, capabilities) do NOT serialize on this key.
-- **Lock upgrade risk:** deliberately engineered around with key_share
-  (`lock_capacity_user`, `service_common.py:153-161` comment) — SOURCE FACT.
+- **Lock upgrade risk [ERRATUM]:** the `key_share=True` call in
+  `lock_capacity_user` (`service_common.py:153-161`) emits FOR NO KEY
+  UPDATE, not FOR KEY SHARE (see ERRATUM at top of §7). The real upgrade
+  hazard is the opposite direction on the same row: `account()` FOR SHARE
+  on the actor → `require_capacity` FOR NO KEY UPDATE on the same row
+  (SHARE→NKU upgrade cycle across two concurrent commands on different
+  tasks for the same user). Today's org-wide exclusive advisory lock
+  (`exclusive_guarded`) is what serializes that class away.
 - **Unnecessary read locking:** bootstrap (`serializers.py`) calls `can_view`
   per task which takes the org SHARED advisory lock for scoped tasks
   (`task_access.py:17`) — a pure read waits behind writers.
@@ -1053,6 +1085,10 @@ SOURCE FACTS + INFERENCE (no load tests exist; UNRESOLVED as measurement):
    workspace_reset.py).
 7. **Lock-order inconsistency** (§7): capabilities doc says capability lock
    before domain locks; task commands take org X first, capability S after.
+   [ERRATUM: the parenthetical "row S/KS compatible" is superseded — the
+   capacity lock emits FOR NO KEY UPDATE, which conflicts with FOR SHARE;
+   the real hazard is the same-row SHARE→NKU upgrade cycle on the actor.
+   See ERRATUM at top of §7 and RA-1 v2 §6/§7.]
    No proven cycle (row S/KS compatible), but the documented order is
    violated — flagged risk, not proven deadlock.
 8. **Two economies double future write volume** per payout once governance
