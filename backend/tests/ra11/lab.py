@@ -567,6 +567,17 @@ def stop_app(proc, wd: Watchdog, ev: Evidence):
             pass
     ev.event('app_stopped', pid=proc.pid, returncode=proc.poll(),
              watchdog_fired=wd.fired)
+    # Gate A (targeted blocker): unverified cleanup INVALIDATES the run.
+    # A surviving harness-owned process or an open listener can contaminate
+    # every later measurement, so this raises instead of returning
+    # normally: the experiment exits non-zero, run_all halts further
+    # experiments, and _results reports the run incomplete.
+    if not dead or closed is False:
+        raise HarnessError(
+            f'cleanup verification failed for pid {proc.pid} '
+            f'(tree_dead={dead}, listener_closed={closed}): harness-owned '
+            'processes survived or the listener is still open — the run is '
+            'INVALID and no further experiment may start')
 
 
 def process_alive(proc) -> bool:
@@ -652,6 +663,7 @@ class Observer:
             c.execute("""
                 SELECT now() AS at, l.locktype, l.mode, l.granted, l.pid,
                        l.classid, l.objid, l.objsubid,
+                       COALESCE(l.relation::regclass::text, '') AS rel,
                        COALESCE(l.transactionid::text, '') AS xid,
                        COALESCE(l.virtualtransaction, '') AS vxid,
                        a.application_name, a.datname, a.state,
@@ -842,12 +854,13 @@ def assess_wedge(ev: Evidence, proc, window_start_ms: float,
 # Conclusion tiers, strictly ordered and NEVER auto-elevated:
 #   1. REQUEST_PROGRESS_STALLED   — bounded-window detector outcome only
 #   2. LOCK_CHAIN_OBSERVED        — an actual correlated lock chain exists
-#      in-window: non-empty snapshots, a waiting (ungranted) lock with FULL
-#      identity, and a blocking relationship (pg_blocking_pids) to a holder
-#      present in the same snapshot
+#      WITHIN ONE in-window snapshot: a waiting (ungranted) lock with FULL
+#      identity, and a pg_blocking_pids blocker holding a GRANTED lock with
+#      the SAME identity in that same snapshot (rows from different
+#      snapshots are never combined into one chain)
 #   3. CAUSAL_MECHANISM_SUPPORTED — the chain's waiter AND blocker are both
 #      backends of THIS application (application_name='ra11-app') on THIS
-#      disposable database, with transaction identity attached
+#      disposable database, with transaction identity attached on BOTH sides
 #   4. CAUSAL_MECHANISM_CONFIRMED — tier 3 plus: verified healthy
 #      precondition, a matched successful control, every latch released,
 #      and no recovery during the claimed bounded window
@@ -906,53 +919,83 @@ def assess_lock_causality(ev_dir, window, *, stalled: bool,
             return False
         return True
 
-    waiting = []
-    for row in rows:
-        if row.get('granted') != 'True':
-            blockers = row.get('blocking_pids') or ''
-            waiting.append((row, [b for b in blockers.split(',') if b]))
-    # Lock chain: a waiting lock whose blocker is also present in the same
-    # snapshot. Advisory locks additionally require FULL identity
-    # (classid/objid/objsubid) — a bare 'advisory' row proves nothing.
+    def lock_identity(row):
+        """Full identity of the lock a row refers to, or None when the
+        snapshot lacks it (fail closed: an unidentified lock never matches).
+
+        advisory      -> (classid, objid, objsubid)
+        transactionid -> (xid,)
+        virtualxid    -> (vxid,)
+        everything else (relation, tuple, page, ...) -> (classid, objid)
+        """
+        lt = row.get('locktype')
+        keys = {'advisory': ('classid', 'objid', 'objsubid'),
+                'transactionid': ('xid',),
+                'virtualxid': ('vxid',)}.get(lt, ('classid', 'objid'))
+        vals = tuple(row.get(k) for k in keys)
+        if any(v in (None, '', 'None', '0') for v in vals):
+            return None
+        return (lt,) + vals
+
+    def tx_identity(row):
+        return (row.get('xact_start') or row.get('backend_xid')) \
+            not in (None, '', 'None')
+
+    # Lock chains are built STRICTLY WITHIN one snapshot: a waiter can only
+    # be chained to a blocker that, in the SAME snapshot, holds a GRANTED
+    # lock with the SAME full identity. Rows from different snapshots are
+    # never combined into one chain, and a blocker holding an unrelated lock
+    # (different key, different locktype) never qualifies. Advisory waiters
+    # additionally require full identity (classid/objid/objsubid).
     chain = []
-    by_pid = {}
-    for row in rows:
-        by_pid.setdefault(row.get('pid'), []).append(row)
-    for row, blockers in waiting:
-        if row.get('locktype') == 'advisory' and not all(
-                row.get(k) not in (None, '', 'None')
-                for k in ('classid', 'objid', 'objsubid')):
-            continue  # incomplete advisory identity: fail closed
-        if not blockers:
-            continue  # no observed blocking relationship
-        held = [b for b in blockers
-                if any(r.get('granted') == 'True' for r in by_pid.get(b, []))]
-        if held:
-            chain.append({'waiting': row, 'blocker_pids': held})
+    for snap in snapshots:
+        srows = snap.get('rows') or []
+        by_pid = {}
+        for row in srows:
+            by_pid.setdefault(row.get('pid'), []).append(row)
+        for row in srows:
+            if row.get('granted') == 'True':
+                continue
+            ident = lock_identity(row)
+            if ident is None:
+                continue  # incomplete identity: fail closed
+            blockers = [b for b in (row.get('blocking_pids') or '')
+                        .split(',') if b]
+            if not blockers:
+                continue  # no observed blocking relationship
+            held = [{'pid': b, 'row': r} for b in blockers
+                    for r in by_pid.get(b, [])
+                    if r.get('granted') == 'True'
+                    and lock_identity(r) == ident]
+            if held:
+                chain.append({'snapshot_label': snap.get('label'),
+                              'snapshot_t_ms': snap.get('t_ms'),
+                              'waiting': row, 'blockers': held})
 
     lock_chain = bool(chain)
     if rows and not lock_chain:
-        reasons.append('no complete waiting->holder lock chain in-window '
-                       '(identity, granted/waiting states, or blocking '
-                       'relationship missing)')
+        reasons.append('no complete waiting->holder lock chain in any single '
+                       'in-window snapshot (identity, granted/waiting states, '
+                       'or blocking relationship missing; rows from different '
+                       'snapshots are never combined)')
 
     # Mechanism support: the chain must tie THIS application's backends
     # together — waiter and blocker both ra11-app on this database, with
-    # transaction identity. Unrelated PostgreSQL activity or a wrong-process
-    # backend never counts.
+    # transaction identity on BOTH sides. Unrelated PostgreSQL activity or a
+    # wrong-process backend never counts.
     app_chain = [c for c in chain
                  if is_app_backend(c['waiting'])
-                 and any(is_app_backend(r) for b in c['blocker_pids']
-                         for r in by_pid.get(b, []))]
+                 and any(is_app_backend(h['row']) for h in c['blockers'])]
     supported = bool(app_chain)
     if app_chain:
-        tx_ok = all((c['waiting'].get('xact_start') or
-                     c['waiting'].get('backend_xid')) not in (None, '', 'None')
+        tx_ok = all(tx_identity(c['waiting'])
+                    and any(tx_identity(h['row']) for h in c['blockers'])
                     for c in app_chain)
         if not tx_ok:
             supported = False
-            reasons.append('waiting backends lack transaction identity '
-                           '(xact_start/backend_xid)')
+            reasons.append('chain backends lack transaction identity '
+                           '(xact_start/backend_xid) on the waiter or on '
+                           'every matched blocker')
     elif lock_chain:
         reasons.append('lock chain does not connect two ra11-app backends '
                        'of this disposable database (unrelated activity or '

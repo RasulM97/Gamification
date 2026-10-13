@@ -16,8 +16,15 @@ Method corrections vs v2 (Gate C):
     incomplete edges), never fixed conclusion text: a demonstrated complete
     conflicting wait graph is DEFECT_OBSERVED; incomplete edges force
     INCONCLUSIVE.
-  - Deadlock detection uses driver SQLSTATE 40P01 where available, falling
-    back to message text; both are recorded.
+  - Deadlock detection requires the driver SQLSTATE 40P01; message text is
+    recorded but NEVER confirms (targeted blocker 3).
+  - An edge is COMPLETE only with both sides at their first-lock boundary,
+    EXTERNALLY VERIFIED acquisition (the observer snapshot content must show
+    >=2 distinct app backends holding granted locks at the latch point), and
+    both threads terminated — and termination alone is not a transaction:
+    every outcome must be an actual commit or a 40P01 deadlock, otherwise
+    the edge is UNEXPLAINED and forces INCONCLUSIVE. The classification is
+    computed by _decisions.decide_e4 from this per-edge evidence.
   - Boundary enforcement: if either side fails to reach its first-lock
     boundary (ready flag false) the edge is INCOMPLETE, not a forced
     interleave.
@@ -55,6 +62,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import lab  # noqa: E402
 import _inproc  # noqa: E402
+import _decisions as D  # noqa: E402
 
 REPS = 6
 
@@ -176,12 +184,16 @@ def main():
         # ── dynamic edges: both sides paused between lock 1 and lock 2 ────
         def edge_run(name, t1_first, t1_second, t2_first, t2_second):
             """Two transactions; each acquires its first lock, the harness
-            EXTERNALLY VERIFIES both hold their locks, then releases both
+            EXTERNALLY VERIFIES both hold their locks (observer snapshot
+            content is ASSERTED, not just recorded), then releases both
             into their second acquisition simultaneously (labeled latches).
-            Returns (outcome, complete): an edge is COMPLETE only if both
-            sides reached their first-lock boundary AND both threads
-            terminated within the join timeout. An incomplete edge never
-            feeds a deadlock count."""
+            Returns an edge evidence dict for _decisions.decide_e4: an edge
+            is COMPLETE only if both sides reached their first-lock
+            boundary, the observer verified >=2 distinct app backends
+            holding granted locks at the latch point, AND both threads
+            terminated within the join timeout. Thread termination alone
+            is never a successful transaction; actual commit outcomes and
+            driver SQLSTATEs are part of the evidence."""
             state = {'t1_ready': threading.Event(),
                      't2_ready': threading.Event(),
                      'go': threading.Event()}
@@ -217,23 +229,39 @@ def main():
             ok1 = state['t1_ready'].wait(timeout=30)
             ok2 = state['t2_ready'].wait(timeout=30)
             time.sleep(0.3)  # let lock manager settle before the snapshot
-            obs.snap_locks(f'{name}-both-hold-first-locks')
+            rows = obs.snap_locks_full(f'{name}-both-hold-first-locks')
+            # Verified acquisition (targeted blocker 3): the snapshot CONTENT
+            # must show >=2 distinct application backends of THIS disposable
+            # database actually holding granted locks at the latch point.
+            holders = {r.get('pid') for r in rows
+                       if r.get('granted') == 'True'
+                       and r.get('application_name') == 'ra11-app'
+                       and r.get('datname') == obs.db_name}
+            acquisition_verified = len(holders) >= 2
             ev.event('latch', edge=name, step='external-verify-then-release',
-                     t1_ready=ok1, t2_ready=ok2)
+                     t1_ready=ok1, t2_ready=ok2,
+                     verified_holder_pids=sorted(holders),
+                     acquisition_verified=acquisition_verified)
             state['go'].set()  # latch released BEFORE outcomes are measured
             t1.join(timeout=60); t2.join(timeout=60)
             alive = {'t1': t1.is_alive(), 't2': t2.is_alive()}
-            complete = ok1 and ok2 and not any(alive.values())
+            edge = {'name': name, 'kind': 'forced',
+                    'both_at_boundary': bool(ok1 and ok2),
+                    'acquisition_verified': acquisition_verified,
+                    'threads_finished': not any(alive.values()),
+                    'outcomes': out}
             ev.event('edge_result', edge=name, outcome=out,
                      threads_alive_after_join=alive,
-                     both_at_boundary=bool(ok1 and ok2),
-                     complete=bool(complete),
+                     both_at_boundary=edge['both_at_boundary'],
+                     acquisition_verified=acquisition_verified,
                      termination=('clean' if not any(alive.values())
                                   else 'TIMEOUT — thread(s) still alive; '
                                        'unobserved lock wait, not a '
                                        'measured commit'),
-                     deadlock=any(is_deadlock(v) for v in out.values()))
-            return out, bool(complete)
+                     deadlock_sqlstate=any(
+                         v.get('sqlstate') == '40P01'
+                         for v in out.values() if isinstance(v, dict)))
+            return edge
 
         def claim_seq(task_id):
             """Decomposition of the REAL claim_task lock order, verified
@@ -297,45 +325,32 @@ def main():
             task_counter['i'] += 1
             return f't-e4-{i:03d}'
 
-        edge_outcomes = {}
-        incomplete_edges = []
+        edges = []
 
         # Edge A direction 1: claim order (org X | cap S...) vs update (cap X | admin S)
         for i in range(REPS):
             f1, s1 = claim_seq(next_task())
             f2, s2 = cap_update_seq()
-            o, complete = edge_run(f'A1-claimXorder-vs-capX-r{i}',
-                                   f1, s1, f2, s2)
-            edge_outcomes[f'A1-r{i}'] = o
-            if not complete:
-                incomplete_edges.append(f'A1-r{i}')
+            edges.append(edge_run(f'A1-claimXorder-vs-capX-r{i}',
+                                  f1, s1, f2, s2))
         # Edge A direction 2 (reverse): update first, claim second
         for i in range(REPS):
             f2, s2 = cap_update_seq()
             f1, s1 = claim_seq(next_task())
-            o, complete = edge_run(f'A2-capX-vs-claimXorder-r{i}',
-                                   f2, s2, f1, s1)
-            edge_outcomes[f'A2-r{i}'] = o
-            if not complete:
-                incomplete_edges.append(f'A2-r{i}')
+            edges.append(edge_run(f'A2-capX-vs-claimXorder-r{i}',
+                                  f2, s2, f1, s1))
         # Edge B: preflight (cap S | org X) vs claim (org X | cap S) — both cap S
         for i in range(REPS):
             f1, s1 = preflight_seq()
             f2, s2 = claim_seq(next_task())
-            o, complete = edge_run(f'B-preflight-vs-claim-r{i}',
-                                   f1, s1, f2, s2)
-            edge_outcomes[f'B-r{i}'] = o
-            if not complete:
-                incomplete_edges.append(f'B-r{i}')
+            edges.append(edge_run(f'B-preflight-vs-claim-r{i}',
+                                  f1, s1, f2, s2))
         # Edge C1: lifecycle position-only (Company U | user NKU) vs claim
         for i in range(REPS):
             f1, s1 = lifecycle_seq('u-priya', position='Analyst')
             f2, s2 = claim_seq(next_task())
-            o, complete = edge_run(f'C1-lifecycle-pos-vs-claim-r{i}',
-                                   f1, s1, f2, s2)
-            edge_outcomes[f'C1-r{i}'] = o
-            if not complete:
-                incomplete_edges.append(f'C1-r{i}')
+            edges.append(edge_run(f'C1-lifecycle-pos-vs-claim-r{i}',
+                                  f1, s1, f2, s2))
 
         # Real decorated pair (unpauseable, app-level confirmation)
         from app.capabilities import service as caps
@@ -379,53 +394,40 @@ def main():
             a.start(); b.start()
             a.join(timeout=60); b.join(timeout=60)
             alive = {'update': a.is_alive(), 'claim': b.is_alive()}
-            if any(alive.values()):
-                incomplete_edges.append(f'REAL-r{i}')
-            dl = any(is_deadlock(v) for v in real_out.values())
+            dl = any(isinstance(v, dict) and v.get('sqlstate') == '40P01'
+                     for v in real_out.values())
             real_deadlocks += int(dl)
+            edges.append({'name': f'REAL-update-vs-claim-r{i}',
+                          'kind': 'real', 'both_at_boundary': None,
+                          'acquisition_verified': None,
+                          'threads_finished': not any(alive.values()),
+                          'outcomes': dict(real_out)})
             ev.event('edge_result', edge=f'REAL-update-vs-claim-r{i}',
                      outcome=dict(real_out),
                      threads_alive_after_join=alive,
-                     complete=not any(alive.values()),
                      termination=('clean' if not any(alive.values())
                                   else 'TIMEOUT — thread(s) still alive'),
-                     deadlock=dl)
+                     deadlock_sqlstate=dl)
 
-        deadlocks = [k for k, v in edge_outcomes.items()
-                     if any(is_deadlock(x) for x in v.values())]
-        complete_runs = len(edge_outcomes) - len(
-            [e for e in incomplete_edges if not e.startswith('REAL')])
-        # Gate C: the classification is DERIVED from the recorded events,
-        # not fixed conclusion text. A demonstrated complete conflicting
-        # wait graph is a DEFECT_OBSERVED; incomplete edges (boundary miss
-        # or thread timeout) force INCONCLUSIVE — an unfinished participant
-        # is never proof of any ordering property.
-        any_deadlock = bool(deadlocks) or real_deadlocks > 0
-        if any_deadlock:
-            product, causal = 'DEFECT_OBSERVED', 'CONFIRMED'
-        elif incomplete_edges:
-            product, causal = 'EXPECTED_BEHAVIOR', 'INCONCLUSIVE'
-        else:
-            product, causal = 'EXPECTED_BEHAVIOR', 'SUPPORTED'
+        # Targeted blocker 3: the classification is DERIVED by the pure
+        # decider from per-edge evidence — verified acquisition, actual
+        # commit outcomes, thread completion and driver SQLSTATE 40P01.
+        # Thread termination alone never counts as a successful transaction,
+        # and message-text 'deadlock' without 40P01 never confirms.
+        result = D.decide_e4(edges)
         ev.classify(
             'e4',
-            harness_validity='VALID',
-            product_observation=product,
-            causal_claim=causal,
-            rationale=(f'{complete_runs}/{len(edge_outcomes)} complete '
-                       'forced-interleave runs across edges A1/A2/B/C1 plus '
-                       f'3 real decorated pairs: deadlocks={deadlocks} '
-                       f'(real-pair deadlocks={real_deadlocks}). '
-                       + (f'INCOMPLETE edges (boundary miss or thread '
-                          f'timeout, excluded from conclusions): '
-                          f'{incomplete_edges}. ' if incomplete_edges else '')
-                       + ('A complete conflicting wait graph WAS '
-                          'demonstrated — see deadlock edges above. '
-                          if any_deadlock else
-                          'Where complete, the loser waited on the '
-                          'conflicting lock and committed (linear '
-                          'serialization). No complete conflicting wait '
-                          'graph was demonstrated for any tested edge. ')
+            harness_validity=result['harness_validity'],
+            product_observation=result['product_observation'],
+            causal_claim=result['causal_claim'],
+            rationale=(f'{len(edges)} forced-interleave runs across edges '
+                       'A1/A2/B/C1 plus 3 real decorated pairs. '
+                       + ' '.join(result['reasons']) + ' '
+                       + (f"Driver-verified deadlock edges: "
+                          f"{result['complete_deadlock_edges']}. "
+                          if result['complete_deadlock_edges'] else
+                          'No complete conflicting wait graph was '
+                          'demonstrated for any tested edge. ')
                        + 'claim_seq follows the REAL claim lock order '
                        '(org X advisory -> task row FOR UPDATE -> user NKU; '
                        'the capability check is a lock-free SELECT and the '
@@ -437,10 +439,10 @@ def main():
                        'untested edges (e.g. economic issue vs task '
                        'command), neither confirmed nor universally '
                        'refuted.'),
-            edges_tested=len(edge_outcomes) + 3,
-            complete_edges=complete_runs,
-            incomplete_edges=incomplete_edges,
-            deadlocks=deadlocks)
+            edges_tested=len(edges),
+            incomplete_edges=result['incomplete_edges'],
+            unexplained_edges=result['unexplained_edges'],
+            complete_deadlock_edges=result['complete_deadlock_edges'])
         ev.event('e4_done')
     finally:
         obs.close()

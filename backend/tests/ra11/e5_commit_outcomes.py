@@ -33,6 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import lab  # noqa: E402
 import _inproc  # noqa: E402
+import _decisions as D  # noqa: E402
 
 BASE = 'http://127.0.0.1:%d' % lab.PORT_A
 
@@ -96,12 +97,26 @@ def main():
         FILES = {'files': ('e5-note.txt', b'e5 evidence payload', 'text/plain')}
 
         # ── Case A: confirmed pre-commit failure ─────────────────────────
-        ev.event('A_before', **counts(obs), files=dir_listing(upload))
+        files_a_before = set(dir_listing(upload))
+        ev.event('A_before', **counts(obs), files=sorted(files_a_before))
         r = client.post('/api/tasks/t-e5-open/submit', headers=H,
                         data={'note': 'premature'}, files=FILES)
+        a_http_status = r.status_code
+        try:
+            a_http_code = r.json().get('code')
+        except Exception:
+            a_http_code = None
         ev.event('A_http', status=r.status_code, body=r.json())
-        ev.event('A_after', **counts(obs), files=dir_listing(upload),
+        a_after = counts(obs)
+        files_a_after = set(dir_listing(upload))
+        ev.event('A_after', **a_after, files=sorted(files_a_after),
                  expectation='staged file deleted, zero rows, task OPEN')
+        case_a = {'http_status': a_http_status, 'http_code': a_http_code,
+                  'attachments': a_after['attachments'],
+                  'submissions': a_after['submissions'],
+                  'task_status': a_after['t_open_status'],
+                  'staged_file_deleted':
+                      not (files_a_after - files_a_before)}
 
         # ── Case B: commit + post-commit bootstrap failure (labeled) ─────
         orig_state = routes._state
@@ -111,16 +126,28 @@ def main():
 
         ev.event('instrumentation', instrument='monkeypatch routes._state',
                  note='raises AFTER db.commit inside mutate; test-only')
+        files_b_before = set(dir_listing(upload))
         routes._state = exploding_state
         try:
             r = client.post('/api/tasks/t-e5-ip/submit', headers=H,
                             data={'note': 'real work'}, files=FILES)
+            b_http_status = r.status_code
             ev.event('B_http', status=r.status_code, body=r.text[:200])
         finally:
             routes._state = orig_state
-        ev.event('B_after', **counts(obs), files=dir_listing(upload),
+        b_after = counts(obs)
+        files_b_after = set(dir_listing(upload))
+        ev.event('B_after', **b_after, files=sorted(files_b_after),
                  expectation='task SUBMITTED committed; attachment row present; '
                              'staged file REMAINS on disk')
+        case_b = {'instrumented': True,
+                  'client_error': b_http_status >= 500,
+                  'http_status': b_http_status,
+                  'task_status': b_after['t_ip_status'],
+                  'attachments': obs.scalar(
+                      "SELECT count(*) FROM attachments "
+                      "WHERE task_id='t-e5-ip'"),
+                  'file_remains': bool(files_b_after - files_b_before)}
 
         # ── Case C: SIMULATED ambiguous commit acknowledgement ───────────
         from sqlalchemy.orm import Session as SASession
@@ -148,9 +175,11 @@ def main():
         finally:
             SASession.commit = real_commit
         new_files = sorted(set(dir_listing(upload)) - files_before)
-        ev.event('C_after', t_c_status=counts(obs)['t_c_status'],
+        c_status = counts(obs)['t_c_status']
+        c_subs = obs.scalar("SELECT count(*) FROM submissions WHERE task_id='t-e5-c'")
+        ev.event('C_after', t_c_status=c_status,
                  attachments=obs.scalar("SELECT count(*) FROM attachments WHERE task_id='t-e5-c'"),
-                 submissions=obs.scalar("SELECT count(*) FROM submissions WHERE task_id='t-e5-c'"),
+                 submissions=c_subs,
                  new_files_after=new_files,
                  note='SIMULATION result: mutate() treated the ambiguous '
                       'commit signal as failure and ran staged-file cleanup; '
@@ -159,6 +188,10 @@ def main():
                  simulation=True,
                  genuine_ack_loss_reproduced=False,
                  class_c_status='INCONCLUSIVE for real acknowledgement loss')
+        case_c = {'instrumented': True, 'simulated': True,
+                  'genuine_ack_loss_reproduced': False,
+                  'commit_succeeded': c_status == 'SUBMITTED' or c_subs > 0,
+                  'cleanup_fired': not new_files}
 
         # ── client-perceived failure observation (NOT class C) ───────────
         # fresh task owned by priya for the subprocess app (same disposable DB)
@@ -181,6 +214,7 @@ def main():
 
         import httpx
         proc, wd = lab.spawn_app(env, lab.PORT_A, ev, watchdog_s=180)
+        dc_client_outcome = None
         try:
             token2 = lab.login(BASE, 'priya@aster.demo')
             obs.snap_activity('DC-pre')
@@ -191,9 +225,11 @@ def main():
                            headers=lab.auth(token2),
                            data={'note': 'disconnect me'},
                            files={'files': ('dc.txt', b'data', 'text/plain')})
+                dc_client_outcome = 'unexpected-success'
                 ev.event('DC_client', outcome='unexpected-success')
             except Exception as e:
-                ev.event('DC_client', outcome=f'{type(e).__name__}',
+                dc_client_outcome = type(e).__name__
+                ev.event('DC_client', outcome=dc_client_outcome,
                          note='client gave up; this is client-perceived '
                               'failure, NOT commit-outcome-unknown (class C)',
                          ms=round((time.perf_counter() - t0) * 1000, 1))
@@ -206,26 +242,30 @@ def main():
                      observation='client saw failure while the server '
                                  'committed — a delivery-semantics gap, '
                                  'distinct from class C')
+            disconnect = {'client_outcome': dc_client_outcome,
+                          'db_committed': st == 'SUBMITTED' or sub > 0}
         finally:
             lab.stop_app(proc, wd, ev)
 
-        a = counts(obs)
+        # Targeted blocker 6: the classification is DERIVED by the pure
+        # decider from the actual recorded observations of cases A/B/C —
+        # never a fixed label; missing evidence degrades to INCONCLUSIVE,
+        # and simulated commit ambiguity stays distinct from a genuinely
+        # observed acknowledgement loss.
+        result = D.decide_e5(case_a, case_b, case_c, disconnect)
         ev.classify(
             'e5',
-            harness_validity='VALID',
-            product_observation='DEFECT_OBSERVED',
-            causal_claim='SUPPORTED',
-            rationale=('Case A (pre-commit rollback) and Case B (commit + '
-                       'post-commit bootstrap failure) directly observed and '
-                       'observer-verified. Case C exercised only via a '
-                       'labeled simulation: mutate() deletes staged files on '
-                       'an ambiguous commit signal even when the commit '
-                       'succeeded — real acknowledgement loss NOT reproduced, '
-                       'class C stays INCONCLUSIVE. Client-disconnect run '
-                       'reported separately as a delivery-semantics '
-                       'observation. Claims "all three commit classes '
-                       'confirmed" and "cleanup proven safe" are withdrawn.'),
-            class_c='INCONCLUSIVE (simulation only)')
+            harness_validity=result['harness_validity'],
+            product_observation=result['product_observation'],
+            causal_claim=result['causal_claim'],
+            rationale=(' '.join(result['reasons']) + ' '
+                       'Client-disconnect run reported separately as a '
+                       'delivery-semantics observation, never counted as '
+                       'class C. Claims "all three commit classes confirmed" '
+                       'and "cleanup proven safe" remain withdrawn.'),
+            class_c=result['class_c'],
+            case_a_ok=result.get('case_a_ok'),
+            case_b_observed=result.get('case_b_observed'))
         ev.event('e5_done')
     finally:
         obs.close()

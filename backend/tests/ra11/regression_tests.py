@@ -408,6 +408,389 @@ for bad in ('../x', 'a/b', '', '..', 'UPPER SPACE'):
         refused = True
     check(f'R10c NEW: run id {bad!r} refused', refused)
 
+# ══ R11 — Gate B (targeted blocker 1): no cross-snapshot / mismatched chains ═
+
+def legacy_chain_anywhere(snapshots):
+    """lab.assess_lock_causality @cc50bca: ALL in-window snapshot rows were
+    flattened into ONE pool indexed by PID, so a waiter recorded in snapshot
+    1 could be chained to a blocker whose granted row exists only in
+    snapshot 2 — and ANY granted row of that PID qualified, whichever lock
+    it actually held. Transaction identity was checked only on the waiter."""
+    rows = [row for s in snapshots for row in (s.get('rows') or [])]
+    by_pid = {}
+    for row in rows:
+        by_pid.setdefault(row.get('pid'), []).append(row)
+    for row in rows:
+        if row.get('granted') == 'True':
+            continue
+        blockers = [b for b in (row.get('blocking_pids') or '').split(',')
+                    if b]
+        if [b for b in blockers
+                if any(r.get('granted') == 'True'
+                       for r in by_pid.get(b, []))]:
+            return True
+    return False
+
+
+WAITER = {'locktype': 'advisory', 'mode': 'ShareLock', 'granted': 'False',
+          'pid': '101', 'classid': '123', 'objid': '456', 'objsubid': '1',
+          'application_name': 'ra11-app', 'datname': 'ra11_t_db',
+          'xact_start': '2026-10-14 01:00:00', 'blocking_pids': '102'}
+HOLDER = {'locktype': 'advisory', 'mode': 'ExclusiveLock', 'granted': 'True',
+          'pid': '102', 'classid': '123', 'objid': '456', 'objsubid': '1',
+          'application_name': 'ra11-app', 'datname': 'ra11_t_db',
+          'xact_start': '2026-10-14 00:59:59', 'blocking_pids': ''}
+
+# (a) waiter and holder in DIFFERENT snapshots of the same window
+cross = [{'kind': 'pg_locks_full', 't_ms': 1500.0, 'label': 's1',
+          'rows': [dict(WAITER)]},
+         {'kind': 'pg_locks_full', 't_ms': 1600.0, 'label': 's2',
+          'rows': [dict(HOLDER)]}]
+write_events(td / 'cross', cross)
+check('R11a OLD false positive: cross-snapshot combination builds a chain',
+      legacy_chain_anywhere(cross) is True, '(demonstrates the reviewed '
+      'defect: unrelated snapshots combined into one blocker chain)')
+new = lab.assess_lock_causality(td / 'cross', (1000.0, 2000.0), stalled=True,
+                                db_name='ra11_t_db', control_ok=True,
+                                healthy_precondition=True)
+check('R11b NEW: waiter and holder in different snapshots -> no chain',
+      new['lock_chain_observed'] is False
+      and new['causal_mechanism_confirmed'] is False, str(new['reasons']))
+
+# (b) same snapshot, but the blocker holds a DIFFERENT advisory key
+other_key = dict(HOLDER, objid='999')
+mismatch = [{'kind': 'pg_locks_full', 't_ms': 1500.0, 'label': 's1',
+             'rows': [dict(WAITER), other_key]}]
+write_events(td / 'mismatch', mismatch)
+check('R11c OLD false positive: any granted row of the blocker PID '
+      'qualified as the blocker', legacy_chain_anywhere(mismatch) is True,
+      '(demonstrates the reviewed defect: mismatched lock identity)')
+new = lab.assess_lock_causality(td / 'mismatch', (1000.0, 2000.0),
+                                stalled=True, db_name='ra11_t_db',
+                                control_ok=True, healthy_precondition=True)
+check('R11d NEW: blocker holding a DIFFERENT lock identity -> no chain',
+      new['lock_chain_observed'] is False
+      and new['causal_mechanism_confirmed'] is False, str(new['reasons']))
+
+# (c) blocker without transaction identity -> chain, but never SUPPORTED
+holder_no_tx = dict(HOLDER, xact_start='', backend_xid='')
+write_events(td / 'notx', [{'kind': 'pg_locks_full', 't_ms': 1500.0,
+                            'label': 's1',
+                            'rows': [dict(WAITER), holder_no_tx]}])
+new = lab.assess_lock_causality(td / 'notx', (1000.0, 2000.0), stalled=True,
+                                db_name='ra11_t_db', control_ok=True,
+                                healthy_precondition=True)
+check('R11e NEW: blocker without transaction identity caps at '
+      'LOCK_CHAIN_OBSERVED', new['lock_chain_observed'] is True
+      and new['causal_mechanism_supported'] is False
+      and new['causal_mechanism_confirmed'] is False, str(new['reasons']))
+
+# (d) a full chain OUTSIDE the observation window contributes nothing
+write_events(td / 'outside', [{'kind': 'pg_locks_full', 't_ms': 5000.0,
+                               'label': 'late',
+                               'rows': [dict(WAITER), dict(HOLDER)]}])
+new = lab.assess_lock_causality(td / 'outside', (1000.0, 2000.0),
+                                stalled=True, db_name='ra11_t_db',
+                                control_ok=True, healthy_precondition=True)
+check('R11f NEW: chain outside the observation window -> tier stays '
+      'STALLED', new['highest_tier'] == lab.TIER_STALLED
+      and new['lock_chain_observed'] is False, str(new['reasons']))
+
+# (e) positive control: one snapshot, matched identity, tx on both sides
+write_events(td / 'same', [{'kind': 'pg_locks_full', 't_ms': 1500.0,
+                            'label': 's1',
+                            'rows': [dict(WAITER), dict(HOLDER)]}])
+new = lab.assess_lock_causality(td / 'same', (1000.0, 2000.0), stalled=True,
+                                db_name='ra11_t_db', control_ok=True,
+                                healthy_precondition=True)
+check('R11g NEW positive: single-snapshot fully correlated chain -> '
+      'CONFIRMED', new['causal_mechanism_confirmed'] is True
+      and new['highest_tier'] == lab.TIER_CONFIRMED, str(new['reasons']))
+
+# ══ R12 — Gate C (targeted blocker 3): E4 termination is not a transaction ══
+
+def legacy_e4(both_at_boundary, threads_alive, deadlock_detected):
+    """e4_lock_order.py @cc50bca (inline rule): an edge was COMPLETE when
+    both sides reached their first-lock boundary and the threads terminated;
+    'deadlock' accepted message TEXT; neither externally verified
+    acquisition nor actual commit outcomes nor driver SQLSTATE were
+    required."""
+    complete = both_at_boundary and not threads_alive
+    if deadlock_detected:
+        return ('DEFECT_OBSERVED', 'CONFIRMED')
+    return ('EXPECTED_BEHAVIOR', 'SUPPORTED' if complete else 'INCONCLUSIVE')
+
+
+def decided_e4(edges):
+    try:
+        return D.decide_e4(edges)
+    except AttributeError as e:
+        return {'_missing_decider': str(e)}
+
+
+edge_base = {'name': 'A1-r0', 'kind': 'forced', 'both_at_boundary': True,
+             'acquisition_verified': True, 'threads_finished': True,
+             'outcomes': {'t1': {'result': 'committed', 'sqlstate': None},
+                          't2': {'result': 'committed', 'sqlstate': None}}}
+
+check('R12a OLD false positive: thread termination alone -> SUPPORTED even '
+      'with an unexplained outcome',
+      legacy_e4(True, False, False) == ('EXPECTED_BEHAVIOR', 'SUPPORTED'),
+      '(demonstrates the reviewed defect)')
+bad_outcome = dict(edge_base, outcomes={
+    't1': {'result': 'committed', 'sqlstate': None},
+    't2': {'result': 'OperationalError', 'sqlstate': None,
+           'detail': 'connection reset'}})
+new = decided_e4([bad_outcome])
+check('R12b NEW: threads finished but an outcome is not a commit -> '
+      'INCONCLUSIVE', new.get('causal_claim') == 'INCONCLUSIVE',
+      str(new.get('reasons', new)))
+new = decided_e4([dict(edge_base, acquisition_verified=False)])
+check('R12c NEW: acquisition not externally verified -> INCONCLUSIVE',
+      new.get('causal_claim') == 'INCONCLUSIVE', str(new.get('reasons', new)))
+text_dl = dict(edge_base, outcomes={
+    't1': {'result': 'OperationalError', 'sqlstate': None,
+           'detail': 'deadlock detected'},
+    't2': {'result': 'committed', 'sqlstate': None}})
+check('R12d OLD false positive: message-text deadlock -> CONFIRMED',
+      legacy_e4(True, False, True) == ('DEFECT_OBSERVED', 'CONFIRMED'),
+      '(demonstrates the reviewed defect)')
+new = decided_e4([text_dl])
+check('R12e NEW: deadlock text without driver SQLSTATE 40P01 -> never '
+      'CONFIRMED', new.get('causal_claim') == 'INCONCLUSIVE'
+      and new.get('product_observation') != 'DEFECT_OBSERVED',
+      str(new.get('reasons', new)))
+new = decided_e4([dict(edge_base, both_at_boundary=False)])
+check('R12f NEW: first-lock boundary not reached -> INCONCLUSIVE',
+      new.get('causal_claim') == 'INCONCLUSIVE', str(new.get('reasons', new)))
+new = decided_e4([edge_base])
+check('R12g NEW positive: verified acquisition + both committed -> '
+      'SUPPORTED', new.get('causal_claim') == 'SUPPORTED'
+      and new.get('product_observation') == 'EXPECTED_BEHAVIOR',
+      str(new.get('reasons', new)))
+sqlstate_dl = dict(edge_base, outcomes={
+    't1': {'result': 'OperationalError', 'sqlstate': '40P01',
+           'detail': 'deadlock detected'},
+    't2': {'result': 'committed', 'sqlstate': None}})
+new = decided_e4([sqlstate_dl])
+check('R12h NEW positive: SQLSTATE 40P01 in a complete verified edge -> '
+      'DEFECT_OBSERVED/CONFIRMED',
+      new.get('product_observation') == 'DEFECT_OBSERVED'
+      and new.get('causal_claim') == 'CONFIRMED', str(new.get('reasons', new)))
+
+# ══ R13 — Gate F (targeted blocker 4): R5 contradictions never pass ═════════
+
+def legacy_r5_cc50bca(submit_resp, cancel_resp, final, submissions):
+    """_decisions.race_outcome_r5 @cc50bca (verbatim): a refused submit
+    (409 BAD_STATE) with EXISTING submission rows was not flagged."""
+    cancel_ok = cancel_resp[0] == 200
+    submit_ok = submit_resp[0] == 200
+    submit_refused = submit_resp == (409, 'BAD_STATE') or (
+        submit_resp[0] == 409 and submit_resp[1] == 'BAD_STATE')
+    problems = []
+    if not cancel_ok:
+        problems.append('cancel did not succeed')
+    if not (submit_ok or submit_refused):
+        problems.append('unexpected submit response')
+    if cancel_ok and final.get('status') != 'CANCELLED':
+        problems.append('final not CANCELLED')
+    if submit_ok and not submissions:
+        problems.append('submit 200 but no submission row')
+    if final.get('cycle') is None:
+        problems.append('no cycle row')
+    return not problems
+
+
+check('R13a OLD false positive: refused submit + existing submission row '
+      'passed as legal',
+      legacy_r5_cc50bca((409, 'BAD_STATE'), (200, None),
+                        {'status': 'CANCELLED', 'cycle': 1}, 'open') is True,
+      '(demonstrates the reviewed defect)')
+new = D.race_outcome_r5((409, 'BAD_STATE'), (200, None),
+                        {'status': 'CANCELLED', 'cycle': 1}, 'open')
+check('R13b NEW: 409 BAD_STATE with a committed submission row -> illegal',
+      new['legal'] is False, str(new['problems']))
+new = D.race_outcome_r5((200, None), (200, None),
+                        {'status': 'OPEN', 'cycle': 1}, 'open')
+check('R13c NEW: successful cancel + OPEN final -> illegal',
+      new['legal'] is False, str(new['problems']))
+new = D.race_outcome_r5((200, None), (200, None),
+                        {'status': 'SUBMITTED', 'cycle': 1}, 'open')
+check('R13d NEW: successful cancel + SUBMITTED final -> illegal',
+      new['legal'] is False, str(new['problems']))
+new = D.race_outcome_r5((200, None), ('EXC', 'ReadTimeout'),
+                        {'status': 'SUBMITTED', 'cycle': 1}, 'open')
+check('R13e NEW: cancel outcome unknown (client EXC) -> never a clean '
+      'legal pass', new['legal'] is False, str(new['problems']))
+
+# ══ R14 — Gate A (targeted blocker 5): cleanup failure invalidates the run ══
+
+class _UndeadProc:
+    """A harness-owned process that refuses to die."""
+    pid = 999999
+    _ra11_port = None
+    _ra11_log_fp = None
+
+    def poll(self):
+        return None  # forever alive
+
+    def wait(self, timeout=None):
+        raise TimeoutError('still alive')
+
+
+class _StubWd:
+    fired = False
+
+    def cancel(self):
+        pass
+
+
+class _StubEv:
+    def __init__(self, d):
+        self.dir = Path(d)
+        self.events = []
+
+    def event(self, kind, **kw):
+        self.events.append((kind, kw))
+
+
+def legacy_stop_app_outcome():
+    """lab.stop_app @cc50bca: termination verification failure was RECORDED
+    (app_stop_verified ok=False) but stop_app RETURNED NORMALLY — the run
+    continued, further experiments started, and a classification could
+    still be written over a leaked process."""
+    return 'returned-normally'
+
+
+check('R14a OLD defect: cleanup verification failure was a silent pass',
+      legacy_stop_app_outcome() == 'returned-normally',
+      '(demonstrates the reviewed defect)')
+_ev = _StubEv(td / 'cleanup')
+_raised = False
+try:
+    lab.stop_app(_UndeadProc(), _StubWd(), _ev)
+except lab.HarnessError:
+    _raised = True
+except Exception as e:  # noqa: BLE001 - any other error also fails the test
+    _raised = f'wrong exception: {e!r}'
+check('R14b NEW: unkillable harness-owned process -> HarnessError '
+      '(run invalid)', _raised is True, f'raised={_raised}')
+check('R14c NEW: verification failure is recorded as a harness error',
+      any(k == 'app_stop_verified' and kw.get('ok') is False
+          for k, kw in _ev.events)
+      and any(k == 'app_stop_incomplete' for k, _ in _ev.events),
+      str(_ev.events))
+
+# ══ R15 — Gate A (targeted blocker 2): mandatory gates + halt + INVALID exit ═
+
+import run_all  # noqa: E402  (module import only; main() is guarded)
+
+_gates = getattr(run_all, 'GATES', None)
+check('R15a NEW: regression_tests + oracle_tests + smoke are mandatory '
+      'gates before any experiment',
+      _gates == ('regression_tests.py', 'oracle_tests.py', 'smoke.py'),
+      f'GATES={_gates}')
+_halt = getattr(run_all, 'halt_after_failure', None)
+check('R15b NEW: a failed experiment (nonzero rc or harness timeout) stops '
+      'further experiments',
+      callable(_halt) and _halt(1) is True and _halt(None) is True
+      and _halt(0) is False,
+      f'halt_after_failure={_halt}')
+
+rid_inv = 'reg-inv-' + time.strftime('%H%M%S')
+run_dir_inv = lab.OUT_ROOT / rid_inv
+try:
+    write_events(run_dir_inv / 'e1', [
+        {'kind': 'classification', 't_ms': 1.0, 'experiment': 'e1',
+         'harness_validity': 'INVALID', 'product_observation': 'INVALID',
+         'causal_claim': 'INVALID', 'rationale': 'synthetic invalid'}])
+    r = subprocess.run([sys.executable,
+                        str(Path(__file__).parent / '_results.py'),
+                        rid_inv, '--expect=e1'],
+                       capture_output=True, text=True, cwd=lab.REPO)
+    res_inv = json.loads((run_dir_inv / 'results.json').read_text())
+    check('R15c NEW: INVALID classification -> nonzero exit status',
+          r.returncode != 0
+          and res_inv['rollup']['invalid'] == ['e1'],
+          f'rc={r.returncode} invalid={res_inv["rollup"]["invalid"]}')
+finally:
+    for leftover in sorted(run_dir_inv.glob('*')):
+        if leftover.is_dir():
+            lab.safe_rmtree(leftover, run_dir_inv)
+        else:
+            leftover.unlink()
+    import os as _os2
+    _os2.rmdir(run_dir_inv)
+
+# ══ R16 — Gate G (targeted blocker 6): E5 derives from actual observations ══
+
+def legacy_e5():
+    """e5_commit_outcomes.py @cc50bca: the classification was FIXED text —
+    DEFECT_OBSERVED/SUPPORTED regardless of what cases A/B/C actually
+    observed; missing evidence could not degrade it."""
+    return {'harness_validity': 'VALID',
+            'product_observation': 'DEFECT_OBSERVED',
+            'causal_claim': 'SUPPORTED',
+            'class_c': 'INCONCLUSIVE (simulation only)'}
+
+
+def decided_e5(a, b, c, dc):
+    try:
+        return D.decide_e5(a, b, c, dc)
+    except AttributeError as e:
+        return {'_missing_decider': str(e)}
+
+
+good_a = {'http_status': 409, 'http_code': 'BAD_STATE', 'attachments': 0,
+          'submissions': 0, 'task_status': 'OPEN', 'staged_file_deleted': True}
+good_b = {'instrumented': True, 'client_error': True, 'http_status': 500,
+          'task_status': 'SUBMITTED', 'attachments': 1, 'file_remains': True}
+sim_c = {'instrumented': True, 'simulated': True,
+         'genuine_ack_loss_reproduced': False, 'commit_succeeded': True,
+         'cleanup_fired': True}
+dc_obs = {'client_outcome': 'ReadTimeout', 'db_committed': True}
+
+check('R16a OLD false positive: fixed success label without any evidence',
+      legacy_e5()['product_observation'] == 'DEFECT_OBSERVED',
+      '(demonstrates the reviewed defect)')
+new = decided_e5(good_a, None, sim_c, dc_obs)
+check('R16b NEW: missing case-B evidence -> INCONCLUSIVE, never a fixed '
+      'label', new.get('product_observation') == 'INCONCLUSIVE',
+      str(new.get('reasons', new)))
+new = decided_e5(dict(good_a, attachments=None), good_b, sim_c, dc_obs)
+check('R16c NEW: a missing observation field -> INCONCLUSIVE',
+      new.get('product_observation') == 'INCONCLUSIVE',
+      str(new.get('reasons', new)))
+new = decided_e5(good_a, good_b,
+                 dict(sim_c, genuine_ack_loss_reproduced=True), dc_obs)
+check('R16d NEW: contradictory case C (genuine inside a simulation) -> '
+      'INVALID', new.get('harness_validity') == 'INVALID',
+      str(new.get('reasons', new)))
+new = decided_e5(good_a, good_b, sim_c, dc_obs)
+check('R16e NEW: simulated commit ambiguity stays distinct from genuine '
+      'ack loss', new.get('class_c', '').startswith('INCONCLUSIVE')
+      and new.get('simulated_ack_loss') is True,
+      str(new.get('class_c', new)))
+new = decided_e5(good_a, good_b, dict(sim_c, simulated=False,
+                                      genuine_ack_loss_reproduced=True),
+                 dc_obs)
+check('R16f NEW positive: genuinely observed ack loss -> class C CONFIRMED',
+      new.get('class_c', '').startswith('CONFIRMED'),
+      str(new.get('class_c', new)))
+new = decided_e5(good_a, good_b, sim_c, dc_obs)
+check('R16g NEW positive: complete matching evidence -> DEFECT_OBSERVED/'
+      'SUPPORTED with class C INCONCLUSIVE',
+      new.get('product_observation') == 'DEFECT_OBSERVED'
+      and new.get('causal_claim') == 'SUPPORTED'
+      and new.get('class_c', '').startswith('INCONCLUSIVE'),
+      str(new.get('reasons', new)))
+new = decided_e5(dict(good_a, staged_file_deleted=False), good_b, sim_c,
+                 dc_obs)
+check('R16h NEW: staged file surviving a pre-commit rollback is a DERIVED '
+      'defect, not assumed', new.get('product_observation') == 'DEFECT_OBSERVED'
+      and any('case A' in r for r in new.get('reasons', [])),
+      str(new.get('reasons', new)))
+
 import shutil
 shutil.rmtree(td, ignore_errors=True)
 

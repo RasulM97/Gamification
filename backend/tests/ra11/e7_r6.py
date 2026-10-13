@@ -279,9 +279,9 @@ def main():
         if probe:
             probe.stop()
         if proc:
-            lab.kill_tree(proc)
-            if proc in lab._LIVE_PROCS:
-                lab._LIVE_PROCS.remove(proc)
+            # Gate A (targeted blocker 5): verified teardown — cleanup
+            # failure raises HarnessError and invalidates the run.
+            lab.stop_app(proc, wd, ev)
         obs.close()
         pg.stop()
     ev.finish()

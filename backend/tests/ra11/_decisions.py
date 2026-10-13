@@ -132,6 +132,241 @@ def decide_e2(sql: dict, m1: dict, m2: dict, m3: dict) -> dict:
             'reasons': reasons or ['mechanism exercised; controls clean']}
 
 
+# ── Gate C: E4 cross-domain lock ordering ────────────────────────────────────
+
+def decide_e4(edges: list) -> dict:
+    """Every edge is classified from its recorded evidence; thread
+    termination alone is NEVER a successful transaction.
+
+    edge: name, kind ('forced'|'real'),
+        both_at_boundary      — both sides reached their first-lock boundary
+        acquisition_verified  — an EXTERNAL observer snapshot at the labeled
+                                latch point shows >=2 distinct backend PIDs
+                                actually holding granted first locks
+        threads_finished      — both threads terminated within the join
+                                timeout (termination alone proves nothing)
+        outcomes {tag: {'result', 'sqlstate', 'detail'}} — the ACTUAL
+                                transaction outcomes
+
+    An edge is COMPLETE only with boundary + verified acquisition + finished
+    threads. Its outcomes are EXPLAINED only when every side either
+    committed or died with driver SQLSTATE 40P01. A deadlock claim requires
+    the driver SQLSTATE; message text is recorded but never confirms.
+    'real' (unpauseable app-level) edges cannot verify acquisition; they
+    still require finished threads and explained outcomes."""
+    reasons = []
+    complete_deadlocks, text_only_deadlocks = [], []
+    incomplete, unexplained = [], []
+    clean_complete = 0
+    for e in edges:
+        name = e.get('name', '?')
+        outcomes = e.get('outcomes') or {}
+        forced = e.get('kind', 'forced') == 'forced'
+        if forced:
+            boundary_ok = bool(e.get('both_at_boundary')
+                               and e.get('acquisition_verified'))
+        else:
+            # unpauseable app-level edge: no latch boundaries exist, so only
+            # thread completion and explained outcomes are required
+            boundary_ok = True
+        complete = bool(boundary_ok and e.get('threads_finished')
+                        and outcomes)
+        if not complete:
+            incomplete.append(name)
+            reasons.append(
+                f'{name}: INCOMPLETE (boundary={e.get("both_at_boundary")}, '
+                f'acquisition_verified={e.get("acquisition_verified")}, '
+                f'threads_finished={e.get("threads_finished")}) — an '
+                'unfinished or unverified participant is never proof of an '
+                'ordering property')
+            continue
+        sqlstate_dl = [t for t, o in outcomes.items()
+                       if o.get('sqlstate') == '40P01']
+        explained = all(o.get('result') == 'committed'
+                        or o.get('sqlstate') == '40P01'
+                        for o in outcomes.values())
+        if not explained:
+            unexplained.append(name)
+            reasons.append(
+                f'{name}: threads finished but an outcome is neither a '
+                f'commit nor a 40P01 deadlock: '
+                f'{ {t: o.get("result") for t, o in outcomes.items()} } — '
+                'thread termination is not a successful transaction')
+            continue
+        if sqlstate_dl:
+            complete_deadlocks.append(name)
+        else:
+            clean_complete += 1
+            continue
+    for e in edges:
+        outcomes = e.get('outcomes') or {}
+        if (e.get('name') not in complete_deadlocks and any(
+                o.get('sqlstate') != '40P01'
+                and 'deadlock' in str(o.get('detail', '')).lower()
+                for o in outcomes.values())):
+            text_only_deadlocks.append(e.get('name'))
+            reasons.append(
+                f"{e.get('name')}: 'deadlock' appears in a message but no "
+                'driver SQLSTATE 40P01 was captured — recorded, never '
+                'confirmed')
+
+    if complete_deadlocks:
+        return {'harness_validity': 'VALID',
+                'product_observation': 'DEFECT_OBSERVED',
+                'causal_claim': 'CONFIRMED',
+                'complete_deadlock_edges': complete_deadlocks,
+                'incomplete_edges': incomplete,
+                'unexplained_edges': unexplained,
+                'reasons': reasons or ['driver-verified 40P01 deadlock in a '
+                                       'complete, externally verified edge']}
+    if text_only_deadlocks or unexplained:
+        return {'harness_validity': 'VALID',
+                'product_observation': 'INCONCLUSIVE',
+                'causal_claim': 'INCONCLUSIVE',
+                'complete_deadlock_edges': [],
+                'incomplete_edges': incomplete,
+                'unexplained_edges': unexplained,
+                'text_only_deadlocks': text_only_deadlocks,
+                'reasons': reasons}
+    if incomplete:
+        return {'harness_validity': 'VALID',
+                'product_observation': 'EXPECTED_BEHAVIOR',
+                'causal_claim': 'INCONCLUSIVE',
+                'complete_deadlock_edges': [],
+                'incomplete_edges': incomplete,
+                'unexplained_edges': [],
+                'reasons': reasons}
+    return {'harness_validity': 'VALID',
+            'product_observation': 'EXPECTED_BEHAVIOR',
+            'causal_claim': 'SUPPORTED',
+            'complete_deadlock_edges': [],
+            'incomplete_edges': [], 'unexplained_edges': [],
+            'clean_complete_edges': clean_complete,
+            'reasons': reasons or ['all edges complete with verified '
+                                   'acquisition and committed outcomes; no '
+                                   'complete conflicting wait graph '
+                                   'demonstrated']}
+
+
+# ── Gate D: E5 commit outcome classes ────────────────────────────────────────
+
+def decide_e5(case_a, case_b, case_c, disconnect) -> dict:
+    """Classifications are DERIVED from the actual recorded observations of
+    each case; a missing case or a missing observation field degrades the
+    result to INCONCLUSIVE — never a fixed label.
+
+    case_a (pre-commit rollback): http_status, http_code, attachments,
+        submissions, task_status, staged_file_deleted
+    case_b (commit + post-commit failure, labeled monkeypatch):
+        instrumented, client_error, http_status, task_status, attachments,
+        file_remains
+    case_c (ambiguous commit signal): instrumented, simulated,
+        genuine_ack_loss_reproduced, commit_succeeded, cleanup_fired —
+        a SIMULATION stays distinct from a genuinely observed ack loss
+    disconnect: client_outcome, db_committed — reported separately, never
+        counted as class C."""
+    reasons = []
+    for name, case in (('case_a', case_a), ('case_b', case_b)):
+        if case is None:
+            reasons.append(f'{name}: no evidence recorded')
+    if case_b is not None and not case_b.get('instrumented'):
+        reasons.append('case B ran without recorded instrumentation — the '
+                       'post-commit failure injection is unproven')
+        return {'harness_validity': 'INVALID',
+                'product_observation': 'INVALID',
+                'causal_claim': 'INVALID', 'reasons': reasons}
+    if case_c is not None and not case_c.get('instrumented'):
+        reasons.append('case C ran without recorded instrumentation')
+        return {'harness_validity': 'INVALID',
+                'product_observation': 'INVALID',
+                'causal_claim': 'INVALID', 'reasons': reasons}
+    if (case_c is not None and case_c.get('genuine_ack_loss_reproduced')
+            and case_c.get('simulated')):
+        reasons.append('case C claims a GENUINE acknowledgement loss inside '
+                       'a labeled simulation — contradictory evidence')
+        return {'harness_validity': 'INVALID',
+                'product_observation': 'INVALID',
+                'causal_claim': 'INVALID', 'reasons': reasons}
+    if case_a is None or case_b is None:
+        return {'harness_validity': 'VALID',
+                'product_observation': 'INCONCLUSIVE',
+                'causal_claim': 'INCONCLUSIVE',
+                'class_c': 'INCONCLUSIVE (not exercised)',
+                'simulated_ack_loss': bool(case_c and case_c.get('simulated')),
+                'reasons': reasons}
+
+    a_fields = ('http_status', 'http_code', 'attachments', 'submissions',
+                'task_status', 'staged_file_deleted')
+    b_fields = ('client_error', 'http_status', 'task_status', 'attachments',
+                'file_remains')
+    missing = ([f'case_a.{k}' for k in a_fields if case_a.get(k) is None]
+               + [f'case_b.{k}' for k in b_fields if case_b.get(k) is None])
+    if missing:
+        reasons.append('missing observation field(s): '
+                       + ', '.join(missing))
+        return {'harness_validity': 'VALID',
+                'product_observation': 'INCONCLUSIVE',
+                'causal_claim': 'INCONCLUSIVE',
+                'class_c': 'INCONCLUSIVE (not exercised)',
+                'simulated_ack_loss': bool(case_c and case_c.get('simulated')),
+                'reasons': reasons}
+
+    a_ok = (case_a['http_status'] == 409
+            and case_a['http_code'] == 'BAD_STATE'
+            and case_a['attachments'] == 0 and case_a['submissions'] == 0
+            and case_a['task_status'] == 'OPEN'
+            and case_a['staged_file_deleted'])
+    if not a_ok:
+        reasons.append(
+            'case A (pre-commit rollback) contradicts expectations: '
+            f'{case_a} — a staged file surviving rollback or committed rows '
+            'after a refusal are a DERIVED defect, recorded from '
+            'observation')
+    b_ok = (case_b['client_error'] and case_b['http_status'] >= 500
+            and case_b['task_status'] == 'SUBMITTED'
+            and case_b['attachments'] >= 1 and case_b['file_remains'])
+    if b_ok:
+        reasons.append('case B observed: the commit persisted (task '
+                       'SUBMITTED, attachment row present, staged file '
+                       'remains) while the client saw an error — a '
+                       'delivery-semantics gap')
+    else:
+        reasons.append(f'case B does not match the expected commit + '
+                       f'post-commit-failure signature: {case_b}')
+
+    if case_c is None:
+        class_c = 'INCONCLUSIVE (not exercised)'
+        c_sim_cleanup = False
+    elif case_c.get('genuine_ack_loss_reproduced'):
+        class_c = 'CONFIRMED (genuinely observed acknowledgement loss)'
+        c_sim_cleanup = bool(case_c.get('commit_succeeded')
+                             and case_c.get('cleanup_fired'))
+    elif case_c.get('simulated'):
+        class_c = ('INCONCLUSIVE (simulation only — real acknowledgement '
+                   'loss not reproduced)')
+        c_sim_cleanup = bool(case_c.get('commit_succeeded')
+                             and case_c.get('cleanup_fired'))
+        if c_sim_cleanup:
+            reasons.append('case C simulation: mutate() ran staged-file '
+                           'cleanup on an ambiguous commit signal even '
+                           'though the commit succeeded (simulated, '
+                           'labeled)')
+    else:
+        class_c = 'INCONCLUSIVE (not exercised)'
+        c_sim_cleanup = False
+
+    defect = (not a_ok) or b_ok or c_sim_cleanup
+    return {'harness_validity': 'VALID',
+            'product_observation': ('DEFECT_OBSERVED' if defect
+                                    else 'EXPECTED_BEHAVIOR'),
+            'causal_claim': 'SUPPORTED' if defect else 'INCONCLUSIVE',
+            'class_c': class_c,
+            'simulated_ack_loss': bool(case_c and case_c.get('simulated')),
+            'case_a_ok': a_ok, 'case_b_observed': b_ok,
+            'disconnect_observation': disconnect,
+            'reasons': reasons}
+
+
 # ── Gate D: E3 pool saturation temporal correlation ──────────────────────────
 
 def decide_e3(pool_log_present: bool, pool_event_count: int,
@@ -293,11 +528,15 @@ def race_outcome_r5(submit_resp, cancel_resp, final: dict,
                         'not CANCELLED')
     if submit_ok and not submissions:
         problems.append('submit returned 200 but no submission row exists')
+    if submit_refused and submissions:
+        problems.append('submit was refused (409 BAD_STATE) but submission '
+                        'row(s) exist — the responses contradict the '
+                        'committed state')
     if final.get('cycle') is None:
         problems.append('final task has no cycle row')
     return {'legal': not problems, 'problems': problems,
             'rule': 'cancel success implies final CANCELLED; submit is '
-                    'either 200 (row exists) or 409 BAD_STATE'}
+                    'either 200 (row exists) or 409 BAD_STATE (no row)'}
 
 
 def race_outcome_r7(final: dict, legal_serial_finals: list) -> dict:

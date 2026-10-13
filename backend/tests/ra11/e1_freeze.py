@@ -173,7 +173,7 @@ def main():
     pg = lab.DisposablePG(base / 'pg', db_tag='e1', run_dir=lab.OUT_ROOT / rid)
     upload = base / 'uploads'
     upload.mkdir(parents=True, exist_ok=True)
-    proc = obs = probe = None
+    proc = obs = probe = wd = None
     rep_summaries = []
     control_ok = True
     try:
@@ -348,7 +348,10 @@ def main():
         if probe:
             probe.stop()
         if proc:
-            lab.kill_tree(proc)
+            # Gate A (targeted blocker 5): teardown goes through the
+            # VERIFIED stop path — a surviving process or open listener
+            # raises HarnessError and invalidates the run.
+            lab.stop_app(proc, wd, ev)
         if obs:
             obs.close()
         pg.stop()
