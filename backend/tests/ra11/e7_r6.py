@@ -25,6 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import lab  # noqa: E402
 import _inproc  # noqa: E402
+import _decisions as D  # noqa: E402
 
 BASE = 'http://127.0.0.1:%d' % lab.PORT_A
 REQ_TIMEOUT = 25
@@ -159,8 +160,9 @@ def main():
                  window_start_ms=round(win_start, 1), latches_released=True,
                  note='both race clients returned or timed out; start gate '
                       'released before the window')
+        obs.snap_locks_full('R6-window-start')
         time.sleep(NON_RECOVERY_WINDOW_S)
-        obs.snap_locks(f'R6-plus-{NON_RECOVERY_WINDOW_S}s')
+        obs.snap_locks_full(f'R6-plus-{NON_RECOVERY_WINDOW_S}s')
         obs.snap_activity(f'R6-plus-{NON_RECOVERY_WINDOW_S}s')
         win_end = (time.perf_counter() - ev.t0) * 1000
         w = lab.assess_wedge(ev, proc, win_start, win_end,
@@ -170,10 +172,8 @@ def main():
                             f'{NON_RECOVERY_WINDOW_S}-second window'
                             if w['non_recovery_observed']
                             else 'recovered or never wedged'),
-                 causality=('lock-causality evidence present in window'
-                            if w['lock_causality_evidence_present']
-                            else 'no in-window lock evidence; progression '
-                                 'observation only'))
+                 note='progression only — causal tiers assessed separately '
+                      '(R6_causal_tiers)')
 
         final = {
             'status': obs.scalar("SELECT status FROM tasks "
@@ -182,11 +182,17 @@ def main():
                                       "WHERE task_id='t-e7r6-raced'"),
         }
         ev.event('race_verify', name='R6-concurrent', final=final)
-        invariant('R6-submission-count', final['submissions'] in (0, 1),
-                  final=final,
-                  rule='at most one committed submission after a '
-                       'double-submit race (0 only if the wedge prevented '
-                       'commit)')
+        # Gate F: enforced expectations on the CONCURRENT run itself.
+        # Zero submissions is acceptable only under a separately
+        # substantiated wedge/failure classification — assessed by
+        # _decisions.decide_e7r6 below, never by this raw count alone.
+        statuses = [v[0] for v in out.values()] if len(out) == 2 else []
+        invariant('R6-no-5xx',
+                  all(isinstance(s, int) and s < 500 for s in statuses)
+                  and len(out) == 2,
+                  outcome=out,
+                  rule='no HTTP 5xx in the race; a 5xx can never produce '
+                       'NO_DEFECT_OBSERVED')
         probe.stop()
         probe = None
         lab.stop_app(proc, wd, ev)
@@ -233,47 +239,41 @@ def main():
         lab.stop_app(proc, wd, ev)
         proc = None
 
-        wedged = w['non_recovery_observed']
-        if wedged:
-            ev.classify(
-                'e7r6',
-                harness_validity='VALID',
-                product_observation='DEFECT_OBSERVED',
-                causal_claim=('CONFIRMED'
-                              if w['lock_causality_evidence_present']
-                              else 'INCONCLUSIVE'),
-                rationale=(f'Concurrent double-submit followed by bounded '
-                           f'{NON_RECOVERY_WINDOW_S}s window met the '
-                           f'non-recovery criteria (process alive, >=3 '
-                           f'consecutive in-window loop failures, zero '
-                           f'in-window recovery, latches released). '
-                           f'Stated per window, never "permanent". '
-                           f'Sequential oracle: see invariant events.'),
-                window_s=w['window_s'],
-                lock_causality_evidence=w['lock_causality_evidence_present'],
-                invariant_failures=invariant_failures)
-        elif invariant_failures:
-            ev.classify(
-                'e7r6',
-                harness_validity='VALID',
-                product_observation='DEFECT_OBSERVED',
-                causal_claim='SUPPORTED',
-                rationale=('No wedge in the observed window, but enforced '
-                           'invariants failed: '
-                           + ', '.join(invariant_failures)),
-                invariant_failures=invariant_failures)
-        else:
-            ev.classify(
-                'e7r6',
-                harness_validity='VALID',
-                product_observation='NO_DEFECT_OBSERVED',
-                causal_claim='SUPPORTED',
-                rationale=(f'Concurrent double-submit produced a legal '
-                           f'outcome and the loop recovered/never wedged '
-                           f'within the {NON_RECOVERY_WINDOW_S}s window; '
-                           f'sequential oracle held (first 200, second 409 '
-                           f'BAD_STATE).'),
-                invariant_failures=[])
+        # ── classification: derived from the concurrent run's own evidence ──
+        # Gate B: four-tier causal assessment (the sequential oracle is the
+        # matched successful control; tiers never auto-elevate).
+        # Gate F: HTTP 500s, hung clients, illegal response combinations and
+        # contradictory final states can never produce NO_DEFECT_OBSERVED;
+        # a passing sequential oracle alone proves nothing about the
+        # concurrent run.
+        hung = [k for k in ('A', 'B') if k not in out]
+        oracle_ok = 'R6-sequential-oracle' not in invariant_failures
+        causality = lab.assess_lock_causality(
+            ev.dir, (win_start, win_end),
+            stalled=w['non_recovery_observed'],
+            db_name=pg.db_name,
+            control_ok=oracle_ok,
+            healthy_precondition=w['healthy_pre_window_probes'],
+            latches_released=True)
+        ev.event('R6_causal_tiers', **causality)
+        verdict = D.decide_e7r6(out, hung=hung, final=final,
+                                wedged=w['non_recovery_observed'],
+                                causality=causality, oracle_ok=oracle_ok)
+        ev.classify(
+            'e7r6',
+            harness_validity=verdict['harness_validity'],
+            product_observation=verdict['product_observation'],
+            causal_claim=verdict['causal_claim'],
+            rationale=('Concurrent double-submit on a standalone fixture. '
+                       + ' '.join(verdict['reasons'])
+                       + f' Causal tier: {causality["highest_tier"]} '
+                       f'(four-tier Gate-B assessment). Non-recovery is '
+                       f'stated per observed {NON_RECOVERY_WINDOW_S}s '
+                       f'window, never "permanent".'),
+            window_s=w['window_s'],
+            causal_tier=causality['highest_tier'],
+            invariant_failures=invariant_failures,
+            race_outcome=out, final=final)
         ev.event('e7r6_done')
     finally:
         if probe:

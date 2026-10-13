@@ -6,11 +6,22 @@ B1: PostgreSQL advisory-lock fair queueing using the app's REAL lock
     the Day-1 chain, proven deterministically with a labeled latch.
 
 B2: Dynamic capture of the actual lock set a real bootstrap transaction
-    holds (org SHARED via can_view on scoped tasks) and a real claim command
-    transaction holds (org X, capability S, task U, user NKU) — mid-transaction
-    pg_locks snapshots, no code modification.
+    holds (org SHARED advisory via can_view on scoped tasks) and a real
+    claim command transaction holds — mid-transaction pg_locks snapshots,
+    no code modification. Real claim lock order (verified against
+    task_services.claim_task @ this commit): org EXCLUSIVE advisory
+    (exclusive_guarded) -> task row FOR UPDATE (get_task, lock=True) ->
+    org SHARED advisory (can_view/admit, redundant under the held X) ->
+    user FOR NO KEY UPDATE (require_capacity). The capability check
+    (@requires) is a lock-free SELECT — it takes NO advisory lock.
 
 Every injected wait is labeled 'latch' in the evidence record.
+
+Gate C: the classification is DERIVED from actual thread outcomes — both
+threads must reach their acquisition boundaries, both must finish (a join
+timeout is an explicit failure outcome, never silent proof), the actual
+acquisition order is verified, and a B2 capture error invalidates the run.
+An unfinished participant cannot count as proof of fair queueing.
 """
 import os
 import sys
@@ -20,8 +31,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import lab  # noqa: E402
+import _decisions as D  # noqa: E402
 
-RID = sys.argv[1]
+RID = lab.validate_run_id(sys.argv[1])
 BASE = lab.OUT_ROOT / RID / 'e1b'
 ev = lab.Evidence(BASE)
 ev.event('fingerprint', **lab.fingerprint())
@@ -79,28 +91,46 @@ try:
 
     t2_state = {}
     t3_state = {}
+    thread_errors = []
 
     def t2():
         s2 = SessionLocal()
-        t2_state['waiting_at'] = time.perf_counter()
-        org.lock(s2, 'co-aster', exclusive=True)
-        t2_state['acquired_at'] = time.perf_counter()
-        ev.event('latch', step='B1-T2-acquired-org-X')
-        time.sleep(0.3)
-        s2.rollback()  # release X
-        s2.close()
+        try:
+            t2_state['waiting_at'] = time.perf_counter()
+            org.lock(s2, 'co-aster', exclusive=True)
+            t2_state['acquired_at'] = time.perf_counter()
+            ev.event('latch', step='B1-T2-acquired-org-X')
+            time.sleep(0.3)
+            s2.rollback()  # release X
+        except Exception as e:
+            # unexpected exception: recorded, and it invalidates B1
+            thread_errors.append(f'T2: {type(e).__name__}: {str(e)[:200]}')
+            try:
+                s2.rollback()
+            except Exception:
+                pass
+        finally:
+            s2.close()
 
     def t3():
         time.sleep(0.4)  # ensure T2's X request is queued first (labeled latch)
         s3 = SessionLocal()
-        t3_state['waiting_at'] = time.perf_counter()
-        ev.event('latch', step='B1-T3-requests-org-S-while-X-pending')
-        obs.snap_locks('B1-X-pending-T3-about-to-request-S')
-        org.lock(s3, 'co-aster')
-        t3_state['acquired_at'] = time.perf_counter()
-        ev.event('latch', step='B1-T3-acquired-org-S')
-        s3.rollback()
-        s3.close()
+        try:
+            t3_state['waiting_at'] = time.perf_counter()
+            ev.event('latch', step='B1-T3-requests-org-S-while-X-pending')
+            obs.snap_locks('B1-X-pending-T3-about-to-request-S')
+            org.lock(s3, 'co-aster')
+            t3_state['acquired_at'] = time.perf_counter()
+            ev.event('latch', step='B1-T3-acquired-org-S')
+            s3.rollback()
+        except Exception as e:
+            thread_errors.append(f'T3: {type(e).__name__}: {str(e)[:200]}')
+            try:
+                s3.rollback()
+            except Exception:
+                pass
+        finally:
+            s3.close()
 
     th2 = threading.Thread(target=t2)
     th3 = threading.Thread(target=t3)
@@ -119,15 +149,34 @@ try:
     s1.close()
     th2.join(timeout=15)
     th3.join(timeout=15)
+    b1_finished = {'t2': not th2.is_alive(), 't3': not th3.is_alive()}
+    # Gate C: an unfinished participant can never count as proof of fair
+    # queueing; the acquisition order is verified from recorded timestamps.
+    b1_order_verified = ('acquired_at' in t2_state and 'acquired_at' in t3_state
+                         and t3_state['acquired_at'] > t2_state['acquired_at'])
+    b1 = {
+        't2_boundary': 'waiting_at' in t2_state,
+        't3_boundary': 'waiting_at' in t3_state,
+        't2_acquired': 'acquired_at' in t2_state,
+        't3_acquired': 'acquired_at' in t3_state,
+        't2_finished': b1_finished['t2'],
+        't3_finished': b1_finished['t3'],
+        't3_waited_behind_pending_x': (
+            # fair queueing: T3's compatible ShareLock must NOT be granted
+            # while T2's ExclusiveLock is pending (see states_before_release
+            # and the pg_locks snapshots), and X must acquire before S.
+            'acquired_at' not in t3_state
+            or t3_state.get('acquired_at', 0) > t2_state.get('acquired_at', 0)),
+        'order_verified': b1_order_verified,
+        'exceptions': thread_errors,
+    }
     ev.event('B1_result',
              t2_acquired_at=t2_state.get('acquired_at'),
              t3_acquired_at=t3_state.get('acquired_at'),
-             # fair queueing: T3's compatible ShareLock must NOT be granted
-             # while T2's ExclusiveLock is pending (see states_before_release
-             # and the pg_locks snapshots), and X must acquire before S.
-             t3_waited_behind_pending_X=(
-                 'acquired_at' not in t3_state or
-                 t3_state.get('acquired_at', 0) > t2_state.get('acquired_at', 0)))
+             threads_finished=b1_finished,
+             thread_errors=thread_errors,
+             order_verified=b1_order_verified,
+             t3_waited_behind_pending_X=b1['t3_waited_behind_pending_x'])
 
     # ── B2: real lock sets mid-transaction ────────────────────────────────
     from app.serializers import bootstrap
@@ -158,10 +207,18 @@ try:
     db = SessionLocal()
     company = db.get(Company, 'co-aster')
     viewer = db.get(User, 'u-priya')
-    bootstrap(db, company, viewer=viewer)
-    obs.snap_locks('B2-bootstrap-tx-open')  # locks held until commit/rollback
-    db.rollback()
-    db.close()
+    b2 = {'bootstrap_captured': False, 'claim_captured': False,
+          'claim_error': None}
+    try:
+        bootstrap(db, company, viewer=viewer)
+        obs.snap_locks('B2-bootstrap-tx-open')  # locks held until commit/rollback
+        b2['bootstrap_captured'] = True
+    except Exception as e:
+        b2['bootstrap_error'] = repr(e)
+        ev.event('B2_bootstrap_error', error=repr(e))
+    finally:
+        db.rollback()
+        db.close()
 
     # claim command lock set: call the real decorated service, keep tx open
     from app.task_services import claim_task
@@ -171,24 +228,31 @@ try:
                                               Task.status == 'OPEN',
                                               Task.team_id.is_(None)).limit(1))
     try:
-        claim_task(db, actor, task_id)  # org X + cap S + task U + user NKU
+        claim_task(db, actor, task_id)  # org X -> task row U -> user NKU
         obs.snap_locks('B2-claim-tx-open')
+        b2['claim_captured'] = True
         db.rollback()
     except Exception as e:
+        b2['claim_error'] = repr(e)
         ev.event('B2_claim_error', error=repr(e))
         db.rollback()
     db.close()
 
+    # Gate C: classification DERIVED from actual thread/capture outcomes.
+    verdict = D.decide_e1b(b1, b2)
     ev.classify(
         'e1b',
-        harness_validity='VALID',
-        product_observation='EXPECTED_BEHAVIOR',
-        causal_claim='CONFIRMED',
-        rationale='PostgreSQL advisory fair queueing demonstrated with the '
-                  'app\'s real organization.lock (labeled latches, released '
-                  'before ordering was measured); real bootstrap/claim lock '
-                  'sets captured mid-transaction. This proves the queueing '
-                  'mechanism, not the full wedge by itself.')
+        harness_validity=verdict['harness_validity'],
+        product_observation=verdict['product_observation'],
+        causal_claim=verdict['causal_claim'],
+        rationale=('PostgreSQL advisory fair queueing with the app\'s real '
+                   'organization.lock (labeled latches, released before '
+                   'ordering was measured); real bootstrap/claim lock sets '
+                   'captured mid-transaction. This proves the queueing '
+                   'mechanism, not the full wedge by itself. '
+                   + ' '.join(verdict['reasons'])),
+        fair_queueing_proven=verdict['fair_queueing_proven'],
+        b1=b1, b2={k: v for k, v in b2.items()})
     ev.event('e1_partB_done')
 finally:
     if obs:

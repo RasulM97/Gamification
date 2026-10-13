@@ -77,6 +77,17 @@ class HarnessError(RuntimeError):
 # ── runner-crash cleanup registry (Gate 1) ───────────────────────────────────
 _LIVE_PROCS: list = []
 _LIVE_PGS: list = []
+# Harness-owned descendant PIDs, snapshotted while the parent is alive, so
+# they remain terminable even if the parent exits first (the venv python.exe
+# is a launcher shim whose interpreter child owns the real sockets).
+_TREE_CACHE: dict = {}
+
+# Full expected evidence inventory for one complete RA-1.1 run (Gate G):
+# _results.py compares the run directory against this list; a completely
+# absent entry is reported MISSING, never silently omitted.
+EXPECTED_GATES = ('smoke', 'oracle')
+EXPECTED_EXPERIMENTS = ('e1', 'e1b', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7',
+                        'e7r6')
 
 
 def _atexit_cleanup():
@@ -361,22 +372,80 @@ class Watchdog:
         self.fired = True
         self.ev.event('watchdog_fired', pid=self.proc.pid)
         kill_tree(self.proc)
+        # Gate A: termination is verified, not assumed — the whole recorded
+        # tree must be gone and the application listener must be closed.
+        dead = tree_dead(self.proc)
+        port = getattr(self.proc, '_ra11_port', None)
+        closed = (not wait_port(port, timeout=3.0)) if port is not None else None
+        self.ev.event('watchdog_termination_verified', pid=self.proc.pid,
+                      tree_dead=dead, listener_closed=closed,
+                      harness_error=(not dead) or closed is False)
 
     def cancel(self):
         self._timer.cancel()
 
 
-def kill_tree(proc: subprocess.Popen):
-    if proc.poll() is not None:
-        return
+def remember_tree(proc):
+    """Snapshot the harness-owned process tree while the parent is alive, so
+    descendants stay terminable even after a parent exit."""
+    _TREE_CACHE[proc.pid] = _tree_pids(proc.pid)
+
+
+def _tree_pids(pid: int) -> set:
+    import psutil
     try:
-        if IS_WIN:
-            subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)],
-                           capture_output=True, timeout=15)
-        else:
-            proc.kill()
+        p = psutil.Process(pid)
+        return {pid} | {c.pid for c in p.children(recursive=True)}
     except Exception:
-        pass
+        return {pid}
+
+
+def kill_tree(proc):
+    """Kill ONLY the harness-owned process tree.
+
+    Descendants are terminated even if the parent has already exited:
+    taskkill /T cannot walk the tree of a dead parent, so the cached
+    descendant snapshot (taken while the parent was alive) is killed
+    individually. Fail-closed: unknown PIDs are never touched."""
+    pid = proc.pid
+    victims = set(_TREE_CACHE.get(pid, set()))
+    if proc.poll() is None:
+        victims |= _tree_pids(pid)  # refresh while the parent is alive
+        _TREE_CACHE[pid] = victims
+        try:
+            if IS_WIN:
+                subprocess.run(['taskkill', '/F', '/T', '/PID', str(pid)],
+                               capture_output=True, timeout=15)
+            else:
+                proc.kill()
+        except Exception:
+            pass
+    if victims:
+        import psutil
+        for dp in sorted(victims - {pid}):
+            try:
+                psutil.Process(dp).kill()
+            except Exception:
+                pass
+
+
+def tree_dead(proc) -> bool:
+    """Verify every recorded harness-owned PID is gone (post-kill check)."""
+    import psutil
+    if proc.poll() is None:
+        return False
+    for dp in _TREE_CACHE.get(proc.pid, set()):
+        if dp == proc.pid:
+            continue
+        try:
+            p = psutil.Process(dp)
+            if p.is_running() and p.status() != psutil.STATUS_ZOMBIE:
+                return False
+        except psutil.NoSuchProcess:
+            continue
+        except Exception:
+            return False
+    return True
 
 
 def wait_port(port: int, timeout: float = 30.0) -> bool:
@@ -438,6 +507,7 @@ def spawn_app(env: dict, port: int, ev: Evidence, watchdog_s: float = 240.0):
         text=True, creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP if IS_WIN else 0))
     _LIVE_PROCS.append(proc)
     proc._ra11_log_fp = log_fp
+    proc._ra11_port = port
     wd = Watchdog(proc, watchdog_s, ev)
     ev.event('app_spawned', pid=proc.pid, port=port, watchdog_s=watchdog_s,
              workers=1, worker_env_overrides_stripped=True)
@@ -459,6 +529,7 @@ def spawn_app(env: dict, port: int, ev: Evidence, watchdog_s: float = 240.0):
         kill_tree(proc)
         raise HarnessError(f'port {port} is not owned by the spawned process '
                            f'tree (HARNESS_ERROR; refusing to continue)')
+    remember_tree(proc)  # snapshot descendants while the parent is alive
     return proc, wd
 
 
@@ -470,6 +541,22 @@ def stop_app(proc, wd: Watchdog, ev: Evidence):
         proc.wait(timeout=15)
     except Exception:
         pass
+    # Gate A: verify process-tree termination and listener closure; a
+    # surviving descendant or an open listener is a harness error, recorded
+    # as such (never silently treated as clean teardown).
+    dead = tree_dead(proc)
+    port = getattr(proc, '_ra11_port', None)
+    closed = (not wait_port(port, timeout=3.0)) if port is not None else None
+    if not dead or closed is False:
+        ev.event('app_stop_incomplete', pid=proc.pid, tree_dead=dead,
+                 port=port, listener_closed=closed, harness_error=True)
+        kill_tree(proc)  # one bounded retry against the recorded tree
+        dead = tree_dead(proc)
+        if port is not None and closed is False:
+            closed = not wait_port(port, timeout=3.0)
+    ev.event('app_stop_verified', pid=proc.pid, tree_dead=dead,
+             port=port, listener_closed=closed,
+             ok=dead and closed is not False)
     if proc in _LIVE_PROCS:
         _LIVE_PROCS.remove(proc)
     fp = getattr(proc, '_ra11_log_fp', None)
@@ -549,6 +636,38 @@ class Observer:
             rows = c.fetchall()
         self.ev.event('pg_locks_joined', label=label,
                       rows=[[str(x) for x in r] for r in rows])
+        return rows
+
+    def snap_locks_full(self, label: str):
+        """Rich lock snapshot for causal-wedge assessment (Gate B).
+
+        Unlike snap_locks, rows carry FULL advisory identity
+        (classid/objid/objsubid), the backend's application_name and
+        database, transaction identity (backend_xid / xact_start), and the
+        actual blocking relationship (pg_blocking_pids). Rows are stored as
+        dicts. Nothing is pre-filtered at SQL level — the assessor, not the
+        snapshot, decides what belongs to this application; unrelated
+        PostgreSQL activity stays visible in the raw evidence."""
+        with self.conn.cursor() as c:
+            c.execute("""
+                SELECT now() AS at, l.locktype, l.mode, l.granted, l.pid,
+                       l.classid, l.objid, l.objsubid,
+                       COALESCE(l.transactionid::text, '') AS xid,
+                       COALESCE(l.virtualtransaction, '') AS vxid,
+                       a.application_name, a.datname, a.state,
+                       a.wait_event_type, a.wait_event,
+                       COALESCE(a.backend_xid::text, '') AS backend_xid,
+                       COALESCE(a.xact_start::text, '') AS xact_start,
+                       pg_blocking_pids(l.pid) AS blocking_pids,
+                       left(a.query, 120) AS query
+                FROM pg_locks l
+                LEFT JOIN pg_stat_activity a ON a.pid = l.pid
+                ORDER BY l.pid, l.locktype, l.mode
+            """)
+            cols = [d.name for d in c.description]
+            rows = [dict(zip(cols, (str(x) for x in r))) for r in c.fetchall()]
+        self.ev.event('pg_locks_full', label=label, observer='ra11-observer',
+                      rows=rows)
         return rows
 
     def scalar(self, sql: str, args=None):
@@ -716,6 +835,164 @@ def assess_wedge(ev: Evidence, proc, window_start_ms: float,
     result['window_s'] = round((result['window_end_ms']
                                 - result['window_start_ms']) / 1000, 1)
     return result
+
+
+# ── Gate B: four-tier causal wedge assessment ────────────────────────────────
+#
+# Conclusion tiers, strictly ordered and NEVER auto-elevated:
+#   1. REQUEST_PROGRESS_STALLED   — bounded-window detector outcome only
+#   2. LOCK_CHAIN_OBSERVED        — an actual correlated lock chain exists
+#      in-window: non-empty snapshots, a waiting (ungranted) lock with FULL
+#      identity, and a blocking relationship (pg_blocking_pids) to a holder
+#      present in the same snapshot
+#   3. CAUSAL_MECHANISM_SUPPORTED — the chain's waiter AND blocker are both
+#      backends of THIS application (application_name='ra11-app') on THIS
+#      disposable database, with transaction identity attached
+#   4. CAUSAL_MECHANISM_CONFIRMED — tier 3 plus: verified healthy
+#      precondition, a matched successful control, every latch released,
+#      and no recovery during the claimed bounded window
+#
+# An empty pg_locks event is NOT lock-causality evidence. Unrelated
+# PostgreSQL activity, backends of a different process/application, and
+# advisory keys with no blocking relationship to the stalled requests never
+# elevate the conclusion.
+
+TIER_NONE = 'NO_CAUSAL_EVIDENCE'
+TIER_STALLED = 'REQUEST_PROGRESS_STALLED'
+TIER_LOCK_CHAIN = 'LOCK_CHAIN_OBSERVED'
+TIER_SUPPORTED = 'CAUSAL_MECHANISM_SUPPORTED'
+TIER_CONFIRMED = 'CAUSAL_MECHANISM_CONFIRMED'
+
+
+def assess_lock_causality(ev_dir, window, *, stalled: bool,
+                          db_name: str | None = None,
+                          control_ok: bool = False,
+                          healthy_precondition: bool = False,
+                          latches_released: bool = True) -> dict:
+    """Assess the four Gate-B tiers from recorded evidence.
+
+    ev_dir: experiment evidence dir containing events.jsonl.
+    window: (start_ms, end_ms) measurement window (t_ms reference).
+    stalled: bounded-window detector outcome (tier 1, computed separately).
+    control_ok / healthy_precondition / latches_released: supplied by the
+    caller from its own verified control and injection records.
+
+    Fail-closed: any missing, empty, or non-correlated evidence keeps the
+    conclusion at the highest tier the evidence actually substantiates."""
+    start_ms, end_ms = window
+    snapshots = []
+    with open(Path(ev_dir) / 'events.jsonl', encoding='utf-8') as f:
+        for line in f:
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if (r.get('kind') == 'pg_locks_full'
+                    and start_ms <= r.get('t_ms', -1) <= end_ms):
+                snapshots.append(r)
+
+    reasons = []
+    if not snapshots:
+        reasons.append('no pg_locks_full snapshot inside the window')
+    rows = [row for s in snapshots for row in (s.get('rows') or [])]
+    if snapshots and not rows:
+        reasons.append('in-window lock snapshots are EMPTY — empty snapshots '
+                       'are not lock-causality evidence')
+
+    def is_app_backend(row):
+        if row.get('application_name') != 'ra11-app':
+            return False
+        if db_name is not None and row.get('datname') != db_name:
+            return False
+        return True
+
+    waiting = []
+    for row in rows:
+        if row.get('granted') != 'True':
+            blockers = row.get('blocking_pids') or ''
+            waiting.append((row, [b for b in blockers.split(',') if b]))
+    # Lock chain: a waiting lock whose blocker is also present in the same
+    # snapshot. Advisory locks additionally require FULL identity
+    # (classid/objid/objsubid) — a bare 'advisory' row proves nothing.
+    chain = []
+    by_pid = {}
+    for row in rows:
+        by_pid.setdefault(row.get('pid'), []).append(row)
+    for row, blockers in waiting:
+        if row.get('locktype') == 'advisory' and not all(
+                row.get(k) not in (None, '', 'None')
+                for k in ('classid', 'objid', 'objsubid')):
+            continue  # incomplete advisory identity: fail closed
+        if not blockers:
+            continue  # no observed blocking relationship
+        held = [b for b in blockers
+                if any(r.get('granted') == 'True' for r in by_pid.get(b, []))]
+        if held:
+            chain.append({'waiting': row, 'blocker_pids': held})
+
+    lock_chain = bool(chain)
+    if rows and not lock_chain:
+        reasons.append('no complete waiting->holder lock chain in-window '
+                       '(identity, granted/waiting states, or blocking '
+                       'relationship missing)')
+
+    # Mechanism support: the chain must tie THIS application's backends
+    # together — waiter and blocker both ra11-app on this database, with
+    # transaction identity. Unrelated PostgreSQL activity or a wrong-process
+    # backend never counts.
+    app_chain = [c for c in chain
+                 if is_app_backend(c['waiting'])
+                 and any(is_app_backend(r) for b in c['blocker_pids']
+                         for r in by_pid.get(b, []))]
+    supported = bool(app_chain)
+    if app_chain:
+        tx_ok = all((c['waiting'].get('xact_start') or
+                     c['waiting'].get('backend_xid')) not in (None, '', 'None')
+                    for c in app_chain)
+        if not tx_ok:
+            supported = False
+            reasons.append('waiting backends lack transaction identity '
+                           '(xact_start/backend_xid)')
+    elif lock_chain:
+        reasons.append('lock chain does not connect two ra11-app backends '
+                       'of this disposable database (unrelated activity or '
+                       'wrong process)')
+
+    confirmed = (supported and stalled and healthy_precondition
+                 and control_ok and latches_released)
+    if supported and not confirmed:
+        if not stalled:
+            reasons.append('no bounded-window non-recovery observed '
+                           '(recovered or never stalled)')
+        if not healthy_precondition:
+            reasons.append('healthy precondition not verified')
+        if not control_ok:
+            reasons.append('matched successful control missing or failed')
+        if not latches_released:
+            reasons.append('an injected latch was still held during the '
+                           'window')
+
+    if confirmed:
+        tier = TIER_CONFIRMED
+    elif supported:
+        tier = TIER_SUPPORTED
+    elif lock_chain:
+        tier = TIER_LOCK_CHAIN
+    elif stalled:
+        tier = TIER_STALLED
+    else:
+        tier = TIER_NONE
+    return {
+        'request_progress_stalled': bool(stalled),
+        'lock_chain_observed': bool(lock_chain),
+        'causal_mechanism_supported': bool(supported),
+        'causal_mechanism_confirmed': bool(confirmed),
+        'highest_tier': tier,
+        'in_window_snapshots': len(snapshots),
+        'in_window_lock_rows': len(rows),
+        'app_lock_chains': len(app_chain),
+        'reasons': reasons,
+    }
 
 
 # ── HTTP helpers ─────────────────────────────────────────────────────────────

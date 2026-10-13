@@ -125,12 +125,14 @@ To run (execution order is mandatory; stop at the first gate failure):
 
 ```bash
 # from the repository root, using the project venv
+.venv/Scripts/python.exe backend/tests/ra11/regression_tests.py
+.venv/Scripts/python.exe backend/tests/ra11/oracle_tests.py <run-id>
 .venv/Scripts/python.exe backend/tests/ra11/smoke.py <run-id>
-.venv/Scripts/python.exe backend/tests/ra11/oracle_tests.py
 .venv/Scripts/python.exe backend/tests/ra11/e1_freeze.py <run-id>
 .venv/Scripts/python.exe backend/tests/ra11/e1b_mechanism.py <run-id>
 .venv/Scripts/python.exe backend/tests/ra11/e2_upgrade.py <run-id>
 .venv/Scripts/python.exe backend/tests/ra11/e4_lock_order.py <run-id>
+.venv/Scripts/python.exe backend/tests/ra11/e5_commit_outcomes.py <run-id>
 .venv/Scripts/python.exe backend/tests/ra11/e7_races.py <run-id>
 .venv/Scripts/python.exe backend/tests/ra11/e7_r6.py <run-id>
 .venv/Scripts/python.exe backend/tests/ra11/e3_auth_pool.py <run-id>
@@ -139,7 +141,10 @@ To run (execution order is mandatory; stop at the first gate failure):
 .venv/Scripts/python.exe backend/tests/ra11/_gate0_preserve.py <run-id>
 ```
 
-(E5 is unchanged from v2 and remains runnable via run_all.py.)
+`run_all.py <run-id>` executes the same pipeline under one command:
+regression-equivalent oracle/safety tests and smoke run BEFORE any
+experiment and stop the suite on failure; `_results.py` runs last and any
+MISSING or INVALID classification fails the suite (fail-closed).
 
 To wipe everything: delete `uat-out/ra11/` (all disposable).
 

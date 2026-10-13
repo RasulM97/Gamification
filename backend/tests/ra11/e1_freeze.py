@@ -214,8 +214,9 @@ def main():
                      latches_released=True,
                      note='all harness clients returned or timed out; '
                           'no harness thread holds anything')
+            obs.snap_locks_full(f'r{rep}-window-start')
             time.sleep(NON_RECOVERY_WINDOW_S)
-            obs.snap_locks(f'r{rep}-plus-{NON_RECOVERY_WINDOW_S}s')
+            obs.snap_locks_full(f'r{rep}-plus-{NON_RECOVERY_WINDOW_S}s')
             obs.snap_activity(f'r{rep}-plus-{NON_RECOVERY_WINDOW_S}s')
             win_end = (time.perf_counter() - ev.t0) * 1000
             wedge1 = lab.assess_wedge(ev, proc, win_start, win_end,
@@ -225,10 +226,9 @@ def main():
                                 f"{NON_RECOVERY_WINDOW_S}-second window"
                                 if wedge1['non_recovery_observed'] else
                                 'recovered or never wedged'),
-                     causality=('lock-causality evidence present in window'
-                                if wedge1['lock_causality_evidence_present']
-                                else 'no in-window lock evidence; progression '
-                                     'observation only'))
+                     note='progression only — causal tiers are assessed '
+                          'separately from pg_locks_full evidence and the '
+                          'negative-control outcome (causal_tiers events)')
 
             # stack evidence attempt: CTRL_BREAK interrupts the blocked
             # loop thread and Python prints tracebacks to the console log.
@@ -244,7 +244,8 @@ def main():
             probe = None
             lab.stop_app(proc, wd, ev)
             proc = None
-            rep_summaries.append({'rep': rep, 'wedge': wedge1})
+            rep_summaries.append({'rep': rep, 'wedge': wedge1,
+                                  'window': (win_start, win_end)})
 
             # ── negative phase: eligible-employee real claim ─────────────
             proc, wd = lab.spawn_app(env, lab.PORT_A, ev, watchdog_s=240)
@@ -289,6 +290,23 @@ def main():
 
         wedged = [s for s in rep_summaries
                   if s['wedge']['non_recovery_observed']]
+        # Gate B: causal tiers are assessed per rep from the recorded
+        # pg_locks_full evidence and the verified negative control. The
+        # first two tiers (stalled / lock chain) NEVER auto-elevate into
+        # CAUSAL_MECHANISM_CONFIRMED.
+        for s in rep_summaries:
+            s['causality'] = lab.assess_lock_causality(
+                ev.dir, s['window'],
+                stalled=s['wedge']['non_recovery_observed'],
+                db_name=pg.db_name,
+                control_ok=control_ok,
+                healthy_precondition=s['wedge']['healthy_pre_window_probes'],
+                latches_released=True)
+            ev.event('causal_tiers', rep=s['rep'], **s['causality'])
+        confirmed = [s for s in wedged
+                     if s['causality']['causal_mechanism_confirmed']]
+        supported = [s for s in wedged
+                     if s['causality']['causal_mechanism_supported']]
         if not control_ok:
             ev.classify(
                 'e1',
@@ -301,24 +319,30 @@ def main():
                            'interpretable against a failing control.'),
                 reps=REPS, wedged_reps=len(wedged))
         else:
+            causal = ('CONFIRMED'
+                      if wedged and len(confirmed) == len(wedged)
+                      else 'SUPPORTED' if supported
+                      else 'INCONCLUSIVE')
             ev.classify(
                 'e1',
                 harness_validity='VALID',
                 product_observation=('DEFECT_OBSERVED' if wedged
                                      else 'INCONCLUSIVE'),
-                causal_claim=('CONFIRMED'
-                              if wedged and all(
-                                  s['wedge']['lock_causality_evidence_present']
-                                  for s in wedged)
-                              else 'INCONCLUSIVE'),
+                causal_claim=causal,
                 rationale=(f'{len(wedged)}/{REPS} fresh repetitions met the '
                            f'bounded-window non-recovery criteria (process '
                            f'alive + >=3 consecutive in-window loop failures '
                            f'+ zero in-window recovery, window '
                            f'{NON_RECOVERY_WINDOW_S}s, latches released). '
+                           f'Causal tiers: {len(confirmed)} CONFIRMED, '
+                           f'{len(supported)} SUPPORTED of {len(wedged)} '
+                           f'wedged reps (four-tier Gate-B assessment; '
+                           f'tiers are never auto-elevated). '
                            f'Negative control (eligible employee claim) '
                            f'passed HTTP+DB verification.'),
-                reps=REPS, wedged_reps=len(wedged))
+                reps=REPS, wedged_reps=len(wedged),
+                confirmed_reps=len(confirmed),
+                supported_reps=len(supported))
         ev.event('e1_done')
     finally:
         if probe:

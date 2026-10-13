@@ -33,6 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import lab  # noqa: E402
 import _inproc  # noqa: E402
+import _decisions as D  # noqa: E402
 
 BASE = 'http://127.0.0.1:%d' % lab.PORT_A
 
@@ -96,6 +97,9 @@ def phase_timeline(ev, engine, SessionLocal):
                      tx_events=[x for x in timeline
                                 if x[0].startswith('tx_')],
                      distinct_connections=len({c for _, _, c in tl if c}),
+                     id_space='connection ids are id() of the DBAPI '
+                              '(psycopg2) connection object, not the '
+                              'SQLAlchemy wrapper',
                      auth_marks=[(k, round(t - t0, 4)) for k, t in auth_marks],
                      first_statements=[s[:90] for _, s in stmts[:4]],
                      statement_count=len(stmts))
@@ -119,11 +123,15 @@ def phase_timeline(ev, engine, SessionLocal):
                                       'reward': '1'}).status_code)
 
 
-def occupancy_from_pool_log(path: Path):
+def occupancy_from_pool_log(path: Path, t_epoch_range: tuple | None = None):
     """Simultaneous occupancy timeline from the app process's own pool
     checkout/checkin stream (NOT inferred from pg_stat_activity).
     Returns (summary, series); series retains (t_ms, t_epoch, occupancy)
-    per pool event for artifact retention and correlation."""
+    per pool event for artifact retention and correlation.
+    t_epoch_range=(start,end) restricts the summary to that wall-clock
+    window (the series is always returned in full).
+    An EXISTING BUT EMPTY log returns summary['event_count'] == 0 — callers
+    must treat an empty log like a missing one (Gate D)."""
     if not path.exists():
         return None, None
     events = [json.loads(x) for x in
@@ -131,6 +139,7 @@ def occupancy_from_pool_log(path: Path):
     live = set()
     max_occ = 0
     occupancy_series = []
+    win_max = 0
     for e in events:
         if e['event'] == 'checkout':
             live.add(e['conn'])
@@ -139,16 +148,68 @@ def occupancy_from_pool_log(path: Path):
         else:
             continue
         max_occ = max(max_occ, len(live))
+        if t_epoch_range and e.get('t_epoch') is not None \
+                and t_epoch_range[0] <= e['t_epoch'] <= t_epoch_range[1]:
+            win_max = max(win_max, len(live))
         occupancy_series.append({'t_ms': e['t_ms'],
                                  't_epoch': e.get('t_epoch'),
-                                 'occupancy': len(live)})
-    return {'max_simultaneous': max_occ,
-            'checkout_events': sum(1 for e in events
-                                   if e['event'] == 'checkout'),
-            'checkin_events': sum(1 for e in events
-                                  if e['event'] == 'checkin'),
-            'distinct_connections': len({e['conn'] for e in events
-                                         if e['conn']})}, occupancy_series
+                                 'occupancy': len(live),
+                                 'pid': e.get('pid')})
+    summary = {'max_simultaneous': max_occ,
+               'event_count': len(events),
+               'checkout_events': sum(1 for e in events
+                                      if e['event'] == 'checkout'),
+               'checkin_events': sum(1 for e in events
+                                     if e['event'] == 'checkin'),
+               'distinct_connections': len({e['conn'] for e in events
+                                            if e['conn']}),
+               # DBAPI connection ids (psycopg2 connection objects), NOT
+               # SQLAlchemy connection-wrapper ids — the two id spaces are
+               # never mixed (Gate D).
+               'id_space': 'dbapi_connection_id',
+               'pids': sorted({e.get('pid') for e in events
+                               if e.get('pid') is not None})}
+    if t_epoch_range:
+        summary['window_max_simultaneous'] = win_max
+        summary['window'] = list(t_epoch_range)
+    return summary, occupancy_series
+
+
+def pressure_intervals(series, cap: int):
+    """Checkout-pressure intervals from the measured occupancy STEP
+    FUNCTION: an occupancy level holds from its pool event until the next
+    event, so a pressure span ends at the event that drops below the cap
+    (never a zero-width point). Pool causation requires a failed health
+    request's own time span to intersect one of these intervals — a peak
+    at some unrelated moment proves nothing (Gate D)."""
+    iv = []
+    start = None
+    prev_te = None
+    for p in series or []:
+        te = p.get('t_epoch')
+        if te is None:
+            continue
+        if p['occupancy'] >= cap:
+            if start is None:
+                start = te
+        elif start is not None:
+            iv.append((start, te))  # pressure held until this drop event
+            start = None
+        prev_te = te
+    if start is not None:
+        iv.append((start, prev_te))
+    return iv
+
+
+def probe_records(ev_dir: Path, probe: str):
+    """Full probe records (incl. t_epoch) for correlation."""
+    out = []
+    with open(Path(ev_dir) / 'events.jsonl', encoding='utf-8') as f:
+        for line in f:
+            r = json.loads(line)
+            if r.get('kind') == 'probe' and r.get('probe') == probe:
+                out.append(r)
+    return out
 
 
 def part_a(ev, url, upload):
@@ -193,23 +254,45 @@ def part_a(ev, url, upload):
 
         # ── matched NON-SATURATED control: 3 concurrent bootstraps ──────
         # Below the 10+5 pool cap: health probes are expected to stay green.
+        # Gate D: the control is valid only if it was EXECUTED successfully
+        # (all 200), had SUCCESSFUL health probes in its window (absence of
+        # failures is not proof of health), and stayed below the cap.
         control_results = {}
         ctl_threads = [threading.Thread(target=fire, args=(i, control_results))
                        for i in range(3)]
         ctl_since = (time.perf_counter() - ev.t0) * 1000
+        ctl_te0 = time.time()
         for t in ctl_threads:
             t.start()
         for t in ctl_threads:
             t.join()
         time.sleep(1.0)  # let checkins land in the pool log
-        ctl_occ, ctl_series = occupancy_from_pool_log(pool_log)
-        ctl_health_fails = lab.probe_fail_count(ev.dir, 'health', ctl_since)
+        ctl_te1 = time.time()
+        ctl_occ, ctl_series = occupancy_from_pool_log(pool_log,
+                                                      (ctl_te0, ctl_te1))
+        ctl_probes = [p for p in probe_records(ev.dir, 'health')
+                      if ctl_since <= p['t_ms']]
+        ctl_health_fails = sum(1 for p in ctl_probes if not p.get('ok'))
+        ctl_health_oks = sum(1 for p in ctl_probes if p.get('ok'))
+        control = {
+            'executed': bool(control_results) and all(
+                v.get('status') == 200 for v in control_results.values()),
+            'health_oks': ctl_health_oks,
+            'health_fails': ctl_health_fails,
+            'max_occupancy': (ctl_occ or {}).get('window_max_simultaneous', 999),
+            'pool_cap': 15,
+        }
         ev.event('A_control_non_saturated', requests=3,
                  results=control_results,
-                 pool_occupancy_so_far=ctl_occ,
+                 pool_occupancy_in_window=(ctl_occ or {}).get(
+                     'window_max_simultaneous'),
+                 health_probe_oks=ctl_health_oks,
                  health_probe_fails=ctl_health_fails,
-                 expectation='0 health failures below the pool cap',
-                 control_ok=ctl_health_fails == 0)
+                 expectation='all 200; successful probes; below the pool cap',
+                 control=control,
+                 control_ok=all([
+                     control['executed'], ctl_health_oks > 0,
+                     ctl_health_fails == 0, control['max_occupancy'] < 15]))
 
         # ── saturation attempt: 30 concurrent bootstraps ────────────────
         sat_since = (time.perf_counter() - ev.t0) * 1000
@@ -249,7 +332,36 @@ def part_a(ev, url, upload):
                                   'isolates the event loop itself')
         probe.stop()
         probe = None
-        return occ, health_fails, loop_fails, results, ctl_health_fails
+        # Gate D: causal correlation is computed here, at measurement time,
+        # from the shared t_epoch reference — a failed health request must
+        # fall INSIDE a measured checkout-pressure interval; the pool log's
+        # PIDs must belong to the spawned app tree.
+        health_fail_spans = [
+            (p['t_epoch'] - (p.get('ms', 0) or 0) / 1000.0, p['t_epoch'])
+            for p in probe_records(ev.dir, 'health')
+            if not p.get('ok') and p.get('t_epoch')]
+        intervals = pressure_intervals(series, 15) if series else []
+        # span intersection: the failed probe was hanging during
+        # [t_epoch - duration, t_epoch]; causation requires that span to
+        # intersect a measured pressure interval.
+        overlap = any(ps <= hi and lo <= pe
+                      for ps, pe in health_fail_spans
+                      for lo, hi in intervals)
+        app_tree = {proc.pid} | set(lab._TREE_CACHE.get(proc.pid, set()))
+        app_identity_ok = bool(occ and occ.get('pids')
+                               and set(occ['pids']) <= app_tree)
+        ev.event('A_correlation',
+                 pressure_intervals=[list(x) for x in intervals],
+                 health_fail_spans=[[round(a, 3), round(b, 3)]
+                                    for a, b in health_fail_spans],
+                 timestamp_overlap=overlap,
+                 pool_log_pids=(occ or {}).get('pids'),
+                 app_tree_pids=sorted(app_tree),
+                 app_identity_ok=app_identity_ok,
+                 id_space='pool log conn ids are DBAPI connection ids; '
+                          'SQLAlchemy wrapper ids are never mixed in')
+        return occ, health_fails, loop_fails, results, control, \
+            overlap, app_identity_ok, series
     finally:
         if probe:
             probe.stop()
@@ -264,48 +376,43 @@ def main():
     try:
         phase_timeline(ev, engine, SessionLocal)
         engine.dispose()  # release in-process connections before part A
-        occ, hf, lf, results, ctl_hf = part_a(ev, url, base / 'uploads')
-        # Gate E: a missing pool log invalidates any saturation claim.
-        # Health failures WITHOUT pool-saturation evidence are recorded as
-        # an observation, never as proof of pool causation.
-        saturated = occ is not None and occ['max_simultaneous'] >= 15
-        if occ is None:
-            ev.classify(
-                'e3',
-                harness_validity='INVALID',
-                product_observation='INCONCLUSIVE',
-                causal_claim='INCONCLUSIVE',
-                rationale=('Pool log missing: occupancy could not be '
-                           'computed from the app\'s own checkout/checkin '
-                           'stream, so no saturation claim is made. Health '
-                           f'failures observed during fanout: {hf} '
-                           '(observation without resource evidence — not '
-                           'proof of pool causation).'))
-        else:
-            ev.classify(
-                'e3',
-                harness_validity='VALID',
-                product_observation=('DEFECT_OBSERVED' if hf > 0
-                                     else 'EXPECTED_BEHAVIOR'),
-                causal_claim=('CONFIRMED' if (hf > 0 and saturated
-                                              and ctl_hf == 0)
-                              else 'INCONCLUSIVE'),
-                rationale=('Connection phases measured per request type with '
-                           'pool/tx/sql listeners; subprocess occupancy '
-                           'computed from the app\'s own checkout/checkin '
-                           f'stream (max_simultaneous='
-                           f'{occ["max_simultaneous"]} vs pool 10+5, '
-                           f'saturated={saturated}); health probe failures '
-                           f'during fanout: {hf}; loop failures: {lf}; '
-                           f'non-saturated control (3 concurrent) health '
-                           f'failures: {ctl_hf}. Saturation causality is '
-                           'CONFIRMED only when occupancy reached the cap, '
-                           'health failed under load, AND the matched '
-                           'non-saturated control stayed green. Claims are '
-                           'scoped to the measured request types.'),
-                pool_occupancy=occ,
-                saturated=saturated,
-                non_saturated_control_health_fails=ctl_hf)
+        (occ, hf, lf, results, control, overlap,
+         app_identity_ok, series) = part_a(ev, url, base / 'uploads')
+        # Gate D: missing OR EMPTY pool logs invalidate any saturation
+        # claim; confirmation requires a timestamp overlap between a failed
+        # health request and a measured checkout-pressure interval, a
+        # verified green non-saturated control, and app-process identity.
+        saturated = bool(occ and occ.get('event_count')
+                         and occ['max_simultaneous'] >= 15)
+        verdict = D.decide_e3(
+            pool_log_present=occ is not None,
+            pool_event_count=(occ or {}).get('event_count', 0),
+            pressure_overlap=overlap,
+            saturated=saturated,
+            health_fails=hf, loop_fails=lf,
+            app_identity_ok=app_identity_ok,
+            control=control)
+        ev.classify(
+            'e3',
+            harness_validity=verdict['harness_validity'],
+            product_observation=verdict['product_observation'],
+            causal_claim=verdict['causal_claim'],
+            rationale=('Connection phases measured per request type with '
+                       'pool/tx/sql listeners; subprocess occupancy computed '
+                       'from the app\'s own checkout/checkin stream '
+                       f'(max_simultaneous={(occ or {}).get("max_simultaneous")}'
+                       f' vs pool 10+5, saturated={saturated}); health probe '
+                       f'failures during fanout: {hf}; loop failures: {lf}; '
+                       f'timestamp overlap with a pressure interval: '
+                       f'{overlap}; app identity verified: '
+                       f'{app_identity_ok}; non-saturated control ok: '
+                       f'{verdict.get("control_ok")}. '
+                       + ' '.join(verdict['reasons'])
+                       + ' Claims are scoped to the measured request types.'),
+            pool_occupancy=occ,
+            saturated=saturated,
+            pressure_overlap=overlap,
+            control=control)
         ev.event('e3_done')
     finally:
         pg.stop()

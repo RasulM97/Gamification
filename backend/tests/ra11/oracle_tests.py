@@ -1,10 +1,13 @@
 """RA-1.1 oracle & safety regression tests (Gate A negatives + Gate B
 adversarial detector tests). No database required; fast; deterministic.
 
-Run: python oracle_tests.py
+Run: python oracle_tests.py [run-id]
 Exits non-zero on any failure. These tests gate the experiment suite
-(run_all.py runs them first and stops on failure).
+(run_all.py runs them first and stops on failure). When a run-id is given,
+the outcome is recorded as evidence under uat-out/ra11/<run-id>/oracle/ so
+the fresh run's results collection includes the gate outcomes (Gate G).
 """
+import json
 import socket
 import subprocess
 import sys
@@ -16,6 +19,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 import lab  # noqa: E402
 
 RESULTS = []
+RID = None
+if len(sys.argv) > 1:
+    RID = lab.validate_run_id(sys.argv[1])  # rejects traversal/sibling ids
 
 
 def check(name, cond, detail=''):
@@ -163,6 +169,159 @@ check('safety: application listener closed after watchdog', port_closed)
 
 import shutil
 shutil.rmtree(td, ignore_errors=True)
+
+# ── Gate B adversarial lock-causality tests (four-tier assessor) ─────────────
+# Every incomplete evidence case must fail closed or stay INCONCLUSIVE; only
+# a fully correlated chain with a stalled window, healthy precondition,
+# matched successful control and released latches may reach CONFIRMED.
+
+def _snap(rows, t_ms=1500.0):
+    return {'kind': 'pg_locks_full', 't_ms': t_ms, 'rows': rows}
+
+
+def _write(directory, events):
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    with open(directory / 'events.jsonl', 'w', encoding='utf-8') as f:
+        for e in events:
+            f.write(json.dumps(e) + '\n')
+    return directory
+
+
+def _app_row(pid, granted, mode='ExclusiveLock', locktype='advisory',
+             classid='123', objid='456', objsubid='1', blocking='',
+             app='ra11-app', db='ra11_t_db', xact='2026-10-13 01:00:00'):
+    return {'locktype': locktype, 'mode': mode, 'granted': granted,
+            'pid': pid, 'classid': classid, 'objid': objid,
+            'objsubid': objsubid, 'application_name': app, 'datname': db,
+            'xact_start': xact, 'blocking_pids': blocking}
+
+
+td2 = Path(tempfile.mkdtemp(prefix='ra11-oracle-causal-'))
+WIN = (1000.0, 2000.0)
+
+# B-1. Empty lock snapshots inside the window.
+_write(td2 / 'empty', [_snap([])])
+r = lab.assess_lock_causality(td2 / 'empty', WIN, stalled=True,
+                              db_name='ra11_t_db', control_ok=True,
+                              healthy_precondition=True)
+check('causal: empty in-window snapshots -> no lock chain, no CONFIRMED',
+      not r['lock_chain_observed'] and not r['causal_mechanism_confirmed'])
+
+# B-2. Unrelated PostgreSQL activity (different database/application).
+_write(td2 / 'unrelated', [_snap([
+    _app_row('201', 'False', blocking='202', app='vacuum', db='postgres'),
+    _app_row('202', 'True', app='vacuum', db='postgres')])])
+r = lab.assess_lock_causality(td2 / 'unrelated', WIN, stalled=True,
+                              db_name='ra11_t_db', control_ok=True,
+                              healthy_precondition=True)
+check('causal: unrelated PostgreSQL activity -> chain not SUPPORTED',
+      r['lock_chain_observed'] and not r['causal_mechanism_supported']
+      and r['highest_tier'] == lab.TIER_LOCK_CHAIN, str(r['reasons']))
+
+# B-3. Wrong-process PID: the waiting backend is not this app's backend.
+_write(td2 / 'wrongpid', [_snap([
+    _app_row('201', 'False', blocking='202', app='psql', db='ra11_t_db'),
+    _app_row('202', 'True')])])
+r = lab.assess_lock_causality(td2 / 'wrongpid', WIN, stalled=True,
+                              db_name='ra11_t_db', control_ok=True,
+                              healthy_precondition=True)
+check('causal: wrong-process waiter -> not SUPPORTED/CONFIRMED',
+      not r['causal_mechanism_supported']
+      and not r['causal_mechanism_confirmed'], str(r['reasons']))
+
+# B-4. Unrelated advisory key: wait exists but the blocker holds a DIFFERENT
+#      key (pg_blocking_pids empty — no observed blocking relationship).
+_write(td2 / 'unrelatedkey', [_snap([
+    _app_row('201', 'False', blocking=''),  # no blocking relationship
+    _app_row('202', 'True', classid='999', objid='888')])])
+r = lab.assess_lock_causality(td2 / 'unrelatedkey', WIN, stalled=True,
+                              db_name='ra11_t_db', control_ok=True,
+                              healthy_precondition=True)
+check('causal: unrelated advisory key / no blocking link -> no chain',
+      not r['lock_chain_observed']
+      and r['highest_tier'] == lab.TIER_STALLED, str(r['reasons']))
+
+# B-5. Missing negative control: a perfect chain still never reaches
+#      CONFIRMED without the matched successful control.
+_write(td2 / 'fullchain', [_snap([
+    _app_row('201', 'False', mode='ShareLock', blocking='202'),
+    _app_row('202', 'True')])])
+r = lab.assess_lock_causality(td2 / 'fullchain', WIN, stalled=True,
+                              db_name='ra11_t_db', control_ok=False,
+                              healthy_precondition=True)
+check('causal: missing/failed control -> SUPPORTED at most, never CONFIRMED',
+      r['causal_mechanism_supported'] and not r['causal_mechanism_confirmed']
+      and r['highest_tier'] == lab.TIER_SUPPORTED, str(r['reasons']))
+
+# B-6. Recovery inside the observation window (not stalled).
+r = lab.assess_lock_causality(td2 / 'fullchain', WIN, stalled=False,
+                              db_name='ra11_t_db', control_ok=True,
+                              healthy_precondition=True)
+check('causal: in-window recovery -> no CONFIRMED',
+      not r['causal_mechanism_confirmed']
+      and r['highest_tier'] == lab.TIER_SUPPORTED, str(r['reasons']))
+
+# B-7. Process termination: a dead process is never a confirmed wedge.
+r = lab.detect_wedge(probes([True] * 3 + [False] * 6),
+                     process_alive=False, window=WIN, latches_released=True)
+dead_assess = lab.assess_lock_causality(
+    td2 / 'fullchain', WIN, stalled=r['non_recovery_observed'],
+    db_name='ra11_t_db', control_ok=True, healthy_precondition=True)
+check('causal: terminated process -> no stall, no CONFIRMED',
+      not dead_assess['request_progress_stalled']
+      and not dead_assess['causal_mechanism_confirmed'])
+
+# B-8. A held synthetic latch invalidates the self-sustaining claim.
+r = lab.assess_lock_causality(td2 / 'fullchain', WIN, stalled=True,
+                              db_name='ra11_t_db', control_ok=True,
+                              healthy_precondition=True,
+                              latches_released=False)
+check('causal: held latch -> SUPPORTED at most, never CONFIRMED',
+      r['causal_mechanism_supported'] and not r['causal_mechanism_confirmed'],
+      str(r['reasons']))
+
+# B-9. Full positive: correlated chain + stalled + healthy precondition +
+#      matched control + released latches -> CONFIRMED.
+r = lab.assess_lock_causality(td2 / 'fullchain', WIN, stalled=True,
+                              db_name='ra11_t_db', control_ok=True,
+                              healthy_precondition=True,
+                              latches_released=True)
+check('causal: complete evidence -> CAUSAL_MECHANISM_CONFIRMED',
+      r['causal_mechanism_confirmed']
+      and r['highest_tier'] == lab.TIER_CONFIRMED)
+
+shutil.rmtree(td2, ignore_errors=True)
+
+# ── Gate A: sibling-run deletion refused (not just historical) ───────────────
+sib = lab.OUT_ROOT / 'reg-oracle-sibling'
+sib.mkdir(parents=True, exist_ok=True)
+refused = False
+try:
+    lab.safe_rmtree(sib, lab.OUT_ROOT / 'oracle-negative-test')
+except ValueError:
+    refused = True
+check('safety: sibling run dir deletion refused', refused)
+check('safety: sibling run dir preserved', sib.exists())
+sib.rmdir()
+
+# ── record gate outcome into the run evidence when a run-id was given ────────
+if RID:
+    gate_dir = lab.OUT_ROOT / RID / 'oracle'
+    gate_dir.mkdir(parents=True, exist_ok=True)
+    evg = lab.Evidence(gate_dir)
+    failed_so_far = [n for n, ok, _ in RESULTS if not ok]
+    evg.event('fingerprint', **lab.fingerprint())
+    evg.event('oracle_results', total=len(RESULTS), failed=failed_so_far)
+    evg.classify('oracle',
+                 harness_validity='VALID' if not failed_so_far else 'INVALID',
+                 product_observation='EXPECTED_BEHAVIOR'
+                 if not failed_so_far else 'INVALID',
+                 causal_claim='INCONCLUSIVE',
+                 rationale='Oracle/safety gate; no product claim. '
+                           f'{len(RESULTS) - len(failed_so_far)}/'
+                           f'{len(RESULTS)} checks passed.')
+    evg.finish()
 
 failed = [n for n, ok, _ in RESULTS if not ok]
 print(f'\n{len(RESULTS) - len(failed)}/{len(RESULTS)} oracle/safety tests passed')

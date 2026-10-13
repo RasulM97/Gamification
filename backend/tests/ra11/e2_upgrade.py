@@ -47,6 +47,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import lab  # noqa: E402
 import _inproc  # noqa: E402
+import _decisions as D  # noqa: E402
 
 
 def main():
@@ -62,13 +63,19 @@ def main():
         from app.organization.model import Team, TeamMembership
         from app.service_common import lock_capacity_user
 
-        # fixture: team + two team-scoped OPEN tasks; priya is a member
+        # fixture: team + two team-scoped OPEN tasks; priya is a member.
+        # Capacity headroom is ENFORCED (not just logged): M3's control
+        # requires priya to be able to hold both tasks, otherwise the
+        # second claim hits CAPACITY_REACHED — a legitimate product
+        # refusal that would silently corrupt the control (Gate C).
         with SessionLocal() as db:
             team = Team(company_id='co-aster', name='E2 Team')
             db.add(team)
             db.flush()
             db.add(TeamMembership(company_id='co-aster', team_id=team.id,
                                   user_id='u-priya'))
+            priya = db.get(User, 'u-priya')
+            priya.max_active_tasks = 50  # fixture headroom for M3
             now = now_ms()
             for i in range(2):
                 db.add(Task(id=f't-e2-scoped-{i}', company_id='co-aster',
@@ -251,48 +258,50 @@ def main():
         #     (share_held on both sides, labeled latch events, barrier intact)
         #   - no thread left hanging after joins (a hanging thread means an
         #     unobserved lock wait, not a measured outcome)
-        #   - M2/M3 barriers intact as well
+        #   - M2/M3 controls must have SUCCEEDED (unexpected exceptions
+        #     invalidate the relevant control; M2/M3 success is mandatory
+        #     before E2's controls count as successful)
+        # Deadlock detection requires the driver SQLSTATE 40P01.
         m1_both_at_boundary = (len(share_held) == 2 and not barrier_broken
                                and not m1_threads_alive)
-        controls_intact = (not barrier2_broken and not m2_threads_alive
-                           and not m3_threads_alive)
-        valid = (for_share_seen and for_nku_seen and m1_both_at_boundary
-                 and controls_intact)
+        verdict = D.decide_e2(
+            {'for_share_seen': for_share_seen,
+             'for_no_key_update_seen': for_nku_seen},
+            {'both_at_boundary': m1_both_at_boundary,
+             'barrier_broken': barrier_broken,
+             'threads_alive': m1_threads_alive,
+             'deadlock_sqlstate': m1_deadlock},
+            {'barrier_broken': barrier2_broken,
+             'threads_alive': m2_threads_alive,
+             'outcomes': outcome2},
+            {'threads_alive': m3_threads_alive,
+             'outcomes': outcome3})
+        ev.event('e2_verdict', **{k: v for k, v in verdict.items()
+                                  if k != 'reasons'},
+                 reasons=verdict['reasons'])
 
-        if not valid:
-            ev.classify(
-                'e2',
-                harness_validity='INVALID',
-                product_observation='INVALID',
-                causal_claim='INVALID',
-                rationale=('Harness gate failed: '
-                           f'for_share_seen={for_share_seen}, '
-                           f'for_no_key_update_seen={for_nku_seen}, '
-                           f'm1_both_at_lock_boundary={m1_both_at_boundary} '
-                           f'(share_held={sorted(share_held)}, '
-                           f'barrier_broken={barrier_broken}, '
-                           f'threads_alive={m1_threads_alive}), '
-                           f'controls_intact={controls_intact}. '
-                           'The mechanism was not provably exercised.'))
-        else:
-            confirmed = m1_deadlock and not m2_deadlock and not m3_deadlock
-            ev.classify(
-                'e2',
-                harness_validity='VALID',
-                product_observation='EXPECTED_BEHAVIOR',
-                causal_claim='CONFIRMED' if confirmed else 'INCONCLUSIVE',
-                rationale='Row-level SHARE->NKU upgrade deadlock class: '
-                          f'M1 deadlock={m1_deadlock} (SQLSTATE 40P01, '
-                          'labeled barrier, both transactions proven at '
-                          'their lock boundaries), '
-                          f'M2 matched non-upgrade control deadlock='
-                          f'{m2_deadlock}, '
-                          f'M3 app-level (real claim_task, org X '
-                          f'serialization) deadlock={m3_deadlock}. '
-                          'The row-level class is real; the org-wide '
-                          'EXCLUSIVE advisory currently prevents it between '
-                          'task commands. No generalization beyond these '
-                          'two measured paths.')
+        ev.classify(
+            'e2',
+            harness_validity=verdict['harness_validity'],
+            product_observation=verdict['product_observation'],
+            causal_claim=verdict['causal_claim'],
+            rationale=('Row-level SHARE->NKU upgrade deadlock class: '
+                       f'M1 deadlock={m1_deadlock} (SQLSTATE 40P01 from the '
+                       'driver, labeled barrier, both transactions proven '
+                       'at their lock boundaries), '
+                       f'M2 matched non-upgrade control outcomes='
+                       f'{ {k: v.get("result") for k, v in outcome2.items()} },'
+                       f' M3 app-level (real claim_task, org X '
+                       f'serialization) outcomes='
+                       f'{ {k: v.get("result") for k, v in outcome3.items()} }'
+                       f'. ' + ' '.join(verdict['reasons']) +
+                       ' The row-level class is real only where measured; '
+                       'the org-wide EXCLUSIVE advisory currently prevents '
+                       'it between task commands. No generalization beyond '
+                       'the measured paths.'),
+            m1_deadlock_sqlstate=m1_deadlock,
+            m2_control_ok=verdict.get('m2_control_ok'),
+            m3_control_ok=verdict.get('m3_control_ok'))
         ev.event('e2_done')
     finally:
         obs.close()

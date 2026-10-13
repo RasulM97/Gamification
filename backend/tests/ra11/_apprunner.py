@@ -33,6 +33,10 @@ def _pool_log(event: str, conn_id: int):
                     # correlated with harness events (which carry t_epoch)
                     't_epoch': round(time.time(), 4),
                     'event': event, 'conn': conn_id,
+                    # conn is id() of the DBAPI (psycopg2) connection object
+                    # — NEVER the SQLAlchemy connection-wrapper id (Gate D:
+                    # the two id spaces are kept separate and labeled)
+                    'id_space': 'dbapi_connection_id',
                     'pid': os.getpid(), 'thread': threading.get_ident(),
                 }) + '\n')
     except Exception:

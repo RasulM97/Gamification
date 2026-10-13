@@ -52,20 +52,26 @@ def main():
         checks['preexisting_cluster_refused'] = pg2_refused
 
         # ── path containment: safe_rmtree refuses outside paths ──────────
+        # Clean-checkout safe: these assertions must PASS even when no
+        # historical evidence exists at all (Gate A). Refusal is enforced
+        # by containment rules that do not depend on the target existing.
         refused = False
         try:
             lab.safe_rmtree(lab.REPO / 'backend', lab.OUT_ROOT / rid)
         except ValueError:
             refused = True
+        hist = lab.OUT_ROOT / 'final-20261012'
+        hist_refused = False
         try:
-            lab.safe_rmtree(lab.OUT_ROOT / 'final-20261012',
-                            lab.OUT_ROOT / rid)  # historical run dir
-            refused = False
+            lab.safe_rmtree(hist, lab.OUT_ROOT / rid)  # historical run dir
         except ValueError:
-            pass
+            hist_refused = True
         checks['rmtree_containment'] = refused
-        checks['historical_run_preserved'] = (lab.OUT_ROOT
-                                              / 'final-20261012').exists()
+        checks['historical_run_refused'] = hist_refused
+        # Preservation is only measurable when historical evidence exists;
+        # on a clean checkout the refusal above is the entire check.
+        checks['historical_run_preserved'] = (
+            not hist.exists()) or (hist / 'e1' / 'events.jsonl').exists()
 
         # ── process safety: one worker, port ownership, watchdog ─────────
         env = lab.app_env(url, base / 'uploads')
@@ -97,6 +103,11 @@ def main():
         obs.snap_locks('idle')
         lab.stop_app(proc, wd, ev)
         checks['app_stopped'] = not lab.process_alive(proc)
+        # Gate A: termination is verified, not assumed — the whole recorded
+        # tree must be gone and the listener closed after stop.
+        checks['app_tree_dead'] = lab.tree_dead(proc)
+        checks['listener_closed_after_stop'] = not lab.wait_port(
+            lab.PORT_A, timeout=3.0)
 
         obs.close()
         pg.stop()

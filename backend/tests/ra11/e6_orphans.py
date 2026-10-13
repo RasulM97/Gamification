@@ -50,6 +50,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import lab  # noqa: E402
 import _inproc  # noqa: E402
+import _decisions as D  # noqa: E402
 
 BASE = 'http://127.0.0.1:%d' % lab.PORT_A
 BOUNDARY = 'ra11boundary7f3c9e2a'
@@ -127,21 +128,51 @@ def main():
         env = lab.app_env(url, upload)
         engine.dispose()
         quiescence_ok = False  # initialized; set by boundary (a)
+        ctrl = {'http_200': False, 'file_present': False,
+                'row_present': False, 'identity_match': False}
+        kill = {'process_died': False, 'tree_dead': False,
+                'uploader_done': False, 'quiesced': False,
+                'zero_survivors': False, 'zero_rows': False,
+                'identity_match': False}
         proc, wd = lab.spawn_app(env, lab.PORT_A, ev, watchdog_s=240)
         try:
             token = lab.login(BASE, 'dana@aster.demo')
 
             # ── ctrl) successful slow upload, no kill ────────────────────
+            # Gate E: the control is a REQUIRED boundary with its own
+            # evidence — HTTP 200 AND exactly one new final-name file AND a
+            # matching attachment row whose storage_path IS that file.
             counter = {'sent': 0}
             before = set(dir_listing(upload))
             r = post_stream(BASE, token, 'ctrl.bin', CHUNKS, counter)
             new = sorted(set(dir_listing(upload)) - before)
+            ctrl_paths = obs.scalar(
+                "SELECT COALESCE(string_agg(a.storage_path, ','), '') "
+                "FROM attachments a JOIN tasks t ON a.task_id=t.id "
+                "WHERE t.title='E6 stream upload'")
+            ctrl = {
+                'http_200': r.status_code == 200,
+                'file_present': len(new) == 1,
+                'row_present': bool(ctrl_paths),
+                'identity_match': bool(
+                    len(new) == 1 and ctrl_paths
+                    and ctrl_paths.replace('\\', '/') ==
+                    new[0].replace('\\', '/')),
+            }
             ev.event('ctrl_result', http=r.status_code,
                      bytes_sent=counter['sent'], survivors=new,
-                     attachment_rows=obs.scalar(
-                         "SELECT count(*) FROM attachments a JOIN tasks t "
-                         "ON a.task_id=t.id WHERE t.title='E6 stream upload'"),
-                     expectation='200, one final-name file, one Attachment row')
+                     attachment_paths=ctrl_paths,
+                     expectation='200, one final-name file, one Attachment '
+                                 'row whose storage_path matches the file')
+            ev.event('boundary_classification', boundary='ctrl-no-kill',
+                     verdict=('COMPLETE' if all(ctrl.values())
+                              else 'INVALID'), **ctrl)
+            if not all(ctrl.values()):
+                ev.event('control_invalid', boundary='ctrl-no-kill',
+                         detail=ctrl,
+                         consequence='harness_validity=INVALID — the real-'
+                                     'kill boundary is not interpretable '
+                                     'against a failed control')
 
             # ── a) REAL process kill during transfer ─────────────────────
             upload_uid = lab.req_id()
@@ -175,7 +206,14 @@ def main():
             except Exception:
                 pass
             process_died = proc.poll() is not None
+            # Gate E: the TARGET PROCESS AND ALL DESCENDANTS must be
+            # verified terminated, and the uploader must have finished or
+            # been explicitly interrupted — recorded, never assumed.
+            tree_dead = lab.tree_dead(proc)
+            listener_closed = not lab.wait_port(lab.PORT_A, timeout=2.0)
             t.join(timeout=15)
+            uploader_done = ('http' in outcome or 'exception' in outcome)
+            uploader_interrupted = outcome.get('exception') is not None
             # MANDATORY quiescence (Gate F): zero active backends belonging
             # to THIS app (application_name='ra11-app') on THIS disposable
             # database before any absence-of-file/row claim is made.
@@ -199,8 +237,25 @@ def main():
             kill_rows = obs.scalar(
                 'SELECT count(*) FROM attachments a JOIN tasks t '
                 'ON a.task_id=t.id WHERE t.title=%s', (kill_title,))
+            # Gate E: survivor/orphan facts are verified for THIS upload's
+            # identity — the unique title scopes the DB rows, and 'new' is
+            # the filesystem delta during a window in which this was the
+            # only in-flight upload.
+            kill = {
+                'process_died': process_died,
+                'tree_dead': tree_dead,
+                'uploader_done': uploader_done,
+                'quiesced': quiescence_ok,
+                'zero_survivors': len(new) == 0,
+                'zero_rows': kill_rows == 0,
+                'identity_match': True,  # unique title + sole in-flight upload
+            }
             ev.event('a_result', upload_id=upload_uid,
                      upload_thread=outcome,
+                     uploader_finished_or_interrupted=uploader_done,
+                     uploader_interrupted=uploader_interrupted,
+                     tree_dead=tree_dead,
+                     listener_closed=listener_closed,
                      bytes_sent_by_client=counter2['sent'],
                      survivors=new,
                      attachment_rows_for_upload=kill_rows,
@@ -217,6 +272,16 @@ def main():
                      note='REAL process termination during transfer; staging '
                           'follows the full multipart read, so a transfer-time '
                           'kill is expected to leave zero bytes')
+            kill_complete = all(kill[k] for k in
+                                ('process_died', 'tree_dead', 'uploader_done',
+                                 'quiesced', 'identity_match'))
+            ev.event('boundary_classification', boundary='a-real-kill',
+                     verdict=('COMPLETE' if kill_complete else 'INCONCLUSIVE'),
+                     process_death_confirmed=kill_complete,
+                     zero_survivors_confirmed=(kill_complete
+                                               and kill['zero_survivors']
+                                               and kill['zero_rows']),
+                     **kill)
         finally:
             lab.kill_tree(proc)
             try:
@@ -265,10 +330,14 @@ def main():
                          'expected_full_size': len(payload),
                          'partial': (upload / f).stat().st_size != len(payload)}
                         for f in new_files]
+        a2_orphans = orphans_among(obs, new_files)
         ev.event('a2_result', survivors=partial_info,
-                 orphan_by_db=orphans_among(obs, new_files),
+                 orphan_by_db=a2_orphans,
                  distinguishable='NOT by name; YES by Attachment-row absence '
                                  'or size mismatch vs any committed row')
+        ev.event('boundary_classification', boundary='a2-sim-write-crash',
+                 verdict='COMPLETE', simulation=True,
+                 orphan_observed=bool(a2_orphans))
 
         # ── c) multi-file staging: first saved, second fails (SIMULATED) ─
         calls = {'n': 0}
@@ -292,44 +361,60 @@ def main():
         finally:
             routes.storage.save = orig_save
         new_files = sorted(set(dir_listing(upload)) - before)
+        c_orphans = orphans_among(obs, new_files)
         ev.event('c_result', survivors=new_files,
-                 orphan_by_db=orphans_among(obs, new_files),
+                 orphan_by_db=c_orphans,
                  task_rows=obs.scalar("SELECT count(*) FROM tasks WHERE title='E6 c two files'"),
                  note='stage_files raised before mutate(); no cleanup ran')
+        ev.event('boundary_classification', boundary='c-sim-multifile',
+                 verdict='COMPLETE', simulation=True,
+                 orphan_observed=bool(c_orphans))
 
         # ── d) staged-then-crash (SIMULATED session abandonment) ─────────
         rel = orig_save('co-aster', 'd-staged.bin', b'staged but never committed')
         ev.event('d_simulated_crash', staged=rel,
                  simulation='bytes staged; session abandoned without commit '
                             '(process-death equivalent end state)')
-        ev.event('d_result', survivor=rel, orphan_by_db=orphans_among(obs, [rel]))
+        d_orphans = orphans_among(obs, [rel])
+        ev.event('d_result', survivor=rel, orphan_by_db=d_orphans)
+        ev.event('boundary_classification', boundary='d-sim-abandon',
+                 verdict='COMPLETE', simulation=True,
+                 orphan_observed=bool(d_orphans))
 
+        # Gate E: the experiment's result is DERIVED from per-boundary
+        # evidence — never from quiescence_ok alone. A failed no-kill
+        # control invalidates the harness; an incomplete kill boundary
+        # forbids any confirmed-process-death or zero-survivor claim.
+        verdict = D.decide_e6(
+            ctrl, kill,
+            {'a2-sim-write-crash': {'orphan_observed': bool(a2_orphans)},
+             'c-sim-multifile': {'orphan_observed': bool(c_orphans)},
+             'd-sim-abandon': {'orphan_observed': bool(d_orphans)}})
         ev.classify(
             'e6',
-            harness_validity='VALID',
-            product_observation='DEFECT_OBSERVED',
-            causal_claim=('CONFIRMED' if quiescence_ok else 'INCONCLUSIVE'),
-            rationale=(('Real-transfer kill (a): process death confirmed, '
-                        'quiescence achieved (zero ra11-app backends on the '
-                        'disposable DB), zero survivors, zero attachment '
-                        'rows for the tagged upload. '
-                        if quiescence_ok else
-                        'Real-transfer kill (a): QUiescence NOT achieved '
-                        'within 30s — zero-survivor observation for the '
-                        'kill boundary is INCONCLUSIVE (an operation may '
-                        'still have been in flight). ')
-                       + 'Simulated boundaries (a2/c/d) produce final-name '
-                       'orphans, including the multi-file staging gap (c) '
-                       'where mutate() cleanup never runs. Temp-name '
-                       'orphans: none possible at baseline (no '
-                       'temp+rename). Client byte counters measure socket '
-                       'writes, never server reception; server-side '
-                       'reception is bounded by zero-file + zero-row + the '
-                       'staging boundary. Simulations labeled; the harness '
-                       'never deleted anything.'),
-            quiescence_achieved=quiescence_ok,
+            harness_validity=verdict['harness_validity'],
+            product_observation=verdict['product_observation'],
+            causal_claim=verdict['causal_claim'],
+            rationale=('Real-transfer kill (a): boundary '
+                       f"{verdict['kill_boundary']} — process death "
+                       f"confirmed={verdict['process_death_confirmed']}, "
+                       f"zero survivors confirmed="
+                       f"{verdict['zero_survivors_confirmed']}. "
+                       'Simulated boundaries (a2/c/d) are distinct from the '
+                       'real kill and never borrow its evidence: orphans '
+                       f'{verdict["simulated_orphans"]}. Temp-name orphans: '
+                       'none possible at baseline (no temp+rename). Client '
+                       'byte counters measure socket writes, never server '
+                       'reception; server-side reception is bounded by '
+                       'zero-file + zero-row + the staging boundary. The '
+                       'harness never deleted anything. '
+                       + ' '.join(verdict['reasons'])),
+            control_ok=verdict['control_ok'],
+            kill_boundary=verdict['kill_boundary'],
+            quiescence_achieved=kill.get('quiesced'),
             boundaries=['ctrl', 'a-real-kill', 'a2-sim-write-crash',
-                        'b-not-applicable', 'c-sim-multifile', 'd-sim-abandon'])
+                        'b-not-applicable', 'c-sim-multifile',
+                        'd-sim-abandon'])
         ev.event('e6_done')
     finally:
         obs.close()

@@ -4,12 +4,18 @@ Method corrections vs v2 (Gate C):
   - Thread termination is RECORDED after every join: a thread still alive
     after the join timeout is marked 'timeout' (an unobserved lock wait,
     not a measured commit) and the edge counts as INCOMPLETE — it never
-    silently feeds a zero-deadlock conclusion.
-  - claim_seq no longer implies task-row contention: the claim path it
-    decomposes acquires org EXCLUSIVE advisory -> capability SHARED ->
-    account FOR SHARE -> user FOR NO KEY UPDATE; it never takes the task
-    row lock (claim's task row is locked later, after these). Covered lock
-    paths are stated explicitly.
+    silently feeds a zero-deadlock conclusion, and an unfinished
+    participant never counts as proof of any ordering property.
+  - claim_seq is corrected to the REAL claim_task lock order (org X
+    advisory -> task row FOR UPDATE -> user NKU); the capability check is a
+    lock-free SELECT and the mid-path org SHARED re-acquisition is a
+    redundant no-op under the held X — both omissions are labeled as the
+    reductions of a reduced model. The earlier "never takes the task row
+    lock" claim was wrong (get_task uses FOR UPDATE by default).
+  - The classification is DERIVED from recorded events (deadlocks,
+    incomplete edges), never fixed conclusion text: a demonstrated complete
+    conflicting wait graph is DEFECT_OBSERVED; incomplete edges force
+    INCONCLUSIVE.
   - Deadlock detection uses driver SQLSTATE 40P01 where available, falling
     back to message text; both are recorded.
   - Boundary enforcement: if either side fails to reach its first-lock
@@ -230,20 +236,30 @@ def main():
             return out, bool(complete)
 
         def claim_seq(task_id):
-            """Decomposed claim lock order (exclusive_guarded -> requires):
-            org EXCLUSIVE advisory, then capability SHARED, then account
-            FOR SHARE, then user FOR NO KEY UPDATE.
-
-            NOTE: this sequence NEVER takes the task row lock — in the real
-            claim path the task row is fetched/locked only after these
-            acquisitions. This edge therefore tests org/capability/account/
-            capacity-user lock interaction; it does NOT demonstrate
-            task-row contention."""
+            """Decomposition of the REAL claim_task lock order, verified
+            against task_services.claim_task at this commit:
+              1. org EXCLUSIVE advisory     (exclusive_guarded)
+              2. capability enabled SELECT  (@requires — a LOCK-FREE plain
+                                             SELECT; takes no advisory lock,
+                                             omitted)
+              3. task row FOR UPDATE        (get_task(lock=True) — the real
+                                             claim DOES take the task row
+                                             lock, BEFORE admission/capacity)
+              4. org SHARED advisory        (can_view/admit — a redundant
+                                             no-op under the X lock this
+                                             transaction already holds,
+                                             omitted)
+              5. user FOR NO KEY UPDATE     (require_capacity ->
+                                             lock_capacity_user)
+            REDUCED MODEL: the omissions in steps 2 and 4 are the only
+            reductions; everything else is the real call sequence. Earlier
+            harness versions incorrectly documented that claim never takes
+            the task row lock — corrected here, and the task_id argument is
+            now actually used."""
             def first(db):
                 org.lock(db, 'co-aster', exclusive=True)
             def second(db):
-                cap.require(db, 'co-aster', 'TASK_LITE')
-                org.account(db, 'co-aster', 'u-priya')
+                sc.get_task(db, 'co-aster', task_id)  # task row FOR UPDATE
                 sc.lock_capacity_user(db, 'co-aster', 'u-priya')
             return first, second
 
@@ -379,12 +395,23 @@ def main():
                      if any(is_deadlock(x) for x in v.values())]
         complete_runs = len(edge_outcomes) - len(
             [e for e in incomplete_edges if not e.startswith('REAL')])
+        # Gate C: the classification is DERIVED from the recorded events,
+        # not fixed conclusion text. A demonstrated complete conflicting
+        # wait graph is a DEFECT_OBSERVED; incomplete edges (boundary miss
+        # or thread timeout) force INCONCLUSIVE — an unfinished participant
+        # is never proof of any ordering property.
+        any_deadlock = bool(deadlocks) or real_deadlocks > 0
+        if any_deadlock:
+            product, causal = 'DEFECT_OBSERVED', 'CONFIRMED'
+        elif incomplete_edges:
+            product, causal = 'EXPECTED_BEHAVIOR', 'INCONCLUSIVE'
+        else:
+            product, causal = 'EXPECTED_BEHAVIOR', 'SUPPORTED'
         ev.classify(
             'e4',
             harness_validity='VALID',
-            product_observation='EXPECTED_BEHAVIOR',
-            causal_claim=('SUPPORTED' if not incomplete_edges
-                          else 'INCONCLUSIVE'),
+            product_observation=product,
+            causal_claim=causal,
             rationale=(f'{complete_runs}/{len(edge_outcomes)} complete '
                        'forced-interleave runs across edges A1/A2/B/C1 plus '
                        f'3 real decorated pairs: deadlocks={deadlocks} '
@@ -392,12 +419,19 @@ def main():
                        + (f'INCOMPLETE edges (boundary miss or thread '
                           f'timeout, excluded from conclusions): '
                           f'{incomplete_edges}. ' if incomplete_edges else '')
-                       + 'Where complete, the loser waited on the '
-                       'conflicting lock and committed (linear '
-                       'serialization). No complete conflicting wait graph '
-                       'was demonstrated for any tested edge. claim_seq '
-                       'covers org/capability/account/capacity-user lock '
-                       'interaction only — it never takes the task row lock. '
+                       + ('A complete conflicting wait graph WAS '
+                          'demonstrated — see deadlock edges above. '
+                          if any_deadlock else
+                          'Where complete, the loser waited on the '
+                          'conflicting lock and committed (linear '
+                          'serialization). No complete conflicting wait '
+                          'graph was demonstrated for any tested edge. ')
+                       + 'claim_seq follows the REAL claim lock order '
+                       '(org X advisory -> task row FOR UPDATE -> user NKU; '
+                       'the capability check is a lock-free SELECT and the '
+                       'mid-path org SHARED re-acquisition is a redundant '
+                       'no-op under the held X — a reduced model, labeled '
+                       'as such). '
                        'This is a NARROW observation scoped to the tested '
                        'edges — the AB-BA hypothesis remains unproven for '
                        'untested edges (e.g. economic issue vs task '

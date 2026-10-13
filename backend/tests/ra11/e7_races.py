@@ -36,6 +36,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import lab  # noqa: E402
 import _inproc  # noqa: E402
+import _decisions as D  # noqa: E402
 
 BASE = 'http://127.0.0.1:%d' % lab.PORT_A
 REQ_TIMEOUT = 25
@@ -79,8 +80,16 @@ def main():
         }
 
         def api(token, method, path, **kw):
-            r = getattr(httpx, method)(f'{BASE}{path}', headers=lab.auth(token),
-                                       timeout=REQ_TIMEOUT, **kw)
+            """HTTP call that NEVER raises: a client-side failure (timeout,
+            connection reset) is evidence, returned as ('EXC', type). Setup
+            assertions (require_setup) turn it into an INVALID
+            classification; race oracles see the EXC tuple as the outcome."""
+            try:
+                r = getattr(httpx, method)(f'{BASE}{path}',
+                                           headers=lab.auth(token),
+                                           timeout=REQ_TIMEOUT, **kw)
+            except Exception as e:
+                return ('EXC', type(e).__name__)
             code = None
             try:
                 code = r.json().get('code')
@@ -126,6 +135,7 @@ def main():
             return {
                 'status': obs.scalar('SELECT status FROM tasks WHERE id=%s', (tid,)),
                 'owner': obs.scalar('SELECT owner_id FROM tasks WHERE id=%s', (tid,)),
+                'assignee': obs.scalar('SELECT assignee_id FROM tasks WHERE id=%s', (tid,)),
                 'cycle': obs.scalar('SELECT cycle FROM tasks WHERE id=%s', (tid,)),
                 'paid': obs.scalar('SELECT paid FROM tasks WHERE id=%s', (tid,)),
             }
@@ -172,9 +182,16 @@ def main():
                          verified_initial=init,
                          actors='priya+aisha (both eligible, capacity 50)',
                          valid_outcomes=['one 200 + one 409 BAD_STATE'])
-                race(f'R1-claim-claim-{i}',
-                     lambda tid=tid: api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim'),
-                     lambda tid=tid: api(TOK['aisha'], 'post', f'/api/tasks/{tid}/claim'))
+                out_r1 = race(f'R1-claim-claim-{i}',
+                              lambda tid=tid: api(TOK['priya'], 'post', f'/api/tasks/{tid}/claim'),
+                              lambda tid=tid: api(TOK['aisha'], 'post', f'/api/tasks/{tid}/claim'))
+                # Gate F: expected response-code combination is ENFORCED.
+                r1_combo = ('A' in out_r1 and 'B' in out_r1
+                            and D.race_outcome_r1(out_r1['A'][:2],
+                                                  out_r1['B'][:2])
+                            ['legal_response_combination'])
+                invariant(f'R1-{i}-responses', r1_combo, outcome=out_r1,
+                          rule='exactly one 200 + one 409 BAD_STATE')
                 final = db_task(tid)
                 invariant(f'R1-{i}-final',
                           final['status'] == 'IN_PROGRESS'
@@ -302,6 +319,19 @@ def main():
                           taskB=stB,
                           rule='race end state equals a serially reachable '
                                'end state')
+                # Gate F: the response-code combination must match the
+                # committed end state it implies.
+                claim_resp = tuple(out.get('A', (None, None))[:2])
+                reduce_resp = tuple(out.get('B', (None, None))[:2])
+                r2_combo = (reduce_resp[0] == 200
+                            and ((claim_resp[0] == 200 and endA)
+                                 or (claim_resp == (409, 'CAPACITY_REACHED')
+                                     and endB)))
+                invariant(f'R2-race-{i}-response-combination', r2_combo,
+                          outcome=out,
+                          rule='reduce always 200; claim 200 implies orderA '
+                               'end state, claim 409 CAPACITY_REACHED '
+                               'implies orderB end state')
             clear_occupancy('u-jonas')
             set_cap('u-jonas', 2)
 
@@ -332,11 +362,20 @@ def main():
                                    'authorized',
                          valid_outcomes=['one 200 + one 409 BAD_STATE; '
                                          'exactly one payout'])
-                race(f'R3-approve-approve-{i}',
-                     lambda tid=tid: api(TOK['admin'], 'post',
-                                         f'/api/tasks/{tid}/approve'),
-                     lambda tid=tid: api(TOK['mgr'], 'post',
-                                         f'/api/tasks/{tid}/approve'))
+                out_r3 = race(f'R3-approve-approve-{i}',
+                              lambda tid=tid: api(TOK['admin'], 'post',
+                                                  f'/api/tasks/{tid}/approve'),
+                              lambda tid=tid: api(TOK['mgr'], 'post',
+                                                  f'/api/tasks/{tid}/approve'))
+                r3_resps = sorted([tuple(v[:2]) for v in out_r3.values()])
+                invariant(f'R3-{i}-responses',
+                          len(out_r3) == 2
+                          and [s for s, _ in r3_resps] == [200, 409]
+                          and all(c == 'BAD_STATE' for s, c in r3_resps
+                                  if s == 409),
+                          outcome=out_r3,
+                          rule='one 200 + one 409 BAD_STATE (double approve '
+                               'is refused, never double-committed)')
                 payout_rows = obs.scalar(
                     "SELECT count(*) FROM ledger WHERE task_id=%s "
                     "AND type='TASK_REWARD'", (tid,))
@@ -418,25 +457,31 @@ def main():
                              'allows SUBMITTED)',
                              'cancel 200 + submit 409 BAD_STATE (cancel '
                              'first)'])
-                race(f'R5-submit-vs-cancel-{i}',
-                     lambda tid=tid: api(TOK['priya'], 'post',
-                                         f'/api/tasks/{tid}/submit',
-                                         data={'note': 'work'}),
-                     lambda tid=tid: api(TOK['admin'], 'post',
-                                         f'/api/tasks/{tid}/cancel',
-                                         json={'reason': 'pulled'}))
+                out_r5 = race(f'R5-submit-vs-cancel-{i}',
+                              lambda tid=tid: api(TOK['priya'], 'post',
+                                                  f'/api/tasks/{tid}/submit',
+                                                  data={'note': 'work'}),
+                              lambda tid=tid: api(TOK['admin'], 'post',
+                                                  f'/api/tasks/{tid}/cancel',
+                                                  json={'reason': 'pulled'}))
                 final = db_task(tid)
                 subs = obs.scalar(
                     "SELECT COALESCE(string_agg(outcome, ','), '') "
                     "FROM submissions WHERE task_id=%s", (tid,))
                 ev.event('race_verify', name=f'R5-{i}', task=tid,
                          final=final, submission_states=subs)
-                invariant(f'R5-{i}-final',
-                          final['status'] in ('CANCELLED', 'SUBMITTED')
-                          and final['cycle'] is not None,
+                # Gate F: when the successful cancel is part of the
+                # completed sequence, the task MUST end CANCELLED; the
+                # submit response must be 200 (row exists) or 409
+                # BAD_STATE. Enforced, not advisory.
+                v5 = D.race_outcome_r5(
+                    out_r5.get('A', ('EXC', 'hung'))[:2],
+                    out_r5.get('B', ('EXC', 'hung'))[:2],
+                    final, subs)
+                invariant(f'R5-{i}-final', v5['legal'],
                           task=tid, final=final, submissions=subs,
-                          rule='legal serial end state (cancel allows '
-                               'SUBMITTED)')
+                          outcome=out_r5, problems=v5['problems'],
+                          rule=v5['rule'])
 
             # ── R7 resume vs reassign — precondition test ────────────────
             # serial controls establish which operations are even LEGAL from
@@ -452,6 +497,11 @@ def main():
                               json={'reason': 'redo'})[0] == 200,
                           'r7_ctrl_reject', task=tid)
             ctrl_resume = api(TOK['priya'], 'post', f'/api/tasks/{tid}/resume')
+            # complete serial order A: resume THEN reassign on the same task
+            ctrl_a_reassign = api(TOK['admin'], 'post',
+                                  f'/api/tasks/{tid}/reassign',
+                                  json={'assigneeId': 'u-aisha'})
+            finalA = db_task(tid)
             tid2 = mk_task('E7-R7-ctrl2')
             require_setup(api(TOK['priya'], 'post',
                               f'/api/tasks/{tid2}/claim')[0] == 200,
@@ -467,10 +517,26 @@ def main():
             ctrl_reassign = api(TOK['admin'], 'post',
                                 f'/api/tasks/{tid2}/reassign',
                                 json={'assigneeId': 'u-aisha'})
+            # complete serial order B: reassign THEN resume on the same task
+            ctrl_b_resume = api(TOK['priya'], 'post',
+                                f'/api/tasks/{tid2}/resume')
+            finalB = db_task(tid2)
             both_legal = ctrl_resume[0] == 200 and ctrl_reassign[0] == 200
+            # Legal serial end states, captured from the controls themselves
+            # (Gate F: the race's final state is asserted against THESE,
+            # not against assumed semantics).
+            legal_serial_finals = [
+                (finalA['status'], finalA['owner'], finalA['assignee']),
+                (finalB['status'], finalB['owner'], finalB['assignee'])]
             ev.event('R7_precondition_controls',
                      resume_from_rejected=ctrl_resume,
                      reassign_from_rejected=ctrl_reassign,
+                     serial_orderA={'resume': ctrl_resume,
+                                    'reassign': ctrl_a_reassign,
+                                    'final': finalA},
+                     serial_orderB={'reassign': ctrl_reassign,
+                                    'resume': ctrl_b_resume,
+                                    'final': finalB},
                      classification=('race candidate' if both_legal else
                                      'PRECONDITION TEST — operations are not '
                                      'both legal from REJECTED; no '
@@ -496,12 +562,12 @@ def main():
                          precondition_classification='precondition test'
                          if not both_legal else 'race',
                          valid_outcomes=['legal serial outcomes per controls'])
-                race(f'R7-resume-vs-reassign-{i}',
-                     lambda tid=tid: api(TOK['priya'], 'post',
-                                         f'/api/tasks/{tid}/resume'),
-                     lambda tid=tid: api(TOK['admin'], 'post',
-                                         f'/api/tasks/{tid}/reassign',
-                                         json={'assigneeId': 'u-aisha'}))
+                out_r7 = race(f'R7-resume-vs-reassign-{i}',
+                              lambda tid=tid: api(TOK['priya'], 'post',
+                                                  f'/api/tasks/{tid}/resume'),
+                              lambda tid=tid: api(TOK['admin'], 'post',
+                                                  f'/api/tasks/{tid}/reassign',
+                                                  json={'assigneeId': 'u-aisha'}))
                 final = db_task(tid)
                 cycles = obs.scalar(
                     "SELECT COALESCE(string_agg("
@@ -510,6 +576,15 @@ def main():
                     "FROM task_cycles WHERE task_id=%s", (tid,))
                 ev.event('race_verify', name=f'R7-{i}', task=tid,
                          final=final, cycle_rows=cycles)
+                # Gate F: ENFORCED final-state assertion — the committed
+                # state must equal one of the serially established end
+                # states captured from the controls.
+                v7 = D.race_outcome_r7(final, legal_serial_finals)
+                invariant(f'R7-{i}-final-state',
+                          v7['matches_serial_outcome'],
+                          task=tid, final=final, outcome=out_r7,
+                          legal_serial_finals=v7['legal_serial_finals'],
+                          rule=v7['rule'])
 
             # ── 15-command coverage map ──────────────────────────────────
             coverage = {
