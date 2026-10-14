@@ -24,6 +24,7 @@ unknown experiment names are rejected before anything starts. Every gate
 and experiment outcome is appended to <run-id>/run_all_log.json for audit.
 """
 import json
+import os
 import subprocess
 import sys
 import time
@@ -67,76 +68,192 @@ def run_step(script, rid=None, timeout=900):
                            text=True, cwd=str(lab.REPO))
         return {'returncode': r.returncode,
                 'seconds': round(time.time() - t0, 1),
+                't_epoch_start': round(t0, 3),
+                't_epoch_end': round(time.time(), 3),
+                'output': (r.stdout + r.stderr).strip(),
                 'tail': (r.stdout + r.stderr).strip()[-400:]}
     except subprocess.TimeoutExpired:
         return {'returncode': None, 'seconds': round(time.time() - t0, 1),
+                't_epoch_start': round(t0, 3),
+                't_epoch_end': round(time.time(), 3),
+                'output': '',
                 'tail': f'TIMEOUT after {timeout}s — harness-bounded '
                         'termination, not a result'}
 
 
+def inspect_experiment(run_dir, name) -> dict:
+    """Post-experiment evidence inspection (targeted blocker 1): the
+    orchestrator NEVER trusts the exit code alone. The recorded evidence
+    itself decides whether the suite may continue."""
+    out = {'experiment': name, 'classification': None,
+           'invalid': False, 'missing_classification': True,
+           'harness_errors': [], 'cleanup_failed': False}
+    ev_file = Path(run_dir) / name / 'events.jsonl'
+    if not ev_file.is_file():
+        return out
+    for line in ev_file.read_text(encoding='utf-8').splitlines():
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if r.get('kind') == 'classification':
+            out['classification'] = {
+                k: r.get(k) for k in ('harness_validity',
+                                      'product_observation', 'causal_claim')}
+            out['missing_classification'] = False
+        if r.get('harness_error'):
+            out['harness_errors'].append(r.get('kind'))
+        if r.get('kind') == 'app_stop_verified' and r.get('ok') is False:
+            out['cleanup_failed'] = True
+    c = out['classification'] or {}
+    out['invalid'] = 'INVALID' in (c.get('harness_validity'),
+                                   c.get('product_observation'),
+                                   c.get('causal_claim'))
+    return out
+
+
+def execute(rid, only, run_step_fn=None, reuse_gates=False) -> dict:
+    """Orchestrate gates + experiments; returns a summary dict (main() maps
+    it to exit codes). Factored for regression testing with a fake
+    run_step_fn.
+
+    Halt rule (targeted blocker 1): after EVERY experiment the recorded
+    classification is inspected; the suite stops immediately on INVALID,
+    missing classification, recorded HARNESS_ERROR, or unsuccessful
+    cleanup — the remaining experiments are recorded as skipped and their
+    evidence (or absence) is preserved. Exit codes alone are never
+    trusted."""
+    run_step_fn = run_step_fn or run_step
+    run = lab.OUT_ROOT / rid
+    run.mkdir(parents=True, exist_ok=True)
+    audit = run / 'run_all_log.json'
+    harness_sha = lab.harness_hash()
+    os.environ['RA11_ORCHESTRATED'] = f'run_all:{rid}'
+
+    summary = {'rid': rid, 'harness_sha256': harness_sha,
+               'gates': {}, 'results': {}, 'inspections': {},
+               'halted': None, 'skipped': [], 'gate_failure': None,
+               'coll_rc': None}
+
+    def record(step, result):
+        entry = {'step': step, 'harness_sha256': harness_sha,
+                 **{k: v for k, v in result.items() if k != 'output'}}
+        with open(audit, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry) + '\n')
+        return entry
+
+    def gates_already_passed():
+        if not audit.is_file():
+            return False
+        seen = {}
+        for line in audit.read_text(encoding='utf-8').splitlines():
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if e.get('step') in GATES:
+                seen[e['step']] = e
+        return all(seen.get(g, {}).get('returncode') == 0
+                   and seen[g].get('harness_sha256') == harness_sha
+                   for g in GATES)
+
+    if reuse_gates and gates_already_passed():
+        record('gates', {'returncode': 0, 'seconds': 0,
+                         't_epoch_start': round(time.time(), 3),
+                         't_epoch_end': round(time.time(), 3),
+                         'tail': f'reused recorded gate pass for harness '
+                                 f'{harness_sha[:12]} (see earlier entries)',
+                         'reused': True})
+    else:
+        for gate_script in GATES:
+            gate = run_step_fn(gate_script, rid, timeout=600)
+            entry = record(gate_script, gate)
+            print(f'[{gate_script}] rc={gate["returncode"]} '
+                  f'{gate["seconds"]}s')
+            # full gate output preserved for the evidence archive
+            (run / 'gate_outputs').mkdir(exist_ok=True)
+            (run / 'gate_outputs' / f'{gate_script}.log').write_text(
+                gate.get('output') or gate['tail'], encoding='utf-8')
+            summary['gates'][gate_script] = entry
+            if halt_after_failure(gate['returncode']):
+                print(gate['tail'])
+                summary['gate_failure'] = gate_script
+                return summary
+
+    # ── experiments with post-hoc evidence inspection ────────────────────
+    for i, name in enumerate(only):
+        r = run_step_fn(EXPERIMENTS[name], rid)
+        insp = inspect_experiment(run, name)
+        entry = record(name, r)
+        summary['results'][name] = entry
+        summary['inspections'][name] = insp
+        print(f'[{name}] rc={r["returncode"]} {r["seconds"]}s '
+              f'inspection={insp["classification"]}')
+        bad = (halt_after_failure(r['returncode'])
+               or insp['invalid'] or insp['missing_classification']
+               or insp['harness_errors'] or insp['cleanup_failed'])
+        if bad:
+            print('   ', r['tail'])
+            summary['halted'] = name
+            summary['skipped'] = only[i + 1:]
+            record('halt', {'returncode': 1,
+                            't_epoch_start': round(time.time(), 3),
+                            't_epoch_end': round(time.time(), 3),
+                            'seconds': 0,
+                            'tail': f'halted after {name}', 'failed': name,
+                            'skipped': summary['skipped'],
+                            'inspection': insp})
+            print(f'HALT: {name} invalidated the run (rc='
+                  f'{r["returncode"]}, invalid={insp["invalid"]}, '
+                  f'missing_classification={insp["missing_classification"]}, '
+                  f'harness_errors={insp["harness_errors"]}, '
+                  f'cleanup_failed={insp["cleanup_failed"]}) — no further '
+                  f'experiments are started; skipped: {summary["skipped"]}')
+            break
+
+    # ── results collection: missing/invalid classifications fail the suite
+    coll = run_step_fn('_results.py', rid, timeout=120)
+    record('_results.py', coll)
+    summary['coll_rc'] = coll['returncode']
+    print(f"[results] rc={coll['returncode']} {coll['seconds']}s")
+    print(coll['tail'])
+    return summary
+
+
 def main():
     if len(sys.argv) < 2:
-        sys.exit('usage: python run_all.py <run-id> [experiments...]')
+        sys.exit('usage: python run_all.py <run-id> [--reuse-gate-pass] '
+                 '[experiments...]')
     rid = lab.validate_run_id(sys.argv[1])  # rejects traversal/sibling ids
-    only = sys.argv[2:] or list(EXPERIMENTS)
+    args = [a for a in sys.argv[2:] if a != '--reuse-gate-pass']
+    reuse = '--reuse-gate-pass' in sys.argv[2:]
+    only = args or list(EXPERIMENTS)
     unknown = [n for n in only if n not in EXPERIMENTS]
     if unknown:
         sys.exit(f'unknown experiment(s): {unknown}; '
                  f'known: {sorted(EXPERIMENTS)}')
 
     full_suite = set(only) == set(EXPERIMENTS)
-    audit = lab.OUT_ROOT / rid / 'run_all_log.json'
-    audit.parent.mkdir(parents=True, exist_ok=True)
-
-    def record(step, result):
-        with open(audit, 'a', encoding='utf-8') as f:
-            f.write(json.dumps({'step': step, **result}) + '\n')
-
-    # ── mandatory gates, before ANY experiment ───────────────────────────
-    for gate_script in GATES:
-        gate = run_step(gate_script, rid, timeout=600)
-        record(gate_script, gate)
-        print(f'[{gate_script}] rc={gate["returncode"]} {gate["seconds"]}s')
-        if halt_after_failure(gate['returncode']):
-            print(gate['tail'])
-            sys.exit(f'GATE FAILURE: {gate_script} failed — no experiment '
-                     'was started')
-
-    # ── experiments ──────────────────────────────────────────────────────
-    results = {}
-    halted = None
-    for name in only:
-        r = run_step(EXPERIMENTS[name], rid)
-        results[name] = r
-        record(name, r)
-        print(f'[{name}] rc={r["returncode"]} {r["seconds"]}s')
-        if halt_after_failure(r['returncode']):
-            print('   ', r['tail'])
-            halted = name
-            print(f'HALT: {name} failed (rc={r["returncode"]}) — the run is '
-                  'INVALID; no further experiments are started and the '
-                  'remainder is reported MISSING')
-            break
-
-    # ── results collection: missing/invalid classifications fail the suite
-    coll = run_step('_results.py', rid, timeout=120)
-    record('_results.py', coll)
-    print(f"[results] rc={coll['returncode']} {coll['seconds']}s")
-    print(coll['tail'])
+    summary = execute(rid, only, reuse_gates=reuse)
 
     print('\nSummary:')
-    for k, v in results.items():
+    for k, v in summary['results'].items():
         print(f'  {k}: rc={v["returncode"]} ({v["seconds"]}s)')
-    bad = any(v['returncode'] for v in results.values())
+    if summary['gate_failure']:
+        sys.exit(f"GATE FAILURE: {summary['gate_failure']} failed — no "
+                 'experiment was started')
+    if summary['halted']:
+        print(f"Suite halted after {summary['halted']}; skipped: "
+              f"{summary['skipped']}")
     if not full_suite:
         print(f'NOTE: partial suite ({sorted(only)}); results collection '
               'compared against the full expected inventory and reports the '
               'remainder MISSING.')
-    if halted:
-        print(f'Suite halted after {halted}; not all experiments ran.')
-    if bad or coll['returncode'] != 0:
-        sys.exit('SUITE FAILED: experiment error or missing/invalid '
-                 'classification — see above')
+    bad = any(v['returncode'] for v in summary['results'].values())
+    if summary['halted'] or bad or summary['coll_rc'] != 0:
+        sys.exit('SUITE FAILED: experiment error, INVALID/missing '
+                 'classification, harness error, or cleanup failure — see '
+                 'above and run_all_log.json')
     print('SUITE PASS')
 
 

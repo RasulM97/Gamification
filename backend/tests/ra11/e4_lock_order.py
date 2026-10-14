@@ -1,58 +1,52 @@
-"""E4 v3 — cross-domain lock ordering (corrected after independent review).
+"""E4 v4 — cross-domain lock ordering (source-faithful claim model).
 
-Method corrections vs v2 (Gate C):
-  - Thread termination is RECORDED after every join: a thread still alive
-    after the join timeout is marked 'timeout' (an unobserved lock wait,
-    not a measured commit) and the edge counts as INCOMPLETE — it never
-    silently feeds a zero-deadlock conclusion, and an unfinished
-    participant never counts as proof of any ordering property.
-  - claim_seq is corrected to the REAL claim_task lock order (org X
-    advisory -> task row FOR UPDATE -> user NKU); the capability check is a
-    lock-free SELECT and the mid-path org SHARED re-acquisition is a
-    redundant no-op under the held X — both omissions are labeled as the
-    reductions of a reduced model. The earlier "never takes the task row
-    lock" claim was wrong (get_task uses FOR UPDATE by default).
-  - The classification is DERIVED from recorded events (deadlocks,
-    incomplete edges), never fixed conclusion text: a demonstrated complete
-    conflicting wait graph is DEFECT_OBSERVED; incomplete edges force
-    INCONCLUSIVE.
-  - Deadlock detection requires the driver SQLSTATE 40P01; message text is
-    recorded but NEVER confirms (targeted blocker 3).
-  - An edge is COMPLETE only with both sides at their first-lock boundary,
-    EXTERNALLY VERIFIED acquisition (the observer snapshot content must show
-    >=2 distinct app backends holding granted locks at the latch point), and
-    both threads terminated — and termination alone is not a transaction:
-    every outcome must be an actual commit or a 40P01 deadlock, otherwise
-    the edge is UNEXPLAINED and forces INCONCLUSIVE. The classification is
-    computed by _decisions.decide_e4 from this per-edge evidence.
-  - Boundary enforcement: if either side fails to reach its first-lock
-    boundary (ready flag false) the edge is INCOMPLETE, not a forced
-    interleave.
+Method corrections vs v3 (final targeted blocker 3):
+  - claim_seq now models the REAL claim_task lock order INCLUDING the
+    capability SHARED advisory lock. Verified against source at this
+    commit: task_services.claim_task is exclusive_guarded (org EXCLUSIVE
+    advisory, organization/service.py lock()) and decorated with
+    capabilities.requires('TASK_LITE') whose enabled() takes the
+    capability SHARED advisory lock for OPTIONAL capabilities
+    (capabilities/service.py:26) BEFORE the task row FOR UPDATE
+    (service_common.get_task) and the user FOR NO KEY UPDATE
+    (service_common.lock_capacity_user, key_share=True). The emitted-SQL
+    order is verified per run (claim_model_sql_order event); a mismatch
+    invalidates the harness run.
+  - Acquisition verification is PER-LOCK, not a backend count: the
+    observer snapshot must show every EXPECTED lock (exact advisory
+    identity classid:objid:objsubid + mode, or relation + mode) granted
+    to the holder's own backend PID. Unrelated granted locks never count
+    as proof; missing detail or unmatched expectations force INCONCLUSIVE
+    via _decisions.decide_e4.
+  - The second participant's granted/waiting mode is validated against
+    the edge's expectation: a waiter expected to block must appear in
+    pg_locks as ungranted on the expected lock identity with the holder's
+    PID in pg_blocking_pids; a waiter expected to pass must hold its
+    expected locks granted. A contradiction forces INCONCLUSIVE.
+  - Thread termination alone is still not a successful transaction
+    (carried): every outcome must be an actual commit or a driver
+    SQLSTATE 40P01 deadlock; anything else is UNEXPLAINED.
 
-Carried over from v2:
-  - BOTH participating transactions are paused BETWEEN their first and
-    second lock acquisitions, and the harness verifies EXTERNALLY (observer
-    pg_locks snapshots) that each side holds its first lock before either
-    is released into its second acquisition. Latches are released before
-    outcomes are measured.
-  - The capability-EXCLUSIVE participant (capabilities.update) is tested in
-    BOTH directions against the claim lock order.
-  - Fixtures are genuinely SCOPED: a real Team with TeamMembership and
-    team_id-bearing tasks; setup is asserted via the observer.
-  - user_lifecycle is exercised twice: position-only update AND
-    role-loss/deactivation attempt (USER_HAS_RESPONSIBILITIES path is a
-    valid observed outcome and is recorded as such).
+REDUCED MODEL (labeled reductions, verified against source):
+  - can_view/admit re-acquire the org advisory lock in SHARED mode, which
+    is a no-op under the EXCLUSIVE lock the same transaction already
+    holds — omitted from the model.
+  - The lifecycle holder is verified at relation level
+    (RowExclusiveLock on companies); its internal row locks are not
+    individually enumerated.
+
+Carried over from v3:
+  - Both participants are paused between their first-lock phase and their
+    second-lock phase; the harness EXTERNALLY VERIFIES holder acquisition
+    from observer pg_locks snapshots before releasing the latch.
+  - Deadlock detection requires driver SQLSTATE 40P01; message text is
+    recorded but NEVER confirms.
+  - Fixtures are genuinely SCOPED (real Team + TeamMembership +
+    team_id-bearing tasks), asserted via the observer.
+  - An unpauseable REAL decorated pair (claim_task vs capabilities.update)
+    runs as the app-level confirmation edge.
   - Two SHARED capability locks are compatible; no AB-BA cycle is claimed
-    without a demonstrated conflicting wait graph. The hypothesis is
-    classified narrowly, not "refuted".
-
-Lock sequences use the same underlying service calls in the real
-acquisition order (org.lock / cap.require / cap.lock / org.account /
-lock_capacity_user). Decomposition is required because the decorated
-compositions (claim_task, capabilities.update) cannot be paused mid-flight
-without modifying production code; this is labeled instrumentation.
-An unpauseable REAL decorated pair (claim_task vs capabilities.update)
-is run as the app-level confirmation edge.
+    without a demonstrated conflicting wait graph.
 """
 import sys
 import threading
@@ -66,6 +60,12 @@ import _decisions as D  # noqa: E402
 
 REPS = 6
 
+# The locks claim_task holds after its first phase, in source order
+# (task_services.claim_task @ this commit): org EXCLUSIVE advisory, then
+# the TASK_LITE capability SHARED advisory. Regression R19f pins this.
+CLAIM_FIRST_LOCKS = [('cve-organization:co-aster', 'ExclusiveLock'),
+                     ('cve-capability:co-aster:TASK_LITE', 'ShareLock')]
+
 
 def main():
     rid = lab.validate_run_id(sys.argv[1])
@@ -73,7 +73,7 @@ def main():
     ev, pg, url, engine, SessionLocal = _inproc.setup(base)
     obs = lab.Observer(url, ev)
     try:
-        from sqlalchemy import select
+        from sqlalchemy import select, text
         from app.models import Task, User, now_ms
         from app.organization.model import Team, TeamMembership
 
@@ -119,14 +119,50 @@ def main():
             return (getattr(orig, 'pgcode', None)
                     or getattr(orig, 'sqlstate', None))
 
-        def is_deadlock(v):
-            """v is an outcome dict; prefer driver SQLSTATE, fall back to
-            message text."""
-            if not isinstance(v, dict):
-                return False
-            if v.get('sqlstate') == '40P01':
-                return True
-            return 'deadlock' in str(v.get('detail', '')).lower()
+        # ── advisory identity helpers (exact pg_locks matching) ──────────
+        def advisory_ident(key):
+            """pg_locks identity of the bigint advisory key
+            hashtextextended(key, 0): classid = key >> 32,
+            objid = key & 0xFFFFFFFF, objsubid = 1 (PostgreSQL bigint
+            advisory lock representation)."""
+            h = int(obs.scalar('SELECT hashtextextended(%s, 0)', (key,)))
+            h &= 0xFFFFFFFFFFFFFFFF  # signed -> unsigned 64-bit
+            return f'{h >> 32}:{h & 0xFFFFFFFF}:1'
+
+        ORG_IDENT = advisory_ident('cve-organization:co-aster')
+        CAP_IDENT = advisory_ident('cve-capability:co-aster:TASK_LITE')
+
+        def advisory_lock(mode, ident):
+            return f'advisory:{mode}:{ident}'
+
+        def relation_lock(mode, rel):
+            return f'relation:{mode}:{rel}'
+
+        CLAIM_EXPECT = [advisory_lock(m, advisory_ident(k))
+                        for k, m in CLAIM_FIRST_LOCKS]
+
+        def row_canonical(r):
+            """Canonical identity+mode string for a raw snapshot row."""
+            if r.get('locktype') == 'advisory':
+                return (f"advisory:{r.get('mode')}:{r.get('classid')}:"
+                        f"{r.get('objid')}:{r.get('objsubid')}")
+            if r.get('locktype') == 'relation' and r.get('rel'):
+                return f"relation:{r.get('mode')}:{r.get('rel')}"
+            return None
+
+        def locks_of(rows, pid, granted):
+            """Canonical locks held/waited by backend pid in rows."""
+            out = set()
+            for r in rows:
+                if r.get('pid') != str(pid) or r.get('granted') != granted:
+                    continue
+                if (r.get('application_name') != 'ra11-app'
+                        or r.get('datname') != obs.db_name):
+                    continue
+                c = row_canonical(r)
+                if c:
+                    out.add(c)
+            return out
 
         # ── static map: actual lock modes per path (emitted SQL evidence) ─
         map_lines = []
@@ -181,33 +217,149 @@ def main():
                                     'TASK_REWARD', 0, {}))
         ev.artifact('lock_mode_map.txt', '\n'.join(map_lines))
 
-        # ── dynamic edges: both sides paused between lock 1 and lock 2 ────
-        def edge_run(name, t1_first, t1_second, t2_first, t2_second):
-            """Two transactions; each acquires its first lock, the harness
-            EXTERNALLY VERIFIES both hold their locks (observer snapshot
-            content is ASSERTED, not just recorded), then releases both
-            into their second acquisition simultaneously (labeled latches).
-            Returns an edge evidence dict for _decisions.decide_e4: an edge
-            is COMPLETE only if both sides reached their first-lock
-            boundary, the observer verified >=2 distinct app backends
-            holding granted locks at the latch point, AND both threads
-            terminated within the join timeout. Thread termination alone
-            is never a successful transaction; actual commit outcomes and
-            driver SQLSTATEs are part of the evidence."""
+        # ── lock sequences (decomposed real call order) ──────────────────
+        def claim_seq(task_id):
+            """Decomposition of the REAL claim_task lock order, verified
+            against task_services.claim_task at this commit:
+              1. org EXCLUSIVE advisory      (exclusive_guarded ->
+                                             organization.lock)
+              2. capability SHARED advisory  (requires('TASK_LITE') ->
+                                             enabled() -> capabilities.lock;
+                                             TASK_LITE is OPTIONAL, so the
+                                             SHARED lock IS taken)
+              3. task row FOR UPDATE         (get_task(lock=True))
+              4. user FOR NO KEY UPDATE      (require_capacity ->
+                                             lock_capacity_user key_share)
+            REDUCED MODEL: can_view/admit re-acquire the org advisory lock
+            in SHARED mode — a no-op under the held EXCLUSIVE lock — and
+            are omitted."""
+            def first(db):
+                org.lock(db, 'co-aster', exclusive=True)
+                cap.lock(db, 'co-aster', 'TASK_LITE')
+            def second(db):
+                sc.get_task(db, 'co-aster', task_id)  # task row FOR UPDATE
+                sc.lock_capacity_user(db, 'co-aster', 'u-priya')
+            return {'first': first, 'second': second,
+                    'expect': list(CLAIM_EXPECT)}
+
+        def cap_update_seq():
+            """capabilities.update lock order: cap X, then admin FOR SHARE."""
+            def first(db):
+                cap.lock(db, 'co-aster', 'TASK_LITE', exclusive=True)
+            def second(db):
+                cap.admin(db, db.get(User, 'u-dana'))
+            return {'first': first, 'second': second,
+                    'expect': [advisory_lock('ExclusiveLock', CAP_IDENT)]}
+
+        def preflight_seq():
+            """stage_files -> command order: cap S first, then org X."""
+            def first(db):
+                cap.lock(db, 'co-aster', 'TASK_LITE')
+            def second(db):
+                org.lock(db, 'co-aster', exclusive=True)
+            return {'first': first, 'second': second,
+                    'expect': [advisory_lock('ShareLock', CAP_IDENT)]}
+
+        def lifecycle_seq(user_id, **edit):
+            """user_lifecycle order: Company FOR UPDATE, then user NKU.
+            REDUCED MODEL: verified at relation level only
+            (RowExclusiveLock on companies)."""
+            from app.models import Company
+            def first(db):
+                db.scalar(select(Company)
+                          .where(Company.id == 'co-aster')
+                          .with_for_update())
+            def second(db):
+                sc.lock_capacity_user(db, 'co-aster', user_id)
+            return {'first': first, 'second': second,
+                    'expect': [relation_lock('RowExclusiveLock',
+                                             'companies')]}
+
+        # ── emitted-SQL claim order verification ─────────────────────────
+        task_counter = {'i': 0}
+
+        def next_task():
+            i = task_counter['i']
+            task_counter['i'] += 1
+            return f't-e4-{i:03d}'
+
+        def claim_order_ok():
+            """Capture the emitted SQL of one claim_seq run and verify the
+            lock order org X advisory -> cap S advisory -> task FOR UPDATE
+            -> user FOR NO KEY UPDATE (task-row lock order verification)."""
+            db = SessionLocal()
+            before = len(captured)
+            try:
+                seq = claim_seq(next_task())
+                seq['first'](db)
+                seq['second'](db)
+                db.rollback()
+            finally:
+                db.close()
+            stmts = captured[before:]
+
+            def idx(pred):
+                return next((i for i, s in enumerate(stmts) if pred(s)), -1)
+            i_org = idx(lambda s: 'pg_advisory_xact_lock(' in s
+                        and 'cve-organization' in s)
+            i_cap = idx(lambda s: 'pg_advisory_xact_lock_shared' in s
+                        and 'cve-capability' in s)
+            i_task = idx(lambda s: 'FOR UPDATE' in s.upper()
+                         and 'NO KEY' not in s.upper()
+                         and 'tasks' in s)
+            i_user = idx(lambda s: 'FOR NO KEY UPDATE' in s.upper()
+                         and 'users' in s)
+            order = {'org_advisory_x': i_org, 'cap_advisory_s': i_cap,
+                     'task_for_update': i_task, 'user_for_no_key': i_user}
+            ok = -1 < i_org < i_cap < i_task < i_user
+            ev.event('claim_model_sql_order', ok=ok, positions=order,
+                     statements=stmts)
+            return ok
+
+        if not claim_order_ok():
+            ev.classify('e4', harness_validity='INVALID',
+                        product_observation='INCONCLUSIVE',
+                        causal_claim='INCONCLUSIVE',
+                        rationale='claim model does not match the emitted '
+                                  'SQL lock order — see '
+                                  'claim_model_sql_order event')
+            raise SystemExit('E4 claim model mismatch')
+
+        # ── dynamic edges: sequenced holder -> verified -> waiter ────────
+        def edge_run(name, holder_seq, waiter_seq, wait_expect):
+            """Sequenced forced interleave (targeted blocker 3):
+
+            1. The HOLDER starts alone and acquires its first-phase locks.
+            2. The observer snapshot must show every EXPECTED holder lock
+               (exact advisory identity + mode, or relation + mode)
+               granted to the holder's own backend PID — unrelated granted
+               locks never count (acquisition_detail).
+            3. The WAITER then starts; ~a lock-settling window later a
+               second snapshot classifies the waiter as 'waiting'
+               (ungranted row on one of its expected locks with the
+               holder's PID in pg_blocking_pids), 'granted' (expected
+               locks held by its own PID), or 'unknown'.
+            4. The observed mode must match wait_expect (wait_check).
+            5. Only then is the go-latch released and outcomes measured;
+               thread termination alone is never a transaction — outcomes
+               carry actual commits or driver SQLSTATEs.
+            """
             state = {'t1_ready': threading.Event(),
                      't2_ready': threading.Event(),
                      'go': threading.Event()}
-            out = {}
+            out, pids = {}, {}
 
-            def side(tag, first, second):
+            def side(tag, seq):
                 db = SessionLocal()
                 try:
-                    first(db)
+                    seq['first'](db)
+                    pids[tag] = db.scalar(text('SELECT pg_backend_pid()'))
                     state[f'{tag}_ready'].set()
-                    ev.event('latch', edge=name, step=f'{tag}-first-lock-held')
+                    ev.event('latch', edge=name,
+                             step=f'{tag}-first-lock-held')
                     state['go'].wait(timeout=30)  # labeled latch
                     t0 = time.perf_counter()
-                    second(db)
+                    seq['second'](db)
                     db.commit()
                     out[tag] = {'result': 'committed',
                                 'ms': round((time.perf_counter() - t0)
@@ -223,37 +375,81 @@ def main():
                 finally:
                     db.close()
 
-            t1 = threading.Thread(target=side, args=('t1', t1_first, t1_second))
-            t2 = threading.Thread(target=side, args=('t2', t2_first, t2_second))
-            t1.start(); t2.start()
+            t1 = threading.Thread(target=side, args=('t1', holder_seq))
+            t1.start()
             ok1 = state['t1_ready'].wait(timeout=30)
-            ok2 = state['t2_ready'].wait(timeout=30)
-            time.sleep(0.3)  # let lock manager settle before the snapshot
-            rows = obs.snap_locks_full(f'{name}-both-hold-first-locks')
-            # Verified acquisition (targeted blocker 3): the snapshot CONTENT
-            # must show >=2 distinct application backends of THIS disposable
-            # database actually holding granted locks at the latch point.
-            holders = {r.get('pid') for r in rows
-                       if r.get('granted') == 'True'
-                       and r.get('application_name') == 'ra11-app'
-                       and r.get('datname') == obs.db_name}
-            acquisition_verified = len(holders) >= 2
-            ev.event('latch', edge=name, step='external-verify-then-release',
-                     t1_ready=ok1, t2_ready=ok2,
-                     verified_holder_pids=sorted(holders),
-                     acquisition_verified=acquisition_verified)
-            state['go'].set()  # latch released BEFORE outcomes are measured
-            t1.join(timeout=60); t2.join(timeout=60)
+            time.sleep(0.3)  # let the lock manager settle
+            rows1 = obs.snap_locks_full(f'{name}-holder-first-locks')
+            held1 = locks_of(rows1, pids.get('t1'), 'True') if ok1 else set()
+            expected1 = list(holder_seq['expect'])
+            matched1 = [c for c in expected1 if c in held1]
+            unmatched1 = [c for c in expected1 if c not in held1]
+            acquisition_detail = {
+                't1': {'pid': pids.get('t1'), 'expected': expected1,
+                       'matched': matched1, 'unmatched': unmatched1,
+                       'extra': sorted(held1 - set(expected1))}}
+            acquisition_verified = bool(ok1) and not unmatched1
+            ev.event('latch', edge=name, step='holder-acquisition-verify',
+                     t1_ready=ok1,
+                     acquisition_verified=acquisition_verified,
+                     acquisition_detail=acquisition_detail['t1'])
+
+            t2 = threading.Thread(target=side, args=('t2', waiter_seq))
+            t2.start()
+            ok2 = state['t2_ready'].wait(timeout=5)
+            time.sleep(0.3)
+            rows2 = obs.snap_locks_full(f'{name}-waiter-observation')
+            pid2 = pids.get('t2')
+            expected2 = list(waiter_seq['expect'])
+            observed, wait_detail = 'unknown', ''
+            if pid2 is not None:
+                waiting_on = []
+                for r in rows2:
+                    if (r.get('pid') != str(pid2)
+                            or r.get('granted') != 'False'):
+                        continue
+                    c = row_canonical(r)
+                    if c is None or c not in expected2:
+                        continue
+                    blockers, perr = lab.parse_pid_array(
+                        r.get('blocking_pids'))
+                    if perr is None and pids.get('t1') in (blockers or []):
+                        waiting_on.append(c)
+                if waiting_on:
+                    observed = 'waiting'
+                    wait_detail = (f'waiter blocked on {waiting_on} by '
+                                   f"holder pid {pids.get('t1')}")
+                else:
+                    held2 = locks_of(rows2, pid2, 'True')
+                    if ok2 and any(c in held2 for c in expected2):
+                        observed = 'granted'
+                        wait_detail = ('waiter holds expected locks: '
+                                       f'{sorted(set(expected2) & held2)}')
+                    else:
+                        wait_detail = ('no waiting row on expected locks '
+                                       'with the holder as blocker, and no '
+                                       'granted expected lock confirmed')
+            wait_check = {'expected': wait_expect, 'observed': observed,
+                          'detail': wait_detail}
+            ev.event('latch', edge=name, step='waiter-mode-check',
+                     t2_ready=ok2, wait_check=wait_check)
+
+            state['go'].set()  # latch released BEFORE outcomes measured
+            t1.join(timeout=60)
+            t2.join(timeout=60)
             alive = {'t1': t1.is_alive(), 't2': t2.is_alive()}
             edge = {'name': name, 'kind': 'forced',
-                    'both_at_boundary': bool(ok1 and ok2),
+                    'both_at_boundary': bool(ok1 and observed != 'unknown'),
                     'acquisition_verified': acquisition_verified,
+                    'acquisition_detail': acquisition_detail,
+                    'wait_check': wait_check,
                     'threads_finished': not any(alive.values()),
                     'outcomes': out}
             ev.event('edge_result', edge=name, outcome=out,
                      threads_alive_after_join=alive,
                      both_at_boundary=edge['both_at_boundary'],
                      acquisition_verified=acquisition_verified,
+                     wait_check=wait_check,
                      termination=('clean' if not any(alive.values())
                                   else 'TIMEOUT — thread(s) still alive; '
                                        'unobserved lock wait, not a '
@@ -263,94 +459,31 @@ def main():
                          for v in out.values() if isinstance(v, dict)))
             return edge
 
-        def claim_seq(task_id):
-            """Decomposition of the REAL claim_task lock order, verified
-            against task_services.claim_task at this commit:
-              1. org EXCLUSIVE advisory     (exclusive_guarded)
-              2. capability enabled SELECT  (@requires — a LOCK-FREE plain
-                                             SELECT; takes no advisory lock,
-                                             omitted)
-              3. task row FOR UPDATE        (get_task(lock=True) — the real
-                                             claim DOES take the task row
-                                             lock, BEFORE admission/capacity)
-              4. org SHARED advisory        (can_view/admit — a redundant
-                                             no-op under the X lock this
-                                             transaction already holds,
-                                             omitted)
-              5. user FOR NO KEY UPDATE     (require_capacity ->
-                                             lock_capacity_user)
-            REDUCED MODEL: the omissions in steps 2 and 4 are the only
-            reductions; everything else is the real call sequence. Earlier
-            harness versions incorrectly documented that claim never takes
-            the task row lock — corrected here, and the task_id argument is
-            now actually used."""
-            def first(db):
-                org.lock(db, 'co-aster', exclusive=True)
-            def second(db):
-                sc.get_task(db, 'co-aster', task_id)  # task row FOR UPDATE
-                sc.lock_capacity_user(db, 'co-aster', 'u-priya')
-            return first, second
-
-        def cap_update_seq():
-            """capabilities.update lock order: cap X, then admin FOR SHARE."""
-            def first(db):
-                cap.lock(db, 'co-aster', 'TASK_LITE', exclusive=True)
-            def second(db):
-                cap.admin(db, db.get(User, 'u-dana'))
-            return first, second
-
-        def preflight_seq():
-            """stage_files -> command order: cap S first, then org X."""
-            def first(db):
-                cap.lock(db, 'co-aster', 'TASK_LITE')
-            def second(db):
-                org.lock(db, 'co-aster', exclusive=True)
-            return first, second
-
-        def lifecycle_seq(user_id, **edit):
-            """user_lifecycle order: Company FOR UPDATE, then user NKU."""
-            from app.models import Company
-            def first(db):
-                db.scalar(select(Company)
-                          .where(Company.id == 'co-aster')
-                          .with_for_update())
-            def second(db):
-                sc.lock_capacity_user(db, 'co-aster', user_id)
-            return first, second
-
-        task_counter = {'i': 0}
-
-        def next_task():
-            i = task_counter['i']
-            task_counter['i'] += 1
-            return f't-e4-{i:03d}'
-
         edges = []
 
-        # Edge A direction 1: claim order (org X | cap S...) vs update (cap X | admin S)
+        # Edge A direction 1: claim holds (org X + cap S); update waits cap X
         for i in range(REPS):
-            f1, s1 = claim_seq(next_task())
-            f2, s2 = cap_update_seq()
-            edges.append(edge_run(f'A1-claimXorder-vs-capX-r{i}',
-                                  f1, s1, f2, s2))
-        # Edge A direction 2 (reverse): update first, claim second
+            edges.append(edge_run(f'A1-claimholds-vs-capXwaits-r{i}',
+                                  claim_seq(next_task()), cap_update_seq(),
+                                  'waiting'))
+        # Edge A direction 2 (reverse): update holds cap X; claim waits cap S
         for i in range(REPS):
-            f2, s2 = cap_update_seq()
-            f1, s1 = claim_seq(next_task())
-            edges.append(edge_run(f'A2-capX-vs-claimXorder-r{i}',
-                                  f2, s2, f1, s1))
-        # Edge B: preflight (cap S | org X) vs claim (org X | cap S) — both cap S
+            edges.append(edge_run(f'A2-capXholds-vs-claimwaits-r{i}',
+                                  cap_update_seq(), claim_seq(next_task()),
+                                  'waiting'))
+        # Edge B: claim holds (org X + cap S); preflight cap S is compatible
         for i in range(REPS):
-            f1, s1 = preflight_seq()
-            f2, s2 = claim_seq(next_task())
-            edges.append(edge_run(f'B-preflight-vs-claim-r{i}',
-                                  f1, s1, f2, s2))
-        # Edge C1: lifecycle position-only (Company U | user NKU) vs claim
+            edges.append(edge_run(f'B-preflightS-vs-claim-r{i}',
+                                  claim_seq(next_task()), preflight_seq(),
+                                  'granted'))
+        # Edge C1: lifecycle holds companies RowExclusiveLock; claim advisory
+        # locks do not conflict with a relation lock
         for i in range(REPS):
-            f1, s1 = lifecycle_seq('u-priya', position='Analyst')
-            f2, s2 = claim_seq(next_task())
-            edges.append(edge_run(f'C1-lifecycle-pos-vs-claim-r{i}',
-                                  f1, s1, f2, s2))
+            edges.append(edge_run(f'C1-lifecycle-vs-claim-r{i}',
+                                  lifecycle_seq('u-priya',
+                                                position='Analyst'),
+                                  claim_seq(next_task()),
+                                  'granted'))
 
         # Real decorated pair (unpauseable, app-level confirmation)
         from app.capabilities import service as caps
@@ -409,19 +542,20 @@ def main():
                                   else 'TIMEOUT — thread(s) still alive'),
                      deadlock_sqlstate=dl)
 
-        # Targeted blocker 3: the classification is DERIVED by the pure
-        # decider from per-edge evidence — verified acquisition, actual
-        # commit outcomes, thread completion and driver SQLSTATE 40P01.
-        # Thread termination alone never counts as a successful transaction,
-        # and message-text 'deadlock' without 40P01 never confirms.
+        # The classification is DERIVED by the pure decider from per-edge
+        # evidence: per-lock verified acquisition, expected granted/waiting
+        # modes, actual commit outcomes, thread completion and driver
+        # SQLSTATE 40P01. Thread termination alone never counts as a
+        # successful transaction; message text never confirms a deadlock.
         result = D.decide_e4(edges)
         ev.classify(
             'e4',
             harness_validity=result['harness_validity'],
             product_observation=result['product_observation'],
             causal_claim=result['causal_claim'],
-            rationale=(f'{len(edges)} forced-interleave runs across edges '
-                       'A1/A2/B/C1 plus 3 real decorated pairs. '
+            rationale=(f'{len(edges)} edges across A1/A2/B/C1 plus 3 real '
+                       'decorated pairs, with sequenced holder/waiter '
+                       'verification. '
                        + ' '.join(result['reasons']) + ' '
                        + (f"Driver-verified deadlock edges: "
                           f"{result['complete_deadlock_edges']}. "
@@ -429,11 +563,13 @@ def main():
                           'No complete conflicting wait graph was '
                           'demonstrated for any tested edge. ')
                        + 'claim_seq follows the REAL claim lock order '
-                       '(org X advisory -> task row FOR UPDATE -> user NKU; '
-                       'the capability check is a lock-free SELECT and the '
-                       'mid-path org SHARED re-acquisition is a redundant '
-                       'no-op under the held X — a reduced model, labeled '
-                       'as such). '
+                       '(org X advisory -> TASK_LITE capability SHARED '
+                       'advisory -> task row FOR UPDATE -> user FOR NO KEY '
+                       'UPDATE; emitted-SQL order verified per run). '
+                       'REDUCED MODEL: the can_view/admit org SHARED '
+                       're-acquisition is a no-op under the held EXCLUSIVE '
+                       'lock and is omitted; the lifecycle holder is '
+                       'verified at relation level only. '
                        'This is a NARROW observation scoped to the tested '
                        'edges — the AB-BA hypothesis remains unproven for '
                        'untested edges (e.g. economic issue vs task '
@@ -448,7 +584,7 @@ def main():
         obs.close()
         pg.stop()
     ev.finish()
-    print('E4 v3 evidence at', base)
+    print('E4 v4 evidence at', base)
 
 
 if __name__ == '__main__':

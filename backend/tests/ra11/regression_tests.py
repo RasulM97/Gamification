@@ -530,6 +530,14 @@ def decided_e4(edges):
 
 edge_base = {'name': 'A1-r0', 'kind': 'forced', 'both_at_boundary': True,
              'acquisition_verified': True, 'threads_finished': True,
+             'acquisition_detail': {
+                 't1': {'expected': ['advisory:ShareLock:1:2:1'],
+                        'matched': ['advisory:ShareLock:1:2:1'],
+                        'unmatched': []},
+                 't2': {'expected': ['advisory:ExclusiveLock:3:4:1'],
+                        'matched': ['advisory:ExclusiveLock:3:4:1'],
+                        'unmatched': []}},
+             'wait_check': {'expected': None, 'observed': None},
              'outcomes': {'t1': {'result': 'committed', 'sqlstate': None},
                           't2': {'result': 'committed', 'sqlstate': None}}}
 
@@ -790,6 +798,269 @@ check('R16h NEW: staged file surviving a pre-commit rollback is a DERIVED '
       'defect, not assumed', new.get('product_observation') == 'DEFECT_OBSERVED'
       and any('case A' in r for r in new.get('reasons', [])),
       str(new.get('reasons', new)))
+
+# ══ R17 — Targeted blocker 2: PostgreSQL PID-array parsing ═══════════════════
+
+def legacy_parse_pids(raw):
+    """lab.assess_lock_causality @cb153ca (cb15331): blocking_pids parsed by
+    a bare str.split(',') — a PostgreSQL int[] rendered as '[42444]' yields
+    ['[42444]'], which NEVER matches a real PID, so a genuine blocker chain
+    in the same snapshot was silently missed (false negative)."""
+    return [b for b in (raw or '').split(',') if b]
+
+
+check('R17a OLD false negative: "[42444]" parses to a non-PID token',
+      legacy_parse_pids('[42444]') == ['[42444]'],
+      '(demonstrates the reviewed defect)')
+_pp = getattr(lab, 'parse_pid_array', None)
+check('R17b NEW: parse_pid_array exists', callable(_pp))
+if callable(_pp):
+    check('R17c NEW: bracket/brace/native/empty forms all parse',
+          _pp('[42444]') == (['42444'], None)
+          and _pp('{42444, 101}') == (['42444', '101'], None)
+          and _pp([42444]) == (['42444'], None)
+          and _pp('42444') == (['42444'], None)
+          and _pp('') == ([], None) and _pp(None) == ([], None)
+          and _pp('[]') == ([], None))
+    check('R17d NEW: malformed input fails closed with an error',
+          _pp('[abc]')[0] == [] and _pp('[abc]')[1] is not None
+          and _pp('[1,,2]')[1] is not None)
+    # end-to-end: a chain with bracket-string blocking_pids is now found
+    w = dict(WAITER, blocking_pids='[102]')
+    write_events(td / 'brackets', [{'kind': 'pg_locks_full', 't_ms': 1500.0,
+                                    'label': 's1',
+                                    'rows': [w, dict(HOLDER)]}])
+    new = lab.assess_lock_causality(td / 'brackets', (1000.0, 2000.0),
+                                    stalled=True, db_name='ra11_t_db',
+                                    control_ok=True,
+                                    healthy_precondition=True)
+    check('R17e NEW: bracket-string blocking_pids no longer hides a real '
+          'chain', new['causal_mechanism_confirmed'] is True,
+          str(new['reasons']))
+    # malformed blocking_pids can never manufacture a chain
+    wbad = dict(WAITER, blocking_pids='[not-a-pid]')
+    write_events(td / 'badpids', [{'kind': 'pg_locks_full', 't_ms': 1500.0,
+                                   'label': 's1',
+                                   'rows': [wbad, dict(HOLDER)]}])
+    new = lab.assess_lock_causality(td / 'badpids', (1000.0, 2000.0),
+                                    stalled=True, db_name='ra11_t_db',
+                                    control_ok=True,
+                                    healthy_precondition=True)
+    check('R17f NEW: malformed blocking_pids -> no chain, parse error '
+          'recorded', new['lock_chain_observed'] is False
+          and any('blocking_pids' in r for r in new['reasons']),
+          str(new['reasons']))
+else:
+    for n in ('R17c NEW: PID array forms parse',
+              'R17d NEW: malformed input fails closed',
+              'R17e NEW: bracket-string blocking_pids chain',
+              'R17f NEW: malformed blocking_pids fail closed'):
+        check(n, False, 'lab.parse_pid_array missing')
+
+# ══ R18 — Targeted blocker 1: INVALID halts the orchestrated suite ═══════════
+
+def legacy_gate_invalid(classification_invalid, returncode):
+    """run_all.py @cb15331: the orchestrator only looked at the process
+    return code — an experiment recording an INVALID classification but
+    exiting 0 was treated as success and the next experiment started."""
+    if returncode != 0:
+        return 'halt'
+    return 'continue'
+
+
+check('R18a OLD defect: orchestrator trusted exit codes only (no '
+      'classification inspection)',
+      legacy_gate_invalid(True, 0) == 'continue',
+      '(demonstrates the reviewed defect: INVALID e7 with exit 0 was '
+      'followed by e7r6)')
+
+_insp = getattr(run_all, 'inspect_experiment', None)
+_exec = getattr(run_all, 'execute', None)
+if callable(_insp) and callable(_exec):
+    rid_halt = 'reg-halt-' + time.strftime('%H%M%S')
+    run_halt = lab.OUT_ROOT / rid_halt
+    try:
+        # e7 exits ZERO but records an INVALID classification
+        write_events(run_halt / 'e7', [
+            {'kind': 'classification', 't_ms': 1.0, 'experiment': 'e7',
+             'harness_validity': 'INVALID', 'product_observation': 'INVALID',
+             'causal_claim': 'INVALID', 'rationale': 'synthetic invalid'}])
+        insp = _insp(run_halt, 'e7')
+        check('R18b NEW: inspection sees INVALID despite exit code 0',
+              insp['invalid'] is True
+              and insp['missing_classification'] is False, str(insp))
+
+        def fake_step(script, rid, timeout=900):
+            name = Path(script).stem
+            return {'returncode': 0, 'seconds': 0.1, 'tail': 'fake'}
+
+        ran = []
+        summary = None
+
+        def fake_step_tracking(script, rid, timeout=900):
+            ran.append(Path(script).name)
+            if Path(script).name == '_results.py':
+                return {'returncode': 1, 'seconds': 0.1,
+                        'tail': 'missing/invalid present'}
+            return {'returncode': 0, 'seconds': 0.1, 'tail': 'fake'}
+
+        summary = _exec(rid_halt, ['e7', 'e7r6'],
+                        run_step_fn=fake_step_tracking)
+        check('R18c NEW: INVALID e7 (exit 0) halts the orchestrated suite — '
+              'e7r6 never starts', summary is not None
+              and summary.get('halted') == 'e7'
+              and 'e7r6' in summary.get('skipped', [])
+              and 'e7_r6.py' not in ran, str(summary))
+
+        # missing classification halts too
+        rid_miss = 'reg-miss-' + time.strftime('%H%M%S')
+        run_miss = lab.OUT_ROOT / rid_miss
+        (run_miss / 'e7').mkdir(parents=True)
+        (run_miss / 'e7' / 'events.jsonl').write_text('', encoding='utf-8')
+        summary2 = _exec(rid_miss, ['e7', 'e7r6'],
+                         run_step_fn=fake_step_tracking)
+        check('R18d NEW: missing classification halts the suite',
+              summary2.get('halted') == 'e7'
+              and 'e7r6' in summary2.get('skipped', []), str(summary2))
+
+        # unsuccessful cleanup recorded in evidence halts the suite
+        rid_cl = 'reg-cl-' + time.strftime('%H%M%S')
+        run_cl = lab.OUT_ROOT / rid_cl
+        write_events(run_cl / 'e7', [
+            {'kind': 'app_stop_verified', 't_ms': 1.0, 'pid': 1,
+             'tree_dead': False, 'listener_closed': False, 'ok': False},
+            {'kind': 'classification', 't_ms': 2.0, 'experiment': 'e7',
+             'harness_validity': 'VALID',
+             'product_observation': 'NO_DEFECT_OBSERVED',
+             'causal_claim': 'SUPPORTED', 'rationale': 'synthetic'}])
+        summary3 = _exec(rid_cl, ['e7', 'e7r6'],
+                         run_step_fn=fake_step_tracking)
+        check('R18e NEW: unsuccessful cleanup in evidence halts the suite',
+              summary3.get('halted') == 'e7'
+              and 'e7r6' in summary3.get('skipped', []), str(summary3))
+
+        # positive control: a clean VALID experiment does not halt
+        rid_ok = 'reg-ok-' + time.strftime('%H%M%S')
+        run_ok = lab.OUT_ROOT / rid_ok
+        for name in ('e7', 'e7r6'):
+            write_events(run_ok / name, [
+                {'kind': 'classification', 't_ms': 1.0, 'experiment': name,
+                 'harness_validity': 'VALID',
+                 'product_observation': 'NO_DEFECT_OBSERVED',
+                 'causal_claim': 'SUPPORTED', 'rationale': 'synthetic'}])
+        summary4 = _exec(rid_ok, ['e7', 'e7r6'],
+                         run_step_fn=fake_step_tracking)
+        check('R18f NEW positive: clean experiments run to completion',
+              summary4.get('halted') is None
+              and summary4.get('skipped') == [], str(summary4))
+    finally:
+        for d in (run_halt, lab.OUT_ROOT / ('reg-miss-' + time.strftime('%H%M%S'))):
+            pass  # cleaned below by name pattern
+        import os as _os3
+        for d in sorted(lab.OUT_ROOT.glob('reg-halt-*')) \
+                + sorted(lab.OUT_ROOT.glob('reg-miss-*')) \
+                + sorted(lab.OUT_ROOT.glob('reg-cl-*')) \
+                + sorted(lab.OUT_ROOT.glob('reg-ok-*')):
+            for sub in sorted(d.glob('*')):
+                if sub.is_dir():
+                    lab.safe_rmtree(sub, d)
+                else:
+                    sub.unlink()
+            _os3.rmdir(d)
+
+    # an INVALID classification must make the EXPERIMENT exit nonzero itself
+    r = subprocess.run(
+        [sys.executable, '-c',
+         "import sys, tempfile; sys.path.insert(0, r'"
+         + str(Path(__file__).parent) + "');"
+         " import lab;"
+         " ev = lab.Evidence(tempfile.mkdtemp());"
+         " ev.classify('eX', 'INVALID', 'INVALID', 'INVALID', 'bad');"
+         " ev.finish()"],
+        capture_output=True, text=True, cwd=lab.REPO)
+    check('R18g NEW: INVALID classification -> nonzero experiment exit',
+          r.returncode != 0, f'rc={r.returncode}')
+else:
+    check('R18b NEW: inspect_experiment exists', False)
+    check('R18c NEW: INVALID e7 halts before e7r6', False)
+    check('R18d NEW: missing classification halts', False)
+    check('R18e NEW: failed cleanup halts', False)
+    check('R18f NEW positive: clean run completes', False)
+    check('R18g NEW: INVALID classification -> nonzero exit', False)
+
+# ══ R19 — Targeted blocker 3: source-faithful E4 lock model ═════════════════
+
+def legacy_e4_acquisition(acquisition_verified_bool):
+    """e4/decide_e4 @cb15331: acquisition verification was a bare
+    '>=2 distinct holder PIDs' boolean — ANY unrelated granted locks counted
+    as proof, and the capability SHARED advisory lock was absent from the
+    claim model entirely."""
+    return acquisition_verified_bool
+
+
+check('R19a OLD false positive: unrelated granted locks counted as '
+      'acquisition proof', legacy_e4_acquisition(True) is True,
+      '(demonstrates the reviewed defect)')
+unmatched = dict(edge_base, acquisition_detail={
+    't1': {'expected': ['advisory:ShareLock:1:2:1'],
+           'matched': [], 'unmatched': ['advisory:ShareLock:1:2:1']},
+    't2': {'expected': ['advisory:ExclusiveLock:3:4:1'],
+           'matched': ['advisory:ExclusiveLock:3:4:1'], 'unmatched': []}})
+new = decided_e4([unmatched])
+check('R19b NEW: expected lock absent in the snapshot -> INCONCLUSIVE',
+      new.get('causal_claim') == 'INCONCLUSIVE', str(new.get('reasons', new)))
+no_detail = {k: v for k, v in edge_base.items()
+             if k != 'acquisition_detail'}  # verified=True, NO detail
+new = decided_e4([no_detail])
+check('R19c NEW: verified flag without per-lock detail -> INCONCLUSIVE',
+      new.get('causal_claim') == 'INCONCLUSIVE', str(new.get('reasons', new)))
+unrelated = dict(edge_base, acquisition_detail={
+    't1': {'expected': ['advisory:ShareLock:1:2:1'],
+           'matched': ['advisory:ShareLock:1:2:1'], 'unmatched': []},
+    't2': {'expected': ['advisory:ExclusiveLock:3:4:1'],
+           'matched': ['advisory:ExclusiveLock:3:4:1',
+                       'advisory:ExclusiveLock:9:9:1'],  # unrelated lock
+           'unmatched': []}})
+new = decided_e4([unrelated])
+check('R19d NEW: unrelated granted lock in the match set -> INCONCLUSIVE',
+      new.get('causal_claim') == 'INCONCLUSIVE', str(new.get('reasons', new)))
+matched = dict(edge_base, acquisition_detail={
+    't1': {'expected': ['advisory:ShareLock:1:2:1'],
+           'matched': ['advisory:ShareLock:1:2:1'], 'unmatched': []},
+    't2': {'expected': ['advisory:ExclusiveLock:3:4:1'],
+           'matched': ['advisory:ExclusiveLock:3:4:1'], 'unmatched': []}})
+new = decided_e4([matched])
+check('R19e NEW positive: exact per-lock identity+mode match -> SUPPORTED',
+      new.get('causal_claim') == 'SUPPORTED', str(new.get('reasons', new)))
+wait_ok = dict(edge_base, wait_check={'expected': 'waiting',
+                                      'observed': 'waiting',
+                                      'detail': 'cap X blocked by cap S'})
+new = decided_e4([wait_ok])
+check('R19g NEW positive: expected waiting mode observed -> SUPPORTED',
+      new.get('causal_claim') == 'SUPPORTED', str(new.get('reasons', new)))
+wait_bad = dict(edge_base, wait_check={'expected': 'waiting',
+                                       'observed': 'granted',
+                                       'detail': 'cap X granted though S held'})
+new = decided_e4([wait_bad])
+check('R19h NEW: granted/waiting mode contradicts expectation -> '
+      'INCONCLUSIVE', new.get('causal_claim') == 'INCONCLUSIVE',
+      str(new.get('reasons', new)))
+
+# the claim model must include the real capability SHARED advisory lock
+try:
+    import e4_lock_order as e4mod
+    claim_locks = getattr(e4mod, 'CLAIM_FIRST_LOCKS', None)
+    check('R19f NEW: claim model includes the org EXCLUSIVE advisory lock '
+          'and the TASK_LITE capability SHARED advisory lock, in source '
+          'order',
+          claim_locks is not None
+          and [k for k, _ in claim_locks]
+          == ['cve-organization:co-aster', 'cve-capability:co-aster:TASK_LITE']
+          and [m for _, m in claim_locks] == ['ExclusiveLock', 'ShareLock'],
+          f'CLAIM_FIRST_LOCKS={claim_locks}')
+except Exception as e:
+    check('R19f NEW: claim model includes the capability SHARED lock',
+          False, repr(e))
 
 import shutil
 shutil.rmtree(td, ignore_errors=True)

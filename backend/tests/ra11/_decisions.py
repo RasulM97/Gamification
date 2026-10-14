@@ -163,12 +163,46 @@ def decide_e4(edges: list) -> dict:
         outcomes = e.get('outcomes') or {}
         forced = e.get('kind', 'forced') == 'forced'
         if forced:
-            boundary_ok = bool(e.get('both_at_boundary')
-                               and e.get('acquisition_verified'))
+            acq_ok = bool(e.get('acquisition_verified'))
+            detail = e.get('acquisition_detail')
+            if acq_ok:
+                # verified flag alone is not proof (targeted blocker 3):
+                # the per-lock detail must show every EXPECTED lock identity
+                # matched — no unrelated granted lock counts as proof.
+                if not isinstance(detail, dict) or not detail:
+                    acq_ok = False
+                    reasons.append(f'{e.get("name")}: acquisition_verified '
+                                   'without per-lock detail — rejected')
+                else:
+                    for side, d in detail.items():
+                        exp = sorted(d.get('expected') or [])
+                        got = sorted(d.get('matched') or [])
+                        if (d.get('unmatched') or []) or got != exp:
+                            acq_ok = False
+                            reasons.append(
+                                f'{e.get("name")} side {side}: expected '
+                                f'{exp}, matched {got}, unmatched '
+                                f'{d.get("unmatched")} — unrelated or '
+                                'missing locks are not acquisition proof')
+            boundary_ok = bool(e.get('both_at_boundary')) and acq_ok
         else:
             # unpauseable app-level edge: no latch boundaries exist, so only
             # thread completion and explained outcomes are required
             boundary_ok = True
+        # granted/waiting mode validation for the second participant
+        # (targeted blocker 3): when the edge declares an expected
+        # observation for the second side, the snapshot must match it.
+        wc = e.get('wait_check')
+        if forced and wc and wc.get('expected') is not None:
+            if wc.get('observed') != wc.get('expected'):
+                reasons.append(
+                    f'{e.get("name")}: expected second participant '
+                    f"'{wc.get('expected')}' but observed "
+                    f"'{wc.get('observed')}' — granted/waiting modes were "
+                    'not the expected ones')
+                if e.get('name') not in unexplained:
+                    unexplained.append(e.get('name'))
+                continue
         complete = bool(boundary_ok and e.get('threads_finished')
                         and outcomes)
         if not complete:

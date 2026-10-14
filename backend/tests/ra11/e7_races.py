@@ -79,29 +79,57 @@ def main():
             'jonas': lab.login(BASE, 'jonas@aster.demo'),
         }
 
+        # Every HTTP call carries a unique X-Request-ID and is recorded in
+        # req_log, so client-observed timeouts can be counted by UNIQUE
+        # REQUEST ID and kept distinct from confirmed product defects
+        # (evidence-reporting correction).
+        req_log = []
+
         def api(token, method, path, **kw):
             """HTTP call that NEVER raises: a client-side failure (timeout,
             connection reset) is evidence, returned as ('EXC', type). Setup
             assertions (require_setup) turn it into an INVALID
             classification; race oracles see the EXC tuple as the outcome."""
+            qid = lab.req_id()
+            headers = {**lab.auth(token), 'X-Request-ID': qid}
             try:
                 r = getattr(httpx, method)(f'{BASE}{path}',
-                                           headers=lab.auth(token),
+                                           headers=headers,
                                            timeout=REQ_TIMEOUT, **kw)
             except Exception as e:
-                return ('EXC', type(e).__name__)
+                outcome = ('EXC', type(e).__name__)
+                req_log.append({'request_id': qid, 'method': method,
+                                'path': path, 'outcome': outcome})
+                return outcome
             code = None
             try:
                 code = r.json().get('code')
             except Exception:
                 pass
-            return r.status_code, code
+            outcome = (r.status_code, code)
+            req_log.append({'request_id': qid, 'method': method,
+                            'path': path, 'outcome': outcome})
+            return outcome
+
+        def timeout_report():
+            """Client-observed timeouts counted by UNIQUE request ID.
+            These are harness-side observations of acknowledgment loss,
+            never a confirmed product defect by themselves."""
+            ids = sorted({r['request_id'] for r in req_log
+                          if r['outcome'][0] == 'EXC'
+                          and 'Timeout' in str(r['outcome'][1])})
+            return {'unique_timeout_requests': len(ids),
+                    'timeout_request_ids': ids,
+                    'note': ('client-observed timeouts (acknowledgment '
+                             'loss at the HTTP client) — recorded as '
+                             'observations, NOT confirmed product defects')}
 
         from app.models import Task as TaskModel, now_ms
 
         def require_setup(cond, name, **detail):
             if not cond:
-                ev.event('setup_failed', name=name, **detail)
+                ev.event('setup_failed', name=name,
+                         recent_requests=req_log[-4:], **detail)
                 raise SetupFailure(name)
 
         def invariant(name, cond, **detail):
@@ -150,6 +178,7 @@ def main():
         def race(name, fn1, fn2):
             gate = threading.Event()
             out = {}
+            mark = len(req_log)
 
             def w(tag, fn):
                 gate.wait(timeout=30)
@@ -167,9 +196,16 @@ def main():
             gate.set()
             t1.join(timeout=REQ_TIMEOUT + 10)
             t2.join(timeout=REQ_TIMEOUT + 10)
+            reqs = req_log[mark:]
+            race.last_requests = reqs
             ev.event('race', name=name, outcome=out,
+                     requests=[{'request_id': r['request_id'],
+                                'path': r['path'],
+                                'outcome': r['outcome']} for r in reqs],
                      hung=[k for k in ('A', 'B') if k not in out])
             return out
+
+        race.last_requests = []
 
         try:
             # ── R1 claim vs claim ────────────────────────────────────────
@@ -309,6 +345,8 @@ def main():
                         and stB['owner'] == 'u-jonas')
                 endB = (occ == 1 and cap == 1 and stB['status'] == 'OPEN')
                 ev.event('race_verify', name=f'R2-{i}', outcome=out,
+                         request_ids=[r['request_id']
+                                      for r in race.last_requests],
                          final={'occupancy': occ, 'capacity': cap,
                                 'taskB': stB},
                          serially_reachable=('orderA end state' if endA else
@@ -469,6 +507,8 @@ def main():
                     "SELECT COALESCE(string_agg(outcome, ','), '') "
                     "FROM submissions WHERE task_id=%s", (tid,))
                 ev.event('race_verify', name=f'R5-{i}', task=tid,
+                         request_ids=[r['request_id']
+                                      for r in race.last_requests],
                          final=final, submission_states=subs)
                 # Gate F: when the successful cancel is part of the
                 # completed sequence, the task MUST end CANCELLED; the
@@ -575,6 +615,8 @@ def main():
                     "|| ':paid=' || paid::text, ','), '') "
                     "FROM task_cycles WHERE task_id=%s", (tid,))
                 ev.event('race_verify', name=f'R7-{i}', task=tid,
+                         request_ids=[r['request_id']
+                                      for r in race.last_requests],
                          final=final, cycle_rows=cycles)
                 # Gate F: ENFORCED final-state assertion — the committed
                 # state must equal one of the serially established end
@@ -622,8 +664,13 @@ def main():
                                + ', '.join(invariant_failures)
                                + '. All races ran from verified initial '
                                  'states with serial controls; final states '
-                                 'observer-verified.'),
+                                 'observer-verified. Client-observed '
+                                 'timeouts (if any) are reported separately '
+                                 'by unique request ID and are NOT part of '
+                                 'the confirmed defect set.'),
                     failed_invariants=invariant_failures,
+                    confirmed_defects=list(invariant_failures),
+                    timeout_observations=timeout_report(),
                     coverage_tested=[c for c, (s, _) in coverage.items()
                                      if s == 'TESTED'])
             else:
@@ -638,9 +685,13 @@ def main():
                                "policy ('IN_PROGRESS','SUBMITTED'); R3 "
                                'single payout amount 5.0 / payee u-priya / '
                                'cycle 1; R4 authority oracles; R5/R7 legal '
-                               'serial end states. Coverage is partial: see '
+                               'serial end states. Client-observed timeouts '
+                               '(if any) are reported separately by unique '
+                               'request ID. Coverage is partial: see '
                                'command_coverage_map.txt; "race matrix '
                                'complete" is withdrawn.'),
+                    confirmed_defects=[],
+                    timeout_observations=timeout_report(),
                     coverage_tested=[c for c, (s, _) in coverage.items()
                                      if s == 'TESTED'])
             ev.event('e7_done')
@@ -652,7 +703,11 @@ def main():
                 causal_claim='INVALID',
                 rationale=(f'Fixture/setup assertion failed at {e}; race '
                            f'evidence gathered after a broken setup is not '
-                           f'interpretable.'))
+                           f'interpretable. Client-observed timeouts are '
+                           f'reported by unique request ID and are NOT '
+                           f'confirmed product defects.'),
+                timeout_observations=timeout_report(),
+                confirmed_defects=[])
             ev.event('e7_aborted', reason=f'setup failure: {e}')
     finally:
         if proc:

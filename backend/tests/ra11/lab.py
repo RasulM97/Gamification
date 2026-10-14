@@ -176,6 +176,7 @@ class Evidence:
         self._log = open(self.dir / 'events.jsonl', 'x', encoding='utf-8')
         self._lock = threading.Lock()
         self.t0 = time.perf_counter()
+        self._invalid = False
 
     def event(self, kind: str, **data):
         # t_epoch (Unix seconds) is the documented shared time reference for
@@ -194,6 +195,8 @@ class Evidence:
         assert harness_validity in self.VALID_HARNESS, harness_validity
         assert product_observation in self.VALID_PRODUCT, product_observation
         assert causal_claim in self.VALID_CAUSAL, causal_claim
+        if 'INVALID' in (harness_validity, product_observation, causal_claim):
+            self._invalid = True
         self.event('classification', experiment=experiment,
                    harness_validity=harness_validity,
                    product_observation=product_observation,
@@ -218,6 +221,13 @@ class Evidence:
                     p.read_bytes()).hexdigest()
         (self.dir / 'manifest.json').write_text(
             json.dumps(manifest, indent=2), encoding='utf-8')
+        # Targeted blocker 1: an INVALID classification ALWAYS produces a
+        # nonzero process exit (evidence and manifest are written first).
+        # The orchestrator additionally inspects the recorded classification
+        # itself; exit-code trust alone is not sufficient.
+        if self._invalid:
+            raise SystemExit('INVALID classification recorded — experiment '
+                             'exits nonzero (evidence preserved)')
         return manifest
 
 
@@ -241,6 +251,9 @@ def fingerprint(extra=None) -> dict:
         'uvicorn': uvicorn.__version__,
         'httpx': httpx.__version__,
         'psycopg2': psycopg2.__version__.split()[0],
+        # independently executed experiments are distinguishable from
+        # orchestrated ones (targeted blocker 1, evidence correction)
+        'orchestrated': os.environ.get('RA11_ORCHESTRATED') or 'independent',
     }
     if extra:
         fp.update(extra)
@@ -877,6 +890,44 @@ TIER_SUPPORTED = 'CAUSAL_MECHANISM_SUPPORTED'
 TIER_CONFIRMED = 'CAUSAL_MECHANISM_CONFIRMED'
 
 
+def parse_pid_array(raw):
+    """Parse a PostgreSQL int[] blocker list into validated PID strings.
+
+    pg_blocking_pids() arrives via psycopg2 either as a native list of ints
+    or — after the evidence logger's str() normalization — as text in one of
+    the forms '[42444]', '{42444, 101}', '42444', '[]', '' or None.
+
+    Returns (pids, error): pids is a list of PID strings; error is None or a
+    human-readable reason. Fail closed: any malformed token yields ([],
+    reason) — a chain is never built on unparseable blocker evidence."""
+    if raw is None:
+        return [], None
+    if isinstance(raw, (list, tuple)):
+        tokens = list(raw)
+    elif isinstance(raw, str):
+        s = raw.strip()
+        if s in ('', '[]', '{}'):
+            return [], None
+        if (s.startswith('[') and s.endswith(']')) \
+                or (s.startswith('{') and s.endswith('}')):
+            s = s[1:-1]
+        tokens = s.split(',')
+    else:
+        return [], f'unexpected blocking_pids type: {type(raw).__name__}'
+    pids = []
+    for tok in tokens:
+        t = str(tok).strip().strip('[]{}').strip()
+        if t == '':
+            if len(tokens) > 1:
+                return [], f'empty token in blocking_pids: {raw!r}'
+            continue
+        try:
+            pids.append(str(int(t)))
+        except (TypeError, ValueError):
+            return [], f'malformed PID token {t!r} in blocking_pids {raw!r}'
+    return pids, None
+
+
 def assess_lock_causality(ev_dir, window, *, stalled: bool,
                           db_name: str | None = None,
                           control_ok: bool = False,
@@ -959,8 +1010,13 @@ def assess_lock_causality(ev_dir, window, *, stalled: bool,
             ident = lock_identity(row)
             if ident is None:
                 continue  # incomplete identity: fail closed
-            blockers = [b for b in (row.get('blocking_pids') or '')
-                        .split(',') if b]
+            # robust PID-array parsing (targeted blocker 2): the raw value
+            # stays untouched in the snapshot rows; only the parsed copy is
+            # used here. A malformed list fails closed and is recorded.
+            blockers, perr = parse_pid_array(row.get('blocking_pids'))
+            if perr:
+                reasons.append(f'blocking_pids parse failure: {perr}')
+                continue
             if not blockers:
                 continue  # no observed blocking relationship
             held = [{'pid': b, 'row': r} for b in blockers
