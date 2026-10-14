@@ -53,6 +53,29 @@ EXPERIMENTS = {
 }
 
 
+# Durable, append-only failure marker step name (P1-A). Once recorded for a
+# run-id, every later invocation with the same run-id is REFUSED — retries
+# require a fresh run-id, and gate reuse never overrides a recorded failure.
+FAILURE_STEP = 'run_failed'
+
+
+def prior_failures(run_dir) -> list:
+    """All durable failure markers recorded by PREVIOUS invocations of this
+    run-id (the log is append-only; markers are never removed or
+    overwritten)."""
+    audit = Path(run_dir) / 'run_all_log.json'
+    out = []
+    if audit.is_file():
+        for line in audit.read_text(encoding='utf-8').splitlines():
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if e.get('step') == FAILURE_STEP:
+                out.append(e)
+    return out
+
+
 def halt_after_failure(returncode) -> bool:
     """A failed step (nonzero exit, or None on harness-bounded timeout)
     invalidates the run: no further experiments may start. A leaked process
@@ -155,6 +178,7 @@ def execute(rid, only, run_step_fn=None, reuse_gates=False) -> dict:
     summary = {'rid': rid, 'harness_sha256': harness_sha,
                'gates': {}, 'results': {}, 'inspections': {},
                'halted': None, 'skipped': [], 'gate_failure': None,
+               'refused': False, 'refusal_reason': None,
                'coll_rc': None}
 
     def record(step, result):
@@ -163,6 +187,25 @@ def execute(rid, only, run_step_fn=None, reuse_gates=False) -> dict:
         with open(audit, 'a', encoding='utf-8') as f:
             f.write(json.dumps(entry) + '\n')
         return entry
+
+    # P1-A: a run-id with ANY recorded failure from a previous invocation
+    # is permanently closed for continuation. The failure history is
+    # append-only and never overwritten; retries use a fresh run-id.
+    prior = prior_failures(run)
+    if prior:
+        summary['refused'] = True
+        summary['refusal_reason'] = (
+            f"run-id '{rid}' has {len(prior)} recorded run_failed "
+            'marker(s) from previous invocation(s) — continuation is '
+            'refused and gate reuse cannot override a recorded failure; '
+            'use a fresh run-id for retries')
+        record('refused', {'returncode': 2, 'seconds': 0,
+                           't_epoch_start': round(time.time(), 3),
+                           't_epoch_end': round(time.time(), 3),
+                           'tail': summary['refusal_reason'],
+                           'prior_failures': len(prior)})
+        print('REFUSED:', summary['refusal_reason'])
+        return summary
 
     def gates_already_passed():
         if not audit.is_file():
@@ -187,6 +230,27 @@ def execute(rid, only, run_step_fn=None, reuse_gates=False) -> dict:
                                  f'{harness_sha[:12]} (see earlier entries)',
                          'reused': True})
     else:
+        # Gate evidence is exclusive-create (historical evidence is never
+        # overwritten). Re-running gates into an existing run-id — e.g.
+        # after a mid-run harness change — would collide with the recorded
+        # evidence; refuse with instructions instead of crashing a gate.
+        gate_evidence_exists = any(
+            (run / g.replace('.py', '') / 'events.jsonl').is_file()
+            for g in ('oracle_tests.py', 'smoke.py'))
+        if gate_evidence_exists:
+            summary['refused'] = True
+            summary['refusal_reason'] = (
+                f"run-id '{rid}' already holds gate evidence but the "
+                'recorded gate pass does not cover the current harness '
+                'hash (or --reuse-gate-pass was not given) — gates cannot '
+                're-run without overwriting preserved evidence; use a '
+                'fresh run-id')
+            record('refused', {'returncode': 2, 'seconds': 0,
+                               't_epoch_start': round(time.time(), 3),
+                               't_epoch_end': round(time.time(), 3),
+                               'tail': summary['refusal_reason']})
+            print('REFUSED:', summary['refusal_reason'])
+            return summary
         for gate_script in GATES:
             gate = run_step_fn(gate_script, rid, timeout=600)
             entry = record(gate_script, gate)
@@ -200,6 +264,12 @@ def execute(rid, only, run_step_fn=None, reuse_gates=False) -> dict:
             if halt_after_failure(gate['returncode']):
                 print(gate['tail'])
                 summary['gate_failure'] = gate_script
+                # P1-A: durable append-only failure marker
+                record(FAILURE_STEP, {'returncode': 1, 'seconds': 0,
+                                      't_epoch_start': round(time.time(), 3),
+                                      't_epoch_end': round(time.time(), 3),
+                                      'tail': f'gate failure: {gate_script}',
+                                      'failed': gate_script})
                 return summary
 
     # ── experiments with post-hoc evidence inspection ────────────────────
@@ -225,6 +295,15 @@ def execute(rid, only, run_step_fn=None, reuse_gates=False) -> dict:
                             'tail': f'halted after {name}', 'failed': name,
                             'skipped': summary['skipped'],
                             'inspection': insp})
+            # P1-A: durable append-only failure marker — any later
+            # invocation with this run-id is refused.
+            record(FAILURE_STEP, {'returncode': 1, 'seconds': 0,
+                                  't_epoch_start': round(time.time(), 3),
+                                  't_epoch_end': round(time.time(), 3),
+                                  'tail': f'run invalidated by {name}',
+                                  'failed': name,
+                                  'skipped': summary['skipped'],
+                                  'inspection': insp})
             print(f'HALT: {name} invalidated the run (rc='
                   f'{r["returncode"]}, invalid={insp["invalid"]}, '
                   f'missing_classification={insp["missing_classification"]}, '
@@ -261,6 +340,8 @@ def main():
     print('\nSummary:')
     for k, v in summary['results'].items():
         print(f'  {k}: rc={v["returncode"]} ({v["seconds"]}s)')
+    if summary.get('refused'):
+        sys.exit(f"REFUSED: {summary['refusal_reason']}")
     if summary['gate_failure']:
         sys.exit(f"GATE FAILURE: {summary['gate_failure']} failed — no "
                  'experiment was started')

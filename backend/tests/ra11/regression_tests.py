@@ -1101,6 +1101,278 @@ except Exception as e:
     check('R19f NEW: claim model includes the capability SHARED lock',
           False, repr(e))
 
+# ══ R20 — P1-C: fail-closed causal-chain validation ════════════════════════
+
+def lock_row(pid, granted, locktype='advisory', mode='ExclusiveLock',
+             classid='11', objid='22', objsubid='1', rel='',
+             app='ra11-app', db='ra11_db', xact='2026-10-14 10:00:00+00',
+             blocking='[]'):
+    """Synthetic stringified pg_locks row (same shape as snap_locks_full)."""
+    row = {'locktype': locktype, 'mode': mode, 'pid': str(pid),
+           'classid': classid, 'objid': objid, 'objsubid': objsubid,
+           'rel': rel, 'xid': '', 'vxid': '1/2',
+           'application_name': app, 'datname': db, 'state': 'active',
+           'wait_event_type': '', 'wait_event': '', 'backend_xid': '',
+           'xact_start': xact, 'blocking_pids': blocking, 'query': ''}
+    if granted is not None:
+        row['granted'] = granted
+    return row
+
+
+def assess_rows(snaps, **kw):
+    """Run the REAL assessor on synthetic in-window snapshots."""
+    import shutil as _sh
+    d = Path(tempfile.mkdtemp())
+    write_events(d, [{'kind': 'pg_locks_full', 't_ms': 5.0 + i,
+                      'label': f's{i}', 'observer': 'ra11-observer',
+                      'rows': rows} for i, rows in enumerate(snaps)])
+    try:
+        return lab.assess_lock_causality(
+            d, (0.0, 100.0), stalled=True, db_name='ra11_db',
+            control_ok=kw.get('control_ok', True),
+            healthy_precondition=kw.get('healthy_precondition', True),
+            latches_released=kw.get('latches_released', True))
+    finally:
+        _sh.rmtree(d, ignore_errors=True)
+
+
+_valid_waiter = lock_row(100, 'False', blocking='[200]')
+_valid_holder = lock_row(200, 'True', mode='ShareLock')
+r = assess_rows([[_valid_waiter, _valid_holder]])
+check('R20a NEW positive: complete single-snapshot chain with one '
+      'qualified blocker -> CONFIRMED',
+      r['causal_mechanism_confirmed'] is True, str(r['reasons']))
+
+# 1. waiting row with the granted field MISSING must never count
+r = assess_rows([[lock_row(100, None, blocking='[200]'), _valid_holder]])
+check('R20b NEW: missing granted on the waiting row -> never CONFIRMED',
+      not r['causal_mechanism_confirmed'] and not r['lock_chain_observed'],
+      str(r['reasons']))
+
+# 2. contradictory state: the "blocker" only WAITS on the same identity,
+#    it does not hold it -> no chain
+r = assess_rows([[lock_row(100, 'False', blocking='[200]'),
+                  lock_row(200, 'False', mode='ShareLock')]])
+check('R20c NEW: blocker without a granted row -> never CONFIRMED',
+      not r['causal_mechanism_confirmed'] and not r['lock_chain_observed'],
+      str(r['reasons']))
+r = assess_rows([[lock_row(100, 'yes', blocking='[200]'), _valid_holder]])
+check('R20d NEW: malformed granted value -> fail closed',
+      not r['causal_mechanism_confirmed'] and not r['lock_chain_observed'],
+      str(r['reasons']))
+
+# 3. application ownership and transaction identity SPLIT ACROSS DIFFERENT
+#    blockers must never combine into a qualified chain
+r = assess_rows([[lock_row(100, 'False', blocking='[200, 300]'),
+                  lock_row(200, 'True', mode='ShareLock', xact=''),
+                  lock_row(300, 'True', mode='ShareLock', app='other')]])
+check('R20e NEW: app identity and tx identity split across different '
+      'blockers -> never SUPPORTED/CONFIRMED',
+      not r['causal_mechanism_supported']
+      and not r['causal_mechanism_confirmed'], str(r['reasons']))
+
+# 4. unrelated lock identity held by the blocker
+r = assess_rows([[lock_row(100, 'False', blocking='[200]'),
+                  lock_row(200, 'True', mode='ShareLock', classid='99')]])
+check('R20f NEW: unrelated lock identity -> no chain',
+      not r['lock_chain_observed'], str(r['reasons']))
+
+# 5. wrong application PID (blocker not this app/database)
+r = assess_rows([[lock_row(100, 'False', blocking='[200]'),
+                  lock_row(200, 'True', mode='ShareLock',
+                           app='postgres')]])
+check('R20g NEW: wrong-application blocker -> not SUPPORTED/CONFIRMED',
+      not r['causal_mechanism_supported']
+      and not r['causal_mechanism_confirmed'], str(r['reasons']))
+
+# 6. cross-snapshot combination: waiter in snapshot 1, holder in snapshot 2
+r = assess_rows([[lock_row(100, 'False', blocking='[200]')],
+                 [_valid_holder]])
+check('R20h NEW: cross-snapshot combination -> no chain',
+      not r['lock_chain_observed'], str(r['reasons']))
+
+# 7. valid chain but failed control / missing healthy precondition
+r = assess_rows([[_valid_waiter, _valid_holder]], control_ok=False)
+check('R20i NEW: failed control -> SUPPORTED at most, never CONFIRMED',
+      r['causal_mechanism_supported']
+      and not r['causal_mechanism_confirmed'], str(r['reasons']))
+r = assess_rows([[_valid_waiter, _valid_holder]], healthy_precondition=False)
+check('R20j NEW: missing healthy precondition -> never CONFIRMED',
+      r['causal_mechanism_supported']
+      and not r['causal_mechanism_confirmed'], str(r['reasons']))
+
+# ══ R21 — P1-A: durable failure across segmented invocations ═══════════════
+
+def legacy_segment_gate(prior_failed, reuse_gates):
+    """run_all.py @04dc2be: a new invocation inspected only its own gate
+    records; a failed earlier segment left no durable marker, so the same
+    run-id could continue and later report success."""
+    return 'continue'
+
+
+check('R21a OLD defect: failed segment left no durable marker; same run-id '
+      'continued to a "pass"',
+      legacy_segment_gate(True, True) == 'continue',
+      '(demonstrates the reviewed defect)')
+
+_prior = getattr(run_all, 'prior_failures', None)
+if callable(_prior) and callable(_exec):
+    ran21 = []
+
+    def fake21(script, rid, timeout=900):
+        ran21.append(Path(script).name)
+        if Path(script).name == '_results.py':
+            return {'returncode': 1, 'seconds': 0.1, 'tail': 'fake'}
+        return {'returncode': 0, 'seconds': 0.1, 'tail': 'fake'}
+
+    rid_f = 'reg-fail-' + time.strftime('%H%M%S')
+    run_f = lab.OUT_ROOT / rid_f
+    rid_p = 'reg-proc-' + time.strftime('%H%M%S')
+    run_p = lab.OUT_ROOT / rid_p
+    rid_c = reg_clean = 'reg-clean-' + time.strftime('%H%M%S')
+    run_c = lab.OUT_ROOT / rid_c
+    try:
+        # ── segment A: recorded harness failure (failed cleanup) ─────────
+        write_events(run_f / 'e7', [
+            {'kind': 'app_stop_verified', 't_ms': 1.0, 'pid': 1,
+             'tree_dead': False, 'listener_closed': False, 'ok': False},
+            {'kind': 'classification', 't_ms': 2.0, 'experiment': 'e7',
+             'harness_validity': 'VALID',
+             'product_observation': 'NO_DEFECT_OBSERVED',
+             'causal_claim': 'SUPPORTED', 'rationale': 'synthetic'}])
+        sumA = _exec(rid_f, ['e7'], run_step_fn=fake21)
+        entries = [json.loads(l) for l in
+                   (run_f / 'run_all_log.json').read_text(
+                       encoding='utf-8').splitlines()]
+        check('R21b NEW: failed cleanup records a DURABLE failure marker '
+              'and halts the segment',
+              sumA.get('halted') == 'e7'
+              and any(e.get('step') == 'run_failed' for e in entries),
+              str(entries)[-300:])
+        # ── segment B: same run-id + gate reuse must be REFUSED ──────────
+        ran21.clear()
+        sumB = _exec(rid_f, ['e7r6'], run_step_fn=fake21, reuse_gates=True)
+        check('R21c NEW: later invocation with the same run-id is REFUSED '
+              '(gate reuse never overrides a recorded failure)',
+              sumB.get('refused') is True and 'e7_r6.py' not in ran21,
+              str(sumB)[:300])
+        # ── collector preserves the FAILED status ────────────────────────
+        rp = subprocess.run(
+            [sys.executable,
+             str(Path(run_all.__file__).parent / '_results.py'), rid_f],
+            capture_output=True, text=True, cwd=str(lab.REPO))
+        check('R21d NEW: results collector keeps the run FAILED across '
+              'segments', rp.returncode != 0
+              and 'run_failed' in (rp.stdout + rp.stderr),
+              (rp.stdout + rp.stderr)[-300:])
+
+        # ── process-failure variant (nonzero exit, no classification) ────
+        def fake21_fail(script, rid, timeout=900):
+            ran21.append(Path(script).name)
+            if Path(script).name == 'e7_r6.py':
+                return {'returncode': 1, 'seconds': 0.1,
+                        'tail': 'process died'}
+            if Path(script).name == '_results.py':
+                return {'returncode': 1, 'seconds': 0.1, 'tail': 'fake'}
+            return {'returncode': 0, 'seconds': 0.1, 'tail': 'fake'}
+
+        sumP = _exec(rid_p, ['e7r6'], run_step_fn=fake21_fail)
+        ran21.clear()
+        sumP2 = _exec(rid_p, ['e7'], run_step_fn=fake21,
+                      reuse_gates=True)
+        check('R21e NEW: process failure is also durable — next invocation '
+              'refused', sumP.get('halted') == 'e7r6'
+              and sumP2.get('refused') is True and 'e7.py' not in ran21,
+              str(sumP2)[:300])
+
+        # ── positive: a clean segment chain remains continuable ──────────
+        write_events(run_c / 'e7', [
+            {'kind': 'classification', 't_ms': 1.0, 'experiment': 'e7',
+             'harness_validity': 'VALID',
+             'product_observation': 'NO_DEFECT_OBSERVED',
+             'causal_claim': 'SUPPORTED', 'rationale': 'synthetic'}])
+        _exec(rid_c, ['e7'], run_step_fn=fake21)
+        write_events(run_c / 'e7r6', [
+            {'kind': 'classification', 't_ms': 1.0, 'experiment': 'e7r6',
+             'harness_validity': 'VALID',
+             'product_observation': 'NO_DEFECT_OBSERVED',
+             'causal_claim': 'SUPPORTED', 'rationale': 'synthetic'}])
+        ran21.clear()
+        sumC2 = _exec(rid_c, ['e7r6'], run_step_fn=fake21,
+                      reuse_gates=True)
+        check('R21f NEW positive: clean prior segments + gate reuse allow '
+              'continuation',
+              sumC2.get('refused') in (None, False)
+              and 'e7_r6.py' in ran21, str(sumC2)[:300])
+    finally:
+        import os as _os4
+        for d in (run_f, run_p, run_c):
+            if d.is_dir():
+                for sub in sorted(d.glob('*')):
+                    if sub.is_dir():
+                        lab.safe_rmtree(sub, d)
+                    else:
+                        sub.unlink()
+                _os4.rmdir(d)
+else:
+    for _t in ('R21b NEW: durable failure marker on failed cleanup',
+               'R21c NEW: same run-id refused after failure',
+               'R21d NEW: collector preserves FAILED status',
+               'R21e NEW: process failure durable across invocations',
+               'R21f NEW positive: clean segments continuable'):
+        check(_t, False)
+
+# ══ R22 — P1-B: scoped-claim User FOR SHARE boundary ═══════════════════════
+# The real scoped claim_task path (task_services.py:86-104 @ this commit):
+#   org X advisory -> cap S advisory -> task FOR UPDATE ->
+#   [can_view/admit: org S advisory no-op re-locks +] User FOR SHARE
+#   (organization.account, with_for_update(read=True)) ->
+#   User FOR NO KEY UPDATE (lock_capacity_user).
+# The decomposition must be compared against the REAL emitted SQL.
+
+REAL_CLAIM_SQL_ORDER = ['ADVISORY_X', 'ADVISORY_S', 'FOR_UPDATE:tasks',
+                        'ADVISORY_S', 'FOR_SHARE:users',
+                        'ADVISORY_S', 'FOR_SHARE:users',
+                        'FOR_NO_KEY_UPDATE:users']
+MODEL_CLAIM_SQL_ORDER = ['ADVISORY_X', 'ADVISORY_S', 'FOR_UPDATE:tasks',
+                         'FOR_SHARE:users', 'FOR_NO_KEY_UPDATE:users']
+
+_cmp = getattr(e4mod, 'compare_lock_sequences', None)
+_red = getattr(e4mod, 'CLAIM_SQL_REDUCTIONS', None)
+if callable(_cmp) and _red is not None:
+    r = _cmp(REAL_CLAIM_SQL_ORDER, MODEL_CLAIM_SQL_ORDER, _red)
+    check('R22a NEW positive: decomposition matches the real scoped claim '
+          'sequence modulo declared reductions',
+          r.get('equivalent') is True, str(r))
+    no_share = [c for c in MODEL_CLAIM_SQL_ORDER if c != 'FOR_SHARE:users']
+    r = _cmp(REAL_CLAIM_SQL_ORDER, no_share, _red)
+    check('R22b NEW: removing User FOR SHARE invalidates the equivalence '
+          'claim', r.get('equivalent') is False, str(r))
+    reordered = ['ADVISORY_X', 'ADVISORY_S', 'FOR_UPDATE:tasks',
+                 'FOR_NO_KEY_UPDATE:users', 'FOR_SHARE:users']
+    r = _cmp(REAL_CLAIM_SQL_ORDER, reordered, _red)
+    check('R22c NEW: NKU before FOR SHARE (reordered) invalidates the '
+          'equivalence claim', r.get('equivalent') is False, str(r))
+else:
+    check('R22a NEW positive: decomposition matches real claim sequence',
+          False)
+    check('R22b NEW: removing User FOR SHARE invalidates equivalence',
+          False)
+    check('R22c NEW: reordered FOR SHARE/NKU invalidates equivalence',
+          False)
+
+try:
+    _src = Path(e4mod.__file__).read_text(encoding='utf-8')
+    _cs = _src[_src.index('def claim_seq'):]
+    _cs = _cs[:_cs.index('def cap_update_seq')]
+    check('R22d NEW: claim_seq decomposition includes the account() User '
+          "FOR SHARE acquisition before the NKU (scoped claim path)",
+          'account(' in _cs
+          and _cs.index('account(') < _cs.index('lock_capacity_user'),
+          'claim_seq source lacks the FOR SHARE boundary')
+except Exception as e:
+    check('R22d NEW: claim_seq includes account() FOR SHARE', False, repr(e))
+
 import shutil
 shutil.rmtree(td, ignore_errors=True)
 

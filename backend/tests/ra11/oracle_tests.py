@@ -131,6 +131,11 @@ check('safety: second Evidence on same dir refused', refused)
 
 # 11. Port ownership discriminates: a socket owned by THIS process must be
 #     accepted for this PID and rejected for an unrelated PID tree.
+#     P2: every check carries a full environment diagnostic
+#     (lab.port_owner_debug), so an independent failure can be classified as
+#     environmental (socket ownership not enumerable on this platform) vs a
+#     real ownership defect — the checks themselves stay fail-closed and are
+#     NOT weakened.
 import os as _os
 own = socket.socket()
 own.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -139,15 +144,19 @@ own.listen(1)
 foreign = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
 time.sleep(0.5)
 check('safety: own listener accepted for own pid',
-      lab.verify_port_owner(8979, _os.getpid()) is True)
+      lab.verify_port_owner(8979, _os.getpid()) is True,
+      json.dumps(lab.port_owner_debug(8979, _os.getpid())))
 check('safety: own listener rejected for unrelated pid tree',
-      lab.verify_port_owner(8979, foreign.pid) is False)
+      lab.verify_port_owner(8979, foreign.pid) is False,
+      json.dumps(lab.port_owner_debug(8979, foreign.pid)))
 foreign.kill()
 foreign.wait(timeout=10)
 own.close()
 
 # 12. Unbound port is not "owned".
-check('safety: unbound port not owned', lab.verify_port_owner(8978, 1234) is False)
+check('safety: unbound port not owned',
+      lab.verify_port_owner(8978, 1234) is False,
+      json.dumps(lab.port_owner_debug(8978, 1234)))
 
 # 13. Watchdog expiration: fires, kills the whole owned tree incl. the
 #     interpreter grandchild, and closes the application listener.

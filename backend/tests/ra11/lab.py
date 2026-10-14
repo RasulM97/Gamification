@@ -498,6 +498,44 @@ def verify_port_owner(port: int, pid: int) -> bool:
         return False
 
 
+def port_owner_debug(port: int, pid: int) -> dict:
+    """Diagnostic snapshot for the listener-ownership oracle (P2): records
+    exactly what the platform socket enumeration saw, so a failure can be
+    classified as environmental (socket ownership not visible to psutil in
+    this environment) vs a real ownership defect (socket owned by a
+    DIFFERENT process). Never used to override the fail-closed verdict of
+    verify_port_owner — diagnostics only."""
+    import platform
+    import psutil
+    out = {'platform': platform.platform(),
+           'python': platform.python_version(),
+           'psutil': getattr(psutil, '__version__', '?'),
+           'port': port, 'pid': pid,
+           'owners': None, 'tree': None, 'socket_visible': None,
+           'listen_sockets_seen': None, 'error': None}
+    try:
+        conns = psutil.net_connections(kind='tcp')
+        listens = [c for c in conns if c.status == 'LISTEN']
+        out['listen_sockets_seen'] = len(listens)
+        mine = [c for c in listens
+                if c.laddr and c.laddr.port == port]
+        out['socket_visible'] = bool(mine)
+        out['owners'] = sorted({c.pid for c in mine})
+        try:
+            out['tree'] = sorted(
+                {pid} | {p.pid for p in
+                         psutil.Process(pid).children(recursive=True)})
+        except Exception as e:
+            out['tree'] = [pid]
+            out['error'] = f'process tree lookup: {type(e).__name__}: {e}'
+    except Exception as e:
+        out['error'] = (f'net_connections failed: {type(e).__name__}: {e} '
+                        '— socket ownership is NOT enumerable in this '
+                        'environment (platform/permission limitation); '
+                        'verify_port_owner fails closed in this case')
+    return out
+
+
 def spawn_app(env: dict, port: int, ev: Evidence, watchdog_s: float = 240.0):
     """Spawn ONE uvicorn worker via _apprunner.py (workers=1 enforced; pool
     checkout/checkin events logged to pool_events.jsonl in the evidence dir).
@@ -998,6 +1036,9 @@ def assess_lock_causality(ev_dir, window, *, stalled: bool,
     # never combined into one chain, and a blocker holding an unrelated lock
     # (different key, different locktype) never qualifies. Advisory waiters
     # additionally require full identity (classid/objid/objsubid).
+    # Fail-closed (P1-C): only an EXPLICITLY present granted=False row counts
+    # as waiting — a missing or malformed granted field is recorded and the
+    # row is skipped, never treated as a waiter.
     chain = []
     for snap in snapshots:
         srows = snap.get('rows') or []
@@ -1005,7 +1046,13 @@ def assess_lock_causality(ev_dir, window, *, stalled: bool,
         for row in srows:
             by_pid.setdefault(row.get('pid'), []).append(row)
         for row in srows:
-            if row.get('granted') == 'True':
+            g = row.get('granted')
+            if g == 'True':
+                continue
+            if g != 'False':
+                reasons.append(
+                    f"row of pid {row.get('pid')} has missing/malformed "
+                    f"granted field ({g!r}) — skipped, fail closed")
                 continue
             ident = lock_identity(row)
             if ident is None:
@@ -1035,27 +1082,28 @@ def assess_lock_causality(ev_dir, window, *, stalled: bool,
                        'or blocking relationship missing; rows from different '
                        'snapshots are never combined)')
 
-    # Mechanism support: the chain must tie THIS application's backends
-    # together — waiter and blocker both ra11-app on this database, with
-    # transaction identity on BOTH sides. Unrelated PostgreSQL activity or a
-    # wrong-process backend never counts.
-    app_chain = [c for c in chain
-                 if is_app_backend(c['waiting'])
-                 and any(is_app_backend(h['row']) for h in c['blockers'])]
+    # Mechanism support (P1-C, fail-closed): the chain must tie THIS
+    # application's backends together, and the SAME holding participant
+    # must satisfy BOTH application ownership (ra11-app on this database)
+    # AND transaction identity (xact_start/backend_xid). Application
+    # ownership taken from one blocker and transaction identity from
+    # another never qualifies. The waiting participant must itself carry
+    # a coherent transaction identity.
+    app_chain = []
+    for c in chain:
+        waiter_ok = is_app_backend(c['waiting']) and tx_identity(c['waiting'])
+        qualified = [h for h in c['blockers']
+                     if is_app_backend(h['row']) and tx_identity(h['row'])]
+        if waiter_ok and qualified:
+            c['qualified_blockers'] = qualified
+            app_chain.append(c)
     supported = bool(app_chain)
-    if app_chain:
-        tx_ok = all(tx_identity(c['waiting'])
-                    and any(tx_identity(h['row']) for h in c['blockers'])
-                    for c in app_chain)
-        if not tx_ok:
-            supported = False
-            reasons.append('chain backends lack transaction identity '
-                           '(xact_start/backend_xid) on the waiter or on '
-                           'every matched blocker')
-    elif lock_chain:
-        reasons.append('lock chain does not connect two ra11-app backends '
-                       'of this disposable database (unrelated activity or '
-                       'wrong process)')
+    if chain and not app_chain:
+        reasons.append('no SINGLE blocker satisfies BOTH application '
+                       'ownership and transaction identity for the held '
+                       'lock (or the waiter lacks transaction identity) — '
+                       'identities from different blockers are never '
+                       'combined')
 
     confirmed = (supported and stalled and healthy_precondition
                  and control_ok and latches_released)
@@ -1091,6 +1139,14 @@ def assess_lock_causality(ev_dir, window, *, stalled: bool,
         'in_window_lock_rows': len(rows),
         'app_lock_chains': len(app_chain),
         'reasons': reasons,
+        'scope_note': 'a detected PostgreSQL lock chain demonstrates the '
+                      'wedged-backend mechanism for the observed window; it '
+                      'is not by itself proof that every aspect of the '
+                      'server outage is causally explained — CONFIRMED '
+                      'additionally requires the bounded-window '
+                      'non-recovery, the verified healthy precondition, '
+                      'the matched successful control and released '
+                      'latches',
     }
 
 

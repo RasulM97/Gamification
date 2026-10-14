@@ -99,6 +99,24 @@ def main():
         if 'INCONCLUSIVE' in (str(c.get('product_observation')),
                               str(c.get('causal_claim'))))
 
+    # P1-A: the collector considers the COMPLETE run history, including
+    # earlier orchestrator segments. A durable run_failed marker from ANY
+    # invocation keeps the whole run FAILED forever — later segments can
+    # never overwrite it into a pass.
+    failed_segments = []
+    audit = run / 'run_all_log.json'
+    if audit.is_file():
+        for line in audit.read_text(encoding='utf-8').splitlines():
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if e.get('step') == 'run_failed':
+                failed_segments.append(
+                    {'failed': e.get('failed'),
+                     'skipped': e.get('skipped', []),
+                     't_epoch_end': e.get('t_epoch_end')})
+
     out = {
         'run_id': rid,
         'collected_at_epoch': round(time.time(), 3),
@@ -115,23 +133,32 @@ def main():
             'missing_classification': unclassified,
             'invalid': invalid,
             'inconclusive': inconclusive,
+            'failed_segments': failed_segments,
         },
+        'run_status': ('FAILED' if (failed_segments or missing
+                                    or unclassified or invalid)
+                       else 'COMPLETE'),
         'note': 'Classifications are transcribed verbatim from each '
                 'experiment\'s events.jsonl; this file never upgrades a '
                 'classification. Absent expected entries are reported '
-                'MISSING.',
+                'MISSING. A recorded run_failed marker from any '
+                'orchestrator segment keeps the run FAILED.',
     }
     dest = run / 'results.json'
     dest.write_text(json.dumps(out, indent=2) + '\n', encoding='utf-8')
     summary = {'results': str(dest),
                'expected': len(expected),
                'missing': missing, 'missing_classification': unclassified,
-               'invalid': invalid, 'inconclusive': inconclusive}
+               'invalid': invalid, 'inconclusive': inconclusive,
+               'run_failed': failed_segments,
+               'run_status': out['run_status']}
     print(json.dumps(summary, indent=2))
-    # Fail-closed (Gate A): missing or invalid classifications fail the suite.
-    if missing or unclassified or invalid:
-        sys.exit('RESULTS INCOMPLETE: missing/unclassified/invalid entries '
-                 'present — the suite cannot report success')
+    # Fail-closed (Gate A): missing or invalid classifications, or a
+    # recorded orchestrator failure, fail the suite.
+    if missing or unclassified or invalid or failed_segments:
+        sys.exit('RESULTS INCOMPLETE/FAILED: missing, unclassified or '
+                 'invalid entries, or a recorded run_failed marker — the '
+                 'suite cannot report success')
     print('RESULTS COMPLETE')
 
 
