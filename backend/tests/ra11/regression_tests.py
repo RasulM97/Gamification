@@ -939,6 +939,44 @@ if callable(_insp) and callable(_exec):
               summary3.get('halted') == 'e7'
               and 'e7r6' in summary3.get('skipped', []), str(summary3))
 
+        # cleanup verdict distinction: a TRANSIENT app_stop_incomplete
+        # (first poll found a survivor) followed by app_stop_verified
+        # ok=True for the same pid is a recorded observation, not a
+        # failure — the final verified state is clean and must not halt.
+        rid_tr = 'reg-tr-' + time.strftime('%H%M%S')
+        run_tr = lab.OUT_ROOT / rid_tr
+        write_events(run_tr / 'e7', [
+            {'kind': 'app_stop_incomplete', 't_ms': 1.0, 'pid': 7,
+             'tree_dead': False, 'listener_closed': True,
+             'harness_error': True},
+            {'kind': 'app_stop_verified', 't_ms': 2.0, 'pid': 7,
+             'tree_dead': True, 'listener_closed': True, 'ok': True},
+            {'kind': 'classification', 't_ms': 3.0, 'experiment': 'e7',
+             'harness_validity': 'VALID',
+             'product_observation': 'NO_DEFECT_OBSERVED',
+             'causal_claim': 'SUPPORTED', 'rationale': 'synthetic'}])
+        insp_tr = _insp(run_tr, 'e7')
+        check('R18h NEW: transient incomplete stop superseded by verified '
+              'stop does not halt',
+              insp_tr['cleanup_failed'] is False
+              and insp_tr['harness_errors'] == [], str(insp_tr))
+        # ...but an app_stop_incomplete with NO subsequent verified stop
+        # means harness-owned processes survived: the run must halt.
+        write_events(run_tr / 'e7r6', [
+            {'kind': 'app_stop_incomplete', 't_ms': 1.0, 'pid': 9,
+             'tree_dead': False, 'listener_closed': False,
+             'harness_error': True},
+            {'kind': 'classification', 't_ms': 2.0, 'experiment': 'e7r6',
+             'harness_validity': 'VALID',
+             'product_observation': 'NO_DEFECT_OBSERVED',
+             'causal_claim': 'SUPPORTED', 'rationale': 'synthetic'}])
+        insp_tr2 = _insp(run_tr, 'e7r6')
+        check('R18i NEW: unverified incomplete stop (surviving processes) '
+              'halts the suite',
+              insp_tr2['cleanup_failed'] is True
+              and 'app_stop_incomplete' in insp_tr2['harness_errors'],
+              str(insp_tr2))
+
         # positive control: a clean VALID experiment does not halt
         rid_ok = 'reg-ok-' + time.strftime('%H%M%S')
         run_ok = lab.OUT_ROOT / rid_ok
@@ -960,6 +998,7 @@ if callable(_insp) and callable(_exec):
         for d in sorted(lab.OUT_ROOT.glob('reg-halt-*')) \
                 + sorted(lab.OUT_ROOT.glob('reg-miss-*')) \
                 + sorted(lab.OUT_ROOT.glob('reg-cl-*')) \
+                + sorted(lab.OUT_ROOT.glob('reg-tr-*')) \
                 + sorted(lab.OUT_ROOT.glob('reg-ok-*')):
             for sub in sorted(d.glob('*')):
                 if sub.is_dir():

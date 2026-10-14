@@ -84,27 +84,49 @@ def run_step(script, rid=None, timeout=900):
 def inspect_experiment(run_dir, name) -> dict:
     """Post-experiment evidence inspection (targeted blocker 1): the
     orchestrator NEVER trusts the exit code alone. The recorded evidence
-    itself decides whether the suite may continue."""
+    itself decides whether the suite may continue.
+
+    Cleanup verdict (targeted blocker 5): stop_app records a transient
+    'app_stop_incomplete' when the FIRST termination poll finds a
+    survivor, then performs one bounded retry and records the final
+    verdict in 'app_stop_verified'. A transient incomplete observation
+    that IS followed by a verified stop (ok=True, same pid) is recorded
+    as an observation, not a failure; an app_stop_incomplete with no
+    subsequent verified stop, or any app_stop_verified with ok=False,
+    means harness-owned processes survived and the run is invalid."""
     out = {'experiment': name, 'classification': None,
            'invalid': False, 'missing_classification': True,
            'harness_errors': [], 'cleanup_failed': False}
     ev_file = Path(run_dir) / name / 'events.jsonl'
     if not ev_file.is_file():
         return out
+    events = []
     for line in ev_file.read_text(encoding='utf-8').splitlines():
         try:
-            r = json.loads(line)
+            events.append(json.loads(line))
         except json.JSONDecodeError:
             continue
+    verified_ok_pids = {r.get('pid') for r in events
+                        if r.get('kind') == 'app_stop_verified'
+                        and r.get('ok') is True}
+    cleanup_failed = any(r.get('kind') == 'app_stop_verified'
+                         and r.get('ok') is False for r in events)
+    harness_errors = []
+    for r in events:
         if r.get('kind') == 'classification':
             out['classification'] = {
                 k: r.get(k) for k in ('harness_validity',
                                       'product_observation', 'causal_claim')}
             out['missing_classification'] = False
         if r.get('harness_error'):
-            out['harness_errors'].append(r.get('kind'))
-        if r.get('kind') == 'app_stop_verified' and r.get('ok') is False:
-            out['cleanup_failed'] = True
+            if (r.get('kind') == 'app_stop_incomplete'
+                    and r.get('pid') in verified_ok_pids):
+                continue  # transient poll, superseded by a verified stop
+            harness_errors.append(r.get('kind'))
+            if r.get('kind') == 'app_stop_incomplete':
+                cleanup_failed = True
+    out['harness_errors'] = harness_errors
+    out['cleanup_failed'] = cleanup_failed
     c = out['classification'] or {}
     out['invalid'] = 'INVALID' in (c.get('harness_validity'),
                                    c.get('product_observation'),
