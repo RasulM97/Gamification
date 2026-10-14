@@ -88,13 +88,15 @@ def run_step(script, rid=None, timeout=900):
     t0 = time.time()
     try:
         r = subprocess.run(cmd, timeout=timeout, capture_output=True,
-                           text=True, cwd=str(lab.REPO))
+                           text=True, encoding='utf-8', errors='replace',
+                           cwd=str(lab.REPO))
+        out = (r.stdout or '') + (r.stderr or '')
         return {'returncode': r.returncode,
                 'seconds': round(time.time() - t0, 1),
                 't_epoch_start': round(t0, 3),
                 't_epoch_end': round(time.time(), 3),
-                'output': (r.stdout + r.stderr).strip(),
-                'tail': (r.stdout + r.stderr).strip()[-400:]}
+                'output': out.strip(),
+                'tail': out.strip()[-400:]}
     except subprocess.TimeoutExpired:
         return {'returncode': None, 'seconds': round(time.time() - t0, 1),
                 't_epoch_start': round(t0, 3),
