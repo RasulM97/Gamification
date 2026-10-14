@@ -262,8 +262,9 @@ def main():
 
         def lifecycle_seq(user_id, **edit):
             """user_lifecycle order: Company FOR UPDATE, then user NKU.
-            REDUCED MODEL: verified at relation level only
-            (RowExclusiveLock on companies)."""
+            REDUCED MODEL: verified at relation level only. PostgreSQL
+            takes RowShareLock (not RowExclusiveLock) on the relation for
+            SELECT ... FOR UPDATE — confirmed by observer snapshot."""
             from app.models import Company
             def first(db):
                 db.scalar(select(Company)
@@ -272,7 +273,7 @@ def main():
             def second(db):
                 sc.lock_capacity_user(db, 'co-aster', user_id)
             return {'first': first, 'second': second,
-                    'expect': [relation_lock('RowExclusiveLock',
+                    'expect': [relation_lock('RowShareLock',
                                              'companies')]}
 
         # ── emitted-SQL claim order verification ─────────────────────────
@@ -286,7 +287,16 @@ def main():
         def claim_order_ok():
             """Capture the emitted SQL of one claim_seq run and verify the
             lock order org X advisory -> cap S advisory -> task FOR UPDATE
-            -> user FOR NO KEY UPDATE (task-row lock order verification)."""
+            -> user FOR NO KEY UPDATE (task-row lock order verification).
+
+            The capture records statement text only (parameters are not
+            intercepted), so the two advisory calls are distinguished by
+            function variant — unambiguous within claim_seq, which emits
+            exactly one exclusive advisory (org) and one shared advisory
+            (capability). The KEY identity of those locks is verified
+            separately at runtime: the per-lock acquisition check matches
+            exact advisory identities (classid:objid:objsubid) derived
+            from hashtextextended(key, 0)."""
             db = SessionLocal()
             before = len(captured)
             try:
@@ -300,10 +310,8 @@ def main():
 
             def idx(pred):
                 return next((i for i, s in enumerate(stmts) if pred(s)), -1)
-            i_org = idx(lambda s: 'pg_advisory_xact_lock(' in s
-                        and 'cve-organization' in s)
-            i_cap = idx(lambda s: 'pg_advisory_xact_lock_shared' in s
-                        and 'cve-capability' in s)
+            i_org = idx(lambda s: 'pg_advisory_xact_lock(' in s)
+            i_cap = idx(lambda s: 'pg_advisory_xact_lock_shared' in s)
             i_task = idx(lambda s: 'FOR UPDATE' in s.upper()
                          and 'NO KEY' not in s.upper()
                          and 'tasks' in s)
@@ -313,6 +321,10 @@ def main():
                      'task_for_update': i_task, 'user_for_no_key': i_user}
             ok = -1 < i_org < i_cap < i_task < i_user
             ev.event('claim_model_sql_order', ok=ok, positions=order,
+                     key_binding='advisory key identity is verified at '
+                                 'runtime via exact pg_locks identity '
+                                 'matching (advisory_ident), not via SQL '
+                                 'text parameters',
                      statements=stmts)
             return ok
 
@@ -352,8 +364,12 @@ def main():
             def side(tag, seq):
                 db = SessionLocal()
                 try:
-                    seq['first'](db)
+                    # record the backend PID BEFORE the first lock phase:
+                    # a waiter that blocks inside first() never returns
+                    # from it, but its pg_locks waiting row is exactly the
+                    # evidence the observer needs
                     pids[tag] = db.scalar(text('SELECT pg_backend_pid()'))
+                    seq['first'](db)
                     state[f'{tag}_ready'].set()
                     ev.event('latch', edge=name,
                              step=f'{tag}-first-lock-held')
@@ -413,7 +429,10 @@ def main():
                         continue
                     blockers, perr = lab.parse_pid_array(
                         r.get('blocking_pids'))
-                    if perr is None and pids.get('t1') in (blockers or []):
+                    # snapshot values are stringified; normalize both sides
+                    if (perr is None
+                            and str(pids.get('t1'))
+                            in [str(b) for b in (blockers or [])]):
                         waiting_on.append(c)
                 if waiting_on:
                     observed = 'waiting'
