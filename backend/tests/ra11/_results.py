@@ -23,6 +23,7 @@ This file never upgrades a classification: what the experiment recorded is
 what appears here.
 """
 import json
+import os
 import subprocess
 import sys
 import time
@@ -30,6 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import lab  # noqa: E402
+import run_all  # noqa: E402  (module import only; main() is guarded)
 
 ROOT = lab.OUT_ROOT
 
@@ -117,6 +119,34 @@ def main():
                      'skipped': e.get('skipped', []),
                      't_epoch_end': e.get('t_epoch_end')})
 
+    # P1-1: independent verification — the collector derives failures from
+    # the append-only execution journal and from the experiment evidence
+    # itself; correctness never depends solely on explicit run_failed
+    # markers. The currently-executing invocation (RA11_INVOCATION, set by
+    # the orchestrator when it runs this collector mid-run) is exempt from
+    # unfinished-* findings only — it is in progress by definition.
+    journal_findings = run_all.journal_failures(
+        run_all.journal_records(run),
+        current_inv=os.environ.get('RA11_INVOCATION'))
+    if not (run / 'journal.jsonl').is_file() and audit.is_file():
+        journal_findings.append(
+            {'kind': 'journal_absent',
+             'detail': 'run history exists but no journal — a prior crash '
+                       'cannot be excluded'})
+    evidence_failures = []
+    for name in sorted(run_all.EXPERIMENTS):
+        if (run / name / 'events.jsonl').is_file():
+            insp = run_all.inspect_experiment(run, name)
+            if insp['invalid'] or insp['cleanup_failed']:
+                evidence_failures.append(
+                    {'experiment': name, 'invalid': insp['invalid'],
+                     'cleanup_failed': insp['cleanup_failed']})
+
+    failed = bool(failed_segments or journal_findings
+                  or evidence_failures or invalid or unclassified)
+    run_status = ('FAILED' if failed
+                  else 'PARTIAL' if missing else 'COMPLETE')
+
     out = {
         'run_id': rid,
         'collected_at_epoch': round(time.time(), 3),
@@ -134,15 +164,19 @@ def main():
             'invalid': invalid,
             'inconclusive': inconclusive,
             'failed_segments': failed_segments,
+            'journal_findings': journal_findings,
+            'evidence_failures': evidence_failures,
         },
-        'run_status': ('FAILED' if (failed_segments or missing
-                                    or unclassified or invalid)
-                       else 'COMPLETE'),
+        'run_status': run_status,
         'note': 'Classifications are transcribed verbatim from each '
                 'experiment\'s events.jsonl; this file never upgrades a '
                 'classification. Absent expected entries are reported '
-                'MISSING. A recorded run_failed marker from any '
-                'orchestrator segment keeps the run FAILED.',
+                'MISSING. A recorded run_failed marker, any journal '
+                'failure finding (including an unfinished invocation or '
+                'step left by a parent crash), or a recorded INVALID '
+                'classification / failed cleanup in the evidence itself '
+                'keeps the run FAILED. A clean but intentionally '
+                'incomplete inventory is PARTIAL — never COMPLETE.',
     }
     dest = run / 'results.json'
     dest.write_text(json.dumps(out, indent=2) + '\n', encoding='utf-8')
@@ -151,14 +185,21 @@ def main():
                'missing': missing, 'missing_classification': unclassified,
                'invalid': invalid, 'inconclusive': inconclusive,
                'run_failed': failed_segments,
-               'run_status': out['run_status']}
+               'journal_findings': journal_findings,
+               'evidence_failures': evidence_failures,
+               'run_status': run_status}
     print(json.dumps(summary, indent=2))
-    # Fail-closed (Gate A): missing or invalid classifications, or a
-    # recorded orchestrator failure, fail the suite.
-    if missing or unclassified or invalid or failed_segments:
-        sys.exit('RESULTS INCOMPLETE/FAILED: missing, unclassified or '
-                 'invalid entries, or a recorded run_failed marker — the '
-                 'suite cannot report success')
+    # Fail-closed (Gate A): missing or invalid classifications, journal
+    # failure findings, or a recorded orchestrator failure fail the suite.
+    # Exit codes: 0 COMPLETE, 3 clean PARTIAL, 1 FAILED.
+    if failed:
+        sys.exit('RESULTS FAILED: invalid/unclassified entries, journal '
+                 'failure findings, evidence failures, or a recorded '
+                 'run_failed marker — the suite cannot report success')
+    if missing:
+        print('RESULTS PARTIAL: clean but intentionally incomplete '
+              'inventory — not a suite success')
+        sys.exit(3)
     print('RESULTS COMPLETE')
 
 

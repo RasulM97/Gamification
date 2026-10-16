@@ -900,7 +900,8 @@ if callable(_insp) and callable(_exec):
         def fake_step_tracking(script, rid, timeout=900):
             ran.append(Path(script).name)
             if Path(script).name == '_results.py':
-                return {'returncode': 1, 'seconds': 0.1,
+                # 3 == clean PARTIAL collection (incomplete inventory)
+                return {'returncode': 3, 'seconds': 0.1,
                         'tail': 'missing/invalid present'}
             return {'returncode': 0, 'seconds': 0.1, 'tail': 'fake'}
 
@@ -1222,7 +1223,8 @@ if callable(_prior) and callable(_exec):
     def fake21(script, rid, timeout=900):
         ran21.append(Path(script).name)
         if Path(script).name == '_results.py':
-            return {'returncode': 1, 'seconds': 0.1, 'tail': 'fake'}
+            # 3 == clean PARTIAL collection (incomplete inventory)
+            return {'returncode': 3, 'seconds': 0.1, 'tail': 'fake'}
         return {'returncode': 0, 'seconds': 0.1, 'tail': 'fake'}
 
     rid_f = 'reg-fail-' + time.strftime('%H%M%S')
@@ -1372,6 +1374,375 @@ try:
           'claim_seq source lacks the FOR SHARE boundary')
 except Exception as e:
     check('R22d NEW: claim_seq includes account() FOR SHARE', False, repr(e))
+
+# ══ R23 — P1-1: crash-safe append-only execution journal ═══════════════════
+# Journal format (append-only, each record flushed+fsynced by the writer):
+#   {'j':'invocation_started','inv':...,'rid':...,'t_epoch':...}
+#   {'j':'step_started','inv':...,'step':...,'script':...,'t_epoch':...}
+#   {'j':'step_completed','inv':...,'step':...,'returncode':...,
+#    'inspection':{...}|None,'t_epoch':...}
+#   {'j':'invocation_completed','inv':...,
+#    'status':'COMPLETE'|'PARTIAL'|'FAILED'|'REFUSED','t_epoch':...}
+# A step_started without step_completed, or an invocation_started without
+# invocation_completed, is the durable trace of a parent crash.
+
+def write_journal(run_dir, records):
+    run_dir = Path(run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    with open(run_dir / 'journal.jsonl', 'w', encoding='utf-8') as f:
+        for r in records:
+            f.write(json.dumps(r) + '\n')
+
+
+def legacy_crash_recovery(marker_written):
+    """run_all.py @b5fce97: continuation decisions depended ONLY on the
+    run_failed marker, which is written AFTER post-step inspection. A
+    parent crash between the child's failed-cleanup evidence and the
+    marker write left no durable trace — the next invocation with the
+    same run-id simply continued and could later report success."""
+    return 'refused' if marker_written else 'continue'
+
+
+check('R23a OLD defect: parent crash before the run_failed write silently '
+      'loses the failure',
+      legacy_crash_recovery(False) == 'continue',
+      '(demonstrates the reviewed defect)')
+
+_jfail = getattr(run_all, 'journal_failures', None)
+if callable(_exec):
+    import os as _os5
+    ts23 = time.strftime('%H%M%S')
+    ran23 = []
+
+    def fake23(script, rid, timeout=900):
+        ran23.append(Path(script).name)
+        if Path(script).name == '_results.py':
+            return {'returncode': 3, 'seconds': 0.1, 'tail': 'fake partial'}
+        return {'returncode': 0, 'seconds': 0.1, 'tail': 'fake'}
+
+    # Helper subprocess: performs the exact journal writes of an
+    # orchestrator that started invocation 'crashsim' and began the E7
+    # step, then is KILLED (os._exit) before post-step inspection —
+    # no step_completed, no invocation_completed, no run_failed marker.
+    CRASH_HELPER = (
+        "import json, os, sys\n"
+        "run = sys.argv[1]\n"
+        "recs = ["
+        "{'j':'invocation_started','inv':'crashsim','rid':'x','t_epoch':1},"
+        "{'j':'step_started','inv':'crashsim','step':'e7',"
+        "'script':'e7_races.py','t_epoch':2}]\n"
+        "f = open(os.path.join(run, 'journal.jsonl'), 'w',"
+        " encoding='utf-8')\n"
+        "for r in recs:\n"
+        "    f.write(json.dumps(r) + '\\n')\n"
+        "f.flush(); os.fsync(f.fileno()); f.close()\n"
+        "os._exit(1)\n")
+
+    rid_cr = 'reg-crash-' + ts23
+    run_cr = lab.OUT_ROOT / rid_cr
+    rid_g = 'reg-gatefail-' + ts23
+    run_g = lab.OUT_ROOT / rid_g
+    rid_h = 'reg-haltnomark-' + ts23
+    run_h = lab.OUT_ROOT / rid_h
+    rid_u = 'reg-unfinished-' + ts23
+    run_u = lab.OUT_ROOT / rid_u
+    rid_p2 = 'reg-partok-' + ts23
+    run_p2 = lab.OUT_ROOT / rid_p2
+    try:
+        # ── 1/2. E7 begun, failed cleanup in child evidence, parent killed
+        write_events(run_cr / 'e7', [
+            {'kind': 'app_stop_verified', 't_ms': 1.0, 'pid': 1,
+             'tree_dead': False, 'listener_closed': False, 'ok': False},
+            {'kind': 'classification', 't_ms': 2.0, 'experiment': 'e7',
+             'harness_validity': 'VALID',
+             'product_observation': 'NO_DEFECT_OBSERVED',
+             'causal_claim': 'SUPPORTED', 'rationale': 'synthetic'}])
+        hp = subprocess.run([sys.executable, '-c', CRASH_HELPER,
+                             str(run_cr)], capture_output=True, text=True)
+        ran23.clear()
+        sumX = _exec(rid_cr, ['e7r6'], run_step_fn=fake23,
+                     reuse_gates=True)
+        check('R23b NEW: parent killed mid-E7 (unfinished step in journal) '
+              'refuses continuation — no new experiment starts',
+              hp.returncode != 0  # the helper really died
+              and sumX.get('refused') is True
+              and 'e7_r6.py' not in ran23, str(sumX)[:300])
+        # ── 3. collector independently preserves the failure ─────────────
+        # A SEPARATE crash-state dir that no orchestrator invocation ever
+        # touched: journal + child evidence only, no audit log, no marker.
+        # --expect narrows the inventory to e7 alone, so OLD collector
+        # logic (no journal awareness) reports this run COMPLETE — the
+        # crash state is only detectable through the journal.
+        rid_c2 = 'reg-crashcoll-' + ts23
+        run_c2 = lab.OUT_ROOT / rid_c2
+        write_events(run_c2 / 'e7', [
+            {'kind': 'classification', 't_ms': 2.0, 'experiment': 'e7',
+             'harness_validity': 'VALID',
+             'product_observation': 'NO_DEFECT_OBSERVED',
+             'causal_claim': 'SUPPORTED', 'rationale': 'synthetic'}])
+        hp2 = subprocess.run([sys.executable, '-c', CRASH_HELPER,
+                              str(run_c2)], capture_output=True, text=True)
+        rc = subprocess.run(
+            [sys.executable,
+             str(Path(run_all.__file__).parent / '_results.py'), rid_c2,
+             '--expect=e7'],
+            capture_output=True, text=True, cwd=str(lab.REPO))
+        st = json.loads((run_c2 / 'results.json').read_text(
+            encoding='utf-8')).get('run_status') \
+            if (run_c2 / 'results.json').is_file() else None
+        check('R23c NEW: collector returns nonzero and preserves the '
+              'failure WITHOUT any run_failed marker',
+              hp2.returncode != 0
+              and rc.returncode != 0 and st == 'FAILED',
+              f'rc={rc.returncode} status={st} '
+              f'{(rc.stdout + rc.stderr)[-200:]}')
+
+        # ── 4. gate failure, no explicit marker ──────────────────────────
+        write_journal(run_g, [
+            {'j': 'invocation_started', 'inv': 'g1', 'rid': rid_g,
+             't_epoch': 1},
+            {'j': 'step_started', 'inv': 'g1', 'step': 'smoke.py',
+             't_epoch': 2},
+            {'j': 'step_completed', 'inv': 'g1', 'step': 'smoke.py',
+             'returncode': 1, 't_epoch': 3},
+            {'j': 'invocation_completed', 'inv': 'g1', 'status': 'FAILED',
+             't_epoch': 4}])
+        ran23.clear()
+        sumY = _exec(rid_g, ['e7'], run_step_fn=fake23, reuse_gates=True)
+        check('R23d NEW: failed gate in journal (no run_failed marker) '
+              'refuses continuation',
+              sumY.get('refused') is True and 'e7.py' not in ran23,
+              str(sumY)[:300])
+
+        # ── 5. halt audit entry lacking run_failed ───────────────────────
+        hh = lab.harness_hash()
+        write_journal(run_h, [
+            {'j': 'invocation_started', 'inv': 'h1', 'rid': rid_h,
+             't_epoch': 1},
+            {'j': 'step_started', 'inv': 'h1', 'step': 'e7', 't_epoch': 2},
+            {'j': 'step_completed', 'inv': 'h1', 'step': 'e7',
+             'returncode': 0, 't_epoch': 3,
+             'inspection': {'experiment': 'e7', 'invalid': False,
+                            'missing_classification': False,
+                            'harness_errors': ['app_stop_incomplete'],
+                            'cleanup_failed': True}},
+            {'j': 'invocation_completed', 'inv': 'h1', 'status': 'FAILED',
+             't_epoch': 4}])
+        write_events(run_h / 'e7', [
+            {'kind': 'app_stop_verified', 't_ms': 1.0, 'pid': 1,
+             'tree_dead': False, 'listener_closed': False, 'ok': False},
+            {'kind': 'classification', 't_ms': 2.0, 'experiment': 'e7',
+             'harness_validity': 'VALID',
+             'product_observation': 'NO_DEFECT_OBSERVED',
+             'causal_claim': 'SUPPORTED', 'rationale': 'synthetic'}])
+        with open(run_h / 'run_all_log.json', 'w', encoding='utf-8') as f:
+            for g in run_all.GATES:
+                f.write(json.dumps({'step': g, 'returncode': 0,
+                                    'harness_sha256': hh}) + '\n')
+            f.write(json.dumps({'step': 'e7', 'returncode': 0,
+                                'harness_sha256': hh}) + '\n')
+            f.write(json.dumps({'step': 'halt', 'returncode': 1,
+                                'harness_sha256': hh,
+                                'tail': 'halted after e7',
+                                'failed': 'e7'}) + '\n')
+        ran23.clear()
+        sumZ = _exec(rid_h, ['e7r6'], run_step_fn=fake23, reuse_gates=True)
+        check('R23e NEW: halt entry lacking run_failed still refuses '
+              'continuation',
+              sumZ.get('refused') is True and 'e7_r6.py' not in ran23,
+              str(sumZ)[:300])
+
+        # ── 6. unfinished invocation alone (crash before any step) ───────
+        write_journal(run_u, [
+            {'j': 'invocation_started', 'inv': 'u1', 'rid': rid_u,
+             't_epoch': 1}])
+        ran23.clear()
+        sumU = _exec(rid_u, ['e7'], run_step_fn=fake23, reuse_gates=True)
+        check('R23f NEW: unfinished invocation (crash before any step) '
+              'refuses continuation',
+              sumU.get('refused') is True and 'e7.py' not in ran23,
+              str(sumU)[:300])
+
+        # ── positive: a genuinely clean, intentionally partial segment ───
+        write_events(run_p2 / 'e7', [
+            {'kind': 'classification', 't_ms': 1.0, 'experiment': 'e7',
+             'harness_validity': 'VALID',
+             'product_observation': 'NO_DEFECT_OBSERVED',
+             'causal_claim': 'SUPPORTED', 'rationale': 'synthetic'}])
+        sumP1 = _exec(rid_p2, ['e7'], run_step_fn=fake23)
+        write_events(run_p2 / 'e7r6', [
+            {'kind': 'classification', 't_ms': 1.0, 'experiment': 'e7r6',
+             'harness_validity': 'VALID',
+             'product_observation': 'NO_DEFECT_OBSERVED',
+             'causal_claim': 'SUPPORTED', 'rationale': 'synthetic'}])
+        ran23.clear()
+        sumP2 = _exec(rid_p2, ['e7r6'], run_step_fn=fake23,
+                      reuse_gates=True)
+        jfile = run_p2 / 'journal.jsonl'
+        jrecs = [json.loads(l) for l in
+                 jfile.read_text(encoding='utf-8').splitlines()] \
+            if jfile.is_file() else []
+        statuses = [r.get('status') for r in jrecs
+                    if r.get('j') == 'invocation_completed']
+        rp2 = subprocess.run(
+            [sys.executable,
+             str(Path(run_all.__file__).parent / '_results.py'), rid_p2],
+            capture_output=True, text=True, cwd=str(lab.REPO))
+        st2 = json.loads((run_p2 / 'results.json').read_text(
+            encoding='utf-8')).get('run_status')
+        check('R23g NEW positive: clean partial segment continues, and '
+              'PARTIAL is distinguished from FAILED',
+              sumP1.get('refused') in (None, False)
+              and sumP2.get('refused') in (None, False)
+              and 'e7_r6.py' in ran23
+              and statuses and all(s == 'PARTIAL' for s in statuses)
+              and rp2.returncode != 0 and st2 == 'PARTIAL',
+              f'statuses={statuses} rc={rp2.returncode} run_status={st2}')
+    finally:
+        for d in (run_cr, run_c2, run_g, run_h, run_u, run_p2):
+            if d.is_dir():
+                for sub in sorted(d.glob('*')):
+                    if sub.is_dir():
+                        lab.safe_rmtree(sub, d)
+                    else:
+                        sub.unlink()
+                _os5.rmdir(d)
+else:
+    for _t in ('R23b NEW: killed parent mid-E7 refuses continuation',
+               'R23c NEW: collector preserves crash failure sans marker',
+               'R23d NEW: journal gate failure refuses continuation',
+               'R23e NEW: halt without run_failed refuses continuation',
+               'R23f NEW: unfinished invocation refuses continuation',
+               'R23g NEW positive: clean partial segment continues'):
+        check(_t, False)
+
+# ══ R24 — P1-2: fail-closed E4 capture verification ════════════════════════
+# Statement fixtures mimicking before_cursor_execute output (statement text
+# with placeholders + separate parameter dict, exactly as captured).
+
+S_ADV_X_ORG = ("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))",
+               {'key': 'cve-organization:co-aster'})
+S_ADV_S_ORG = ("SELECT pg_advisory_xact_lock_shared"
+               "(hashtextextended(:key, 0))",
+               {'key': 'cve-organization:co-aster'})
+S_ADV_S_CAP = ("SELECT pg_advisory_xact_lock_shared"
+               "(hashtextextended(:key, 0))",
+               {'key': 'cve-capability:co-aster:TASK_LITE'})
+S_TASK_U = ("SELECT tasks.id, tasks.status FROM tasks "
+            "WHERE tasks.company_id = %(company_id_1)s "
+            "AND tasks.id = %(id_1)s FOR UPDATE",
+            {'company_id_1': 'co-aster', 'id_1': 't-e4-000'})
+S_USER_S = ("SELECT users.id, users.active FROM users "
+            "WHERE users.company_id = %(company_id_1)s "
+            "AND users.id = %(id_1)s FOR SHARE",
+            {'company_id_1': 'co-aster', 'id_1': 'u-priya'})
+S_USER_NKU = ("SELECT users.id, users.max_active_tasks FROM users "
+              "WHERE users.company_id = %(company_id_1)s "
+              "AND users.id = %(id_1)s FOR NO KEY UPDATE",
+              {'company_id_1': 'co-aster', 'id_1': 'u-priya'})
+S_COMMIT = ("COMMIT", {})
+
+
+def trace24(*pairs, error=None):
+    return {'stmts': [s for s, _ in pairs],
+            'params': [p for _, p in pairs], 'error': error}
+
+
+REAL_FULL = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
+                    S_USER_S, S_ADV_S_ORG, S_USER_S, S_USER_NKU, S_COMMIT)
+MODEL_FULL = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_USER_S,
+                     S_USER_NKU)
+COMPANY_FULL = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
+                       S_USER_NKU, S_COMMIT)
+
+_vc = getattr(e4mod, 'verify_claim_capture', None)
+
+# OLD defect @b5fce97: two empty (failed) captures compare equivalent=True.
+if callable(_cmp) and _red is not None:
+    r = _cmp([], [], _red)
+    check('R24a OLD defect: two failed/empty captures compared '
+          'equivalent=true', r.get('equivalent') is True,
+          '(demonstrates the reviewed defect)')
+else:
+    check('R24a OLD defect: empty captures equivalent', False)
+
+if callable(_vc) and _red is not None:
+    KW = dict(actor_id='u-priya', company='co-aster')
+
+    r = _vc(trace24(error='OperationalError: connection lost'),
+            trace24(error='OperationalError: connection lost'),
+            _red, company_trace=COMPANY_FULL, **KW)
+    check('R24b NEW: failed real+model captures are never equivalent',
+          r.get('equivalent') is False, str(r)[:200])
+
+    incomplete = trace24(S_ADV_X_ORG, S_ADV_S_CAP)
+    r = _vc(incomplete, dict(incomplete), _red,
+            company_trace=COMPANY_FULL, **KW)
+    check('R24c NEW: two identical INCOMPLETE traces are never equivalent',
+          r.get('equivalent') is False, str(r)[:200])
+
+    real_3s = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
+                      S_USER_S, S_ADV_S_ORG, S_ADV_S_ORG, S_USER_S,
+                      S_USER_NKU, S_COMMIT)
+    r = _vc(real_3s, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW)
+    check('R24d NEW: reduction count mismatch (3 real vs 2 declared '
+          'ADVISORY_S) is rejected', r.get('equivalent') is False,
+          str(r)[:200])
+
+    wrong_key = ("SELECT pg_advisory_xact_lock_shared"
+                 "(hashtextextended(:key, 0))",
+                 {'key': 'cve-organization:co-OTHER'})
+    real_wk = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, wrong_key,
+                      S_USER_S, S_ADV_S_ORG, S_USER_S, S_USER_NKU, S_COMMIT)
+    r = _vc(real_wk, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW)
+    check('R24e NEW: reduction on the WRONG advisory key is rejected',
+          r.get('equivalent') is False, str(r)[:200])
+
+    wrong_user = (S_USER_S[0], {'company_id_1': 'co-aster',
+                                'id_1': 'u-marcus'})
+    real_wu = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
+                      S_USER_S, S_ADV_S_ORG, wrong_user, S_USER_NKU,
+                      S_COMMIT)
+    r = _vc(real_wu, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW)
+    check('R24f NEW: FOR SHARE reduction on the WRONG row identity is '
+          'rejected', r.get('equivalent') is False, str(r)[:200])
+
+    real_nos = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
+                       S_ADV_S_ORG, S_USER_NKU, S_COMMIT)
+    r = _vc(real_nos, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW)
+    check('R24g NEW: real trace missing User FOR SHARE is rejected '
+          '(bare subsequence match is not enough)',
+          r.get('equivalent') is False, str(r)[:200])
+
+    real_span = trace24(S_ADV_X_ORG, S_COMMIT, S_ADV_S_CAP, S_TASK_U,
+                        S_ADV_S_ORG, S_USER_S, S_ADV_S_ORG, S_USER_S,
+                        S_USER_NKU, S_COMMIT)
+    r = _vc(real_span, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW)
+    check('R24h NEW: COMMIT interleaved between locks (multi-transaction '
+          'trace) is rejected', r.get('equivalent') is False, str(r)[:200])
+
+    r = _vc(REAL_FULL, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW)
+    check('R24i NEW positive: faithful complete captures with declared '
+          'reductions verify equivalent', r.get('equivalent') is True,
+          str(r)[:200])
+
+    bad_company = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
+                          S_USER_S, S_USER_NKU, S_COMMIT)
+    r = _vc(REAL_FULL, MODEL_FULL, _red, company_trace=bad_company, **KW)
+    check('R24j NEW: COMPANY path showing FOR SHARE breaks the scoped/'
+          'company distinction and is rejected',
+          r.get('equivalent') is False, str(r)[:200])
+else:
+    for _t in ('R24b NEW: failed captures never equivalent',
+               'R24c NEW: identical incomplete traces rejected',
+               'R24d NEW: reduction count mismatch rejected',
+               'R24e NEW: wrong advisory key reduction rejected',
+               'R24f NEW: wrong row identity reduction rejected',
+               'R24g NEW: missing FOR SHARE rejected',
+               'R24h NEW: interleaved COMMIT rejected',
+               'R24i NEW positive: faithful captures verify',
+               'R24j NEW: company FOR SHARE rejected'):
+        check(_t, False)
 
 import shutil
 shutil.rmtree(td, ignore_errors=True)

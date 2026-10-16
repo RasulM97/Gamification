@@ -162,6 +162,186 @@ def compare_lock_sequences(real, model, reductions) -> dict:
     return report
 
 
+def _is_ordered_subsequence(sub, full) -> bool:
+    pos = 0
+    for s in sub:
+        found = -1
+        for j in range(pos, len(full)):
+            if full[j] == s:
+                found = j
+                break
+        if found == -1:
+            return False
+        pos = found + 1
+    return True
+
+
+def verify_claim_capture(real, model, reductions, *, actor_id, company,
+                         company_trace=None) -> dict:
+    """Fail-closed E4 capture verification (P1-2).
+
+    `real` / `model` / `company_trace` are capture dicts:
+    {'stmts': [SQL text], 'params': [bound parameter dicts aligned with
+    stmts], 'error': None or str}. Equivalence can be accepted ONLY when:
+
+    - both captures (and the company capture, when given) completed
+      successfully — no capture exception, no silent rollback failure;
+    - both traces are non-empty and contain the complete expected lock
+      sequence: ADVISORY_X first, the Task row FOR UPDATE, the User row
+      locks, and scoped FOR SHARE strictly before FOR NO KEY UPDATE;
+    - every lock acquisition in a trace belongs to ONE transaction (no
+      COMMIT/ROLLBACK interleaved between lock statements);
+    - the model is an ordered subsequence of the real trace and the
+      declared reductions cover the unmatched real locks with EXACT
+      counts (no over- or under-declaration);
+    - every reduction refers to the correct lock key (org advisory key),
+      row identity and participant (actor user id + company), verified
+      from the BOUND PARAMETERS, never from placeholder text;
+    - the COMPANY path remains explicitly distinguished (no FOR SHARE).
+
+    A missing, empty, truncated or errored capture yields
+    equivalent=False — the experiment must then classify INVALID or
+    INCONCLUSIVE, never equivalent."""
+    from collections import Counter
+    checks = []
+
+    def ck(name, ok, detail=''):
+        checks.append({'check': name, 'ok': bool(ok),
+                       'detail': str(detail)[:300]})
+
+    ck('real_capture_ok', real.get('error') is None,
+       real.get('error'))
+    ck('model_capture_ok', model.get('error') is None,
+       model.get('error'))
+    if company_trace is not None:
+        ck('company_capture_ok', company_trace.get('error') is None,
+           company_trace.get('error'))
+    ck('real_nonempty', bool(real.get('stmts')))
+    ck('model_nonempty', bool(model.get('stmts')))
+
+    rc = lock_clauses(real.get('stmts') or [])
+    mc = lock_clauses(model.get('stmts') or [])
+
+    # clause index -> statement index (lock_clauses filters the trace;
+    # params are aligned with STATEMENTS, not with clauses)
+    real_stmts = real.get('stmts') or []
+    real_lock_idx = [i for i, s in enumerate(real_stmts)
+                     if 'pg_advisory' in s or ' FOR ' in s.upper()]
+
+    def real_param(clause_i):
+        if clause_i >= len(real_lock_idx):
+            return {}
+        si = real_lock_idx[clause_i]
+        ps = real.get('params') or []
+        return ps[si] if si < len(ps) else {}
+
+    # complete expected lock-acquisition sequence in the REAL scoped trace
+    ck('real_advisory_first', bool(rc) and rc[0] == 'ADVISORY_X', rc[:3])
+    ck('real_task_row_lock', 'FOR_UPDATE:tasks' in rc, rc)
+    ck('real_user_row_locks',
+       'FOR_SHARE:users' in rc and 'FOR_NO_KEY_UPDATE:users' in rc, rc)
+    if 'FOR_SHARE:users' in rc and 'FOR_NO_KEY_UPDATE:users' in rc:
+        ck('scoped_share_before_nku',
+           rc.index('FOR_SHARE:users') < rc.index('FOR_NO_KEY_UPDATE:users'),
+           rc)
+    else:
+        ck('scoped_share_before_nku', False,
+           'one or both User row locks absent from the real trace')
+    ck('model_complete_order',
+       _is_ordered_subsequence(CLAIM_SQL_ORDER, mc)
+       and all(c in mc for c in CLAIM_SQL_ORDER), mc)
+
+    # single-transaction: no COMMIT/ROLLBACK interleaved between locks
+    def single_tx(tr):
+        stmts = tr.get('stmts') or []
+        lock_idx = [i for i, s in enumerate(stmts)
+                    if 'pg_advisory' in s or ' FOR ' in s.upper()]
+        if not lock_idx:
+            return False
+        last = max(lock_idx)
+        return not any(s.strip().upper() in ('COMMIT', 'ROLLBACK')
+                       for i, s in enumerate(stmts) if i < last)
+
+    ck('real_single_transaction', single_tx(real))
+    ck('model_single_transaction', single_tx(model))
+
+    # ordered subsequence at index level + EXACT reduction counts
+    matched, ri, order_ok = set(), 0, True
+    for m in mc:
+        found = -1
+        for j in range(ri, len(rc)):
+            if rc[j] == m and j not in matched:
+                found = j
+                break
+        if found == -1:
+            order_ok = False
+        else:
+            matched.add(found)
+            ri = found + 1
+    unmatched_idx = [j for j in range(len(rc)) if j not in matched]
+    unmatched = Counter(rc[j] for j in unmatched_idx)
+    declared = Counter()
+    for red in reductions:
+        declared[red['clause']] += red.get('count', 1)
+    ck('model_ordered_subsequence', order_ok,
+       f'model={mc} real={rc}')
+    ck('reductions_exact_counts', unmatched == declared,
+       f'unmatched={dict(unmatched)} declared={dict(declared)}')
+
+    # reduction identity: correct lock key, row identity, participant —
+    # from the BOUND PARAMETERS
+    org_key = f'cve-organization:{company}'
+    id_problems = []
+    for j in unmatched_idx:
+        clause, p = rc[j], real_param(j)
+        if clause == 'ADVISORY_S':
+            if p.get('key') != org_key:
+                id_problems.append(
+                    f'real[{j}] ADVISORY_S key={p.get("key")!r} '
+                    f'(expected {org_key!r})')
+        elif clause == 'FOR_SHARE:users':
+            vals = {str(v) for v in p.values()}
+            if actor_id not in vals or company not in vals:
+                id_problems.append(
+                    f'real[{j}] FOR_SHARE params={p} (expected actor '
+                    f'{actor_id!r} in {company!r})')
+        else:
+            id_problems.append(
+                f'real[{j}] unmatched {clause} has no declared identity '
+                'rule')
+    ck('reduction_identity', not id_problems, id_problems)
+    ax = next((i for i, c in enumerate(rc) if c == 'ADVISORY_X'), None)
+    ck('advisory_x_org_key',
+       ax is not None and real_param(ax).get('key') == org_key,
+       real_param(ax) if ax is not None else 'no ADVISORY_X')
+    fs_matched = [i for i, c in enumerate(rc)
+                  if c == 'FOR_SHARE:users' and i in matched]
+    ck('matched_for_share_actor',
+       bool(fs_matched) and all(
+           actor_id in {str(v) for v in real_param(i).values()}
+           for i in fs_matched),
+       [real_param(i) for i in fs_matched])
+
+    # scoped/company distinction
+    cc = None
+    if company_trace is not None:
+        cc = lock_clauses(company_trace.get('stmts') or [])
+        ck('company_nonempty', bool(company_trace.get('stmts')))
+        ck('company_for_share_absent', 'FOR_SHARE:users' not in cc, cc)
+        ck('company_row_locks',
+           'FOR_UPDATE:tasks' in cc and 'FOR_NO_KEY_UPDATE:users' in cc,
+           cc)
+
+    equivalent = all(c['ok'] for c in checks)
+    return {'equivalent': equivalent, 'checks': checks,
+            'real_lock_clauses': rc, 'model_lock_clauses': mc,
+            'company_lock_clauses': cc,
+            'missing_from_real': [m for m in mc if not order_ok],
+            'undisclosed_real_locks': [
+                f'{c} x{n}' for c, n in unmatched.items()
+                if declared.get(c, 0) != n]}
+
+
 def main():
     rid = lab.validate_run_id(sys.argv[1])
     base = lab.OUT_ROOT / rid / 'e4'
@@ -409,44 +589,43 @@ def main():
             from app.task_services import claim_task as real_claim
 
             def capture(fn):
+                """Run fn in ONE captured session. Returns (stmts, params,
+                error). Any capture exception — and any SILENT ROLLBACK
+                FAILURE — is returned as error; the verifier rejects
+                errored, missing, empty or truncated captures (P1-2)."""
                 db = SessionLocal()
                 before = len(captured)
+                error = None
                 try:
                     fn(db)
-                    db.rollback()
+                    try:
+                        db.rollback()
+                    except Exception as rb:
+                        error = (f'rollback_failed: {type(rb).__name__} '
+                                 f'{str(rb)[:160]}')
                 except Exception as e:
-                    ev.event('claim_model_capture_error',
-                             error=f'{type(e).__name__}: {str(e)[:200]}')
-                    db.rollback()
+                    error = f'{type(e).__name__}: {str(e)[:200]}'
+                    ev.event('claim_model_capture_error', error=error)
+                    try:
+                        db.rollback()
+                    except Exception as rb:
+                        error += (f' | rollback_failed: '
+                                  f'{type(rb).__name__} {str(rb)[:160]}')
                 finally:
                     db.close()
-                return captured[before:]
+                params = getattr(captured, 'params', None)
+                return (list(captured[before:]),
+                        list(params[before:]) if params is not None else [],
+                        error)
 
-            scoped_stmts = capture(
+            scoped_stmts, scoped_params, scoped_err = capture(
                 lambda db: real_claim(db, db.get(User, 'u-priya'),
                                       next_task()))
-            real_clauses = lock_clauses(scoped_stmts)
-            model_stmts = capture(
+            model_stmts, model_params, model_err = capture(
                 lambda db: (lambda s: (s['first'](db), s['second'](db)))(
                     claim_seq(next_task())))
-            model_clauses = lock_clauses(model_stmts)
-            report = compare_lock_sequences(real_clauses, model_clauses,
-                                            CLAIM_SQL_REDUCTIONS)
-            ev.event('claim_model_equivalence', scope='TEAM',
-                     real_lock_clauses=real_clauses,
-                     model_lock_clauses=model_clauses,
-                     declared_reductions=CLAIM_SQL_REDUCTIONS,
-                     equivalent=report['equivalent'],
-                     missing_from_real=report['missing_from_real'],
-                     undisclosed_real_locks=report['undisclosed_real_locks'],
-                     note='model verified against the REAL claim_task '
-                          'emitted SQL; reductions are declared and '
-                          'counted — full lock-model equivalence is not '
-                          'claimed while any reduction exists')
 
-            # company-scope distinction (P1-B): organization.allowed()
-            # returns True for COMPANY-scope BEFORE account(), so the User
-            # FOR SHARE boundary must NOT appear on the company path.
+            # company-scope fixture + capture (P1-B distinction)
             with SessionLocal() as db:
                 now = now_ms()
                 db.add(Task(id='t-e4-company-scope', company_id='co-aster',
@@ -458,19 +637,44 @@ def main():
                             created_at=now, updated_at=now,
                             created_by='u-dana', team_id=None))
                 db.commit()
-            company_stmts = capture(
+            company_stmts, company_params, company_err = capture(
                 lambda db: real_claim(db, db.get(User, 'u-priya'),
                                       't-e4-company-scope'))
-            company_clauses = lock_clauses(company_stmts)
-            company_distinct = 'FOR_SHARE:users' not in company_clauses
+
+            report = verify_claim_capture(
+                {'stmts': scoped_stmts, 'params': scoped_params,
+                 'error': scoped_err},
+                {'stmts': model_stmts, 'params': model_params,
+                 'error': model_err},
+                CLAIM_SQL_REDUCTIONS,
+                actor_id='u-priya', company='co-aster',
+                company_trace={'stmts': company_stmts,
+                               'params': company_params,
+                               'error': company_err})
+            ev.event('claim_model_equivalence', scope='TEAM',
+                     real_lock_clauses=report['real_lock_clauses'],
+                     model_lock_clauses=report['model_lock_clauses'],
+                     declared_reductions=CLAIM_SQL_REDUCTIONS,
+                     equivalent=report['equivalent'],
+                     verification_checks=report['checks'],
+                     missing_from_real=report['missing_from_real'],
+                     undisclosed_real_locks=report['undisclosed_real_locks'],
+                     note='model verified against the REAL claim_task '
+                          'emitted SQL with fail-closed capture checks '
+                          '(P1-2): errored/empty/truncated/multi-'
+                          'transaction captures and wrong reduction '
+                          'identities are never equivalent; reductions '
+                          'are declared, counted exactly, and identity-'
+                          'verified from bound parameters')
             ev.event('claim_sql_order_company_scope',
                      scope='COMPANY',
-                     real_lock_clauses=company_clauses,
-                     for_share_absent=company_distinct,
+                     real_lock_clauses=report['company_lock_clauses'],
+                     for_share_absent='FOR_SHARE:users' not in
+                     (report['company_lock_clauses'] or []),
                      note='the scoped/company distinction is preserved: '
                           'FOR SHARE on users is expected ONLY on the '
                           'TEAM/PROJECT-scoped claim path')
-            return report['equivalent'] and company_distinct
+            return report['equivalent']
 
         if not claim_model_verified():
             ev.classify('e4', harness_validity='INVALID',

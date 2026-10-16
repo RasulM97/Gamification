@@ -66,15 +66,27 @@ def setup(base_dir: Path):
     return ev, pg, url, engine, SessionLocal
 
 
+class SqlCapture(list):
+    """Captured statement strings, with an aligned `.params` list of the
+    bound parameter dicts (P1-2: reduction identity — lock key and row
+    identity — is only verifiable from the bound parameters, never from
+    the placeholder statement text). Slicing yields plain statement
+    lists, so existing consumers are unaffected."""
+
+
 def sql_capture(engine, ev, tag: str):
     """Attach a test-only listener recording emitted SQL text (labeled).
-    Returns a mutable list of captured statements."""
+    Returns a SqlCapture: a list of statement strings plus an aligned
+    `.params` list of bound parameter dicts."""
     from sqlalchemy import event
-    captured = []
+    captured = SqlCapture()
+    params = []
 
     @event.listens_for(engine, 'before_cursor_execute')
     def _cap(conn, cursor, statement, parameters, context, executemany):
         captured.append(statement)
+        params.append(dict(parameters) if parameters else {})
+    captured.params = params
 
     ev.event('instrumentation', instrument='sql_capture', tag=tag,
              note='test-only before_cursor_execute listener; no code change')

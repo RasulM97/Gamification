@@ -58,6 +58,90 @@ EXPERIMENTS = {
 # require a fresh run-id, and gate reuse never overrides a recorded failure.
 FAILURE_STEP = 'run_failed'
 
+# P1-1: crash-safe append-only execution journal. Every record is written
+# with flush()+fsync() BEFORE the action it describes continues, so an
+# unexpected parent termination (kill, power loss, interpreter crash) can
+# never silently erase an in-progress step: the journal then permanently
+# shows an unfinished invocation/step, and any later invocation with the
+# same run-id is REFUSED — no explicit run_failed marker required.
+JOURNAL = 'journal.jsonl'
+
+
+def journal_append(run_dir, record):
+    """Append one journal record and durably flush it (flush + fsync)."""
+    path = Path(run_dir) / JOURNAL
+    with open(path, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(record) + '\n')
+        f.flush()
+        os.fsync(f.fileno())
+
+
+def journal_records(run_dir):
+    """All journal records for a run-id. A corrupt line is preserved as a
+    {'j': 'corrupt'} record — fail-closed: unreadable history is treated
+    as failure evidence, never skipped."""
+    path = Path(run_dir) / JOURNAL
+    out = []
+    if path.is_file():
+        for line in path.read_text(encoding='utf-8').splitlines():
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                out.append({'j': 'corrupt', 'raw': line[:200]})
+    return out
+
+
+def journal_failures(records, current_inv=None) -> list:
+    """Independently derive every failure finding from the journal alone.
+
+    Findings: corrupt journal line; an invocation that started but never
+    completed (parent crash); a step that started but never completed
+    (parent killed mid-step); any gate/experiment step with a nonzero
+    return code; any step whose recorded evidence inspection failed
+    (INVALID classification, harness error, failed cleanup, missing
+    classification); any invocation completed with status FAILED.
+
+    `current_inv` (the invocation currently executing, passed to the
+    results collector via RA11_INVOCATION) is exempt from the
+    unfinished-* findings only — its completed-status and step-failure
+    findings still count."""
+    findings = []
+    inv_open, step_open = {}, {}
+    for r in records:
+        j = r.get('j')
+        if j == 'corrupt':
+            findings.append({'kind': 'corrupt_journal',
+                             'raw': r.get('raw')})
+        elif j == 'invocation_started':
+            inv_open[r.get('inv')] = r
+        elif j == 'step_started':
+            step_open[(r.get('inv'), r.get('step'))] = r
+        elif j == 'step_completed':
+            step_open.pop((r.get('inv'), r.get('step')), None)
+            step = r.get('step')
+            if step != '_results.py' and r.get('returncode') != 0:
+                findings.append({'kind': 'failed_step', 'step': step,
+                                 'returncode': r.get('returncode')})
+            insp = r.get('inspection') or {}
+            if (insp.get('invalid') or insp.get('cleanup_failed')
+                    or insp.get('harness_errors')
+                    or insp.get('missing_classification')):
+                findings.append({'kind': 'failed_inspection',
+                                 'step': step, 'inspection': insp})
+        elif j == 'invocation_completed':
+            inv_open.pop(r.get('inv'), None)
+            if r.get('status') == 'FAILED':
+                findings.append({'kind': 'failed_invocation',
+                                 'inv': r.get('inv')})
+    for inv, r in inv_open.items():
+        if inv != current_inv:
+            findings.append({'kind': 'unfinished_invocation', 'inv': inv})
+    for (inv, step), r in step_open.items():
+        if inv != current_inv:
+            findings.append({'kind': 'unfinished_step', 'inv': inv,
+                             'step': step})
+    return findings
+
 
 def prior_failures(run_dir) -> list:
     """All durable failure markers recorded by PREVIOUS invocations of this
@@ -176,8 +260,11 @@ def execute(rid, only, run_step_fn=None, reuse_gates=False) -> dict:
     audit = run / 'run_all_log.json'
     harness_sha = lab.harness_hash()
     os.environ['RA11_ORCHESTRATED'] = f'run_all:{rid}'
+    import uuid
+    inv = uuid.uuid4().hex[:12]
+    os.environ['RA11_INVOCATION'] = inv
 
-    summary = {'rid': rid, 'harness_sha256': harness_sha,
+    summary = {'rid': rid, 'inv': inv, 'harness_sha256': harness_sha,
                'gates': {}, 'results': {}, 'inspections': {},
                'halted': None, 'skipped': [], 'gate_failure': None,
                'refused': False, 'refusal_reason': None,
@@ -190,137 +277,243 @@ def execute(rid, only, run_step_fn=None, reuse_gates=False) -> dict:
             f.write(json.dumps(entry) + '\n')
         return entry
 
-    # P1-A: a run-id with ANY recorded failure from a previous invocation
-    # is permanently closed for continuation. The failure history is
-    # append-only and never overwritten; retries use a fresh run-id.
+    # ── P1-1: crash-safe continuation gate ───────────────────────────────
+    # Refuse on ANY of: (a) journal findings (unfinished invocation/step,
+    # failed step, failed inspection, FAILED completion, corrupt line);
+    # (b) legacy durable run_failed markers; (c) an independent evidence
+    # scan finding a recorded INVALID classification or failed cleanup in
+    # an existing experiment dir (covers a parent killed before post-step
+    # inspection); (d) an audit history with NO journal at all (a prior
+    # crash cannot be excluded). Continuation NEVER depends solely on the
+    # explicit failure marker.
+    jfindings = journal_failures(journal_records(run))
     prior = prior_failures(run)
-    if prior:
-        summary['refused'] = True
-        summary['refusal_reason'] = (
-            f"run-id '{rid}' has {len(prior)} recorded run_failed "
-            'marker(s) from previous invocation(s) — continuation is '
-            'refused and gate reuse cannot override a recorded failure; '
-            'use a fresh run-id for retries')
-        record('refused', {'returncode': 2, 'seconds': 0,
-                           't_epoch_start': round(time.time(), 3),
-                           't_epoch_end': round(time.time(), 3),
-                           'tail': summary['refusal_reason'],
-                           'prior_failures': len(prior)})
-        print('REFUSED:', summary['refusal_reason'])
-        return summary
+    # Evidence scan: experiments scheduled in THIS invocation are excluded
+    # — their evidence is (re)produced by the upcoming step and inspected
+    # immediately after it; stale bad evidence for them is still caught by
+    # that post-step inspection. Evidence for experiments NOT scheduled
+    # now can only come from a prior invocation, so a recorded INVALID
+    # classification or failed cleanup there refuses continuation even if
+    # the parent died before writing any marker or journal completion.
+    evidence_bad = []
+    for name in sorted(set(EXPERIMENTS) - set(only)):
+        if (run / name / 'events.jsonl').is_file():
+            insp0 = inspect_experiment(run, name)
+            if insp0['invalid'] or insp0['cleanup_failed']:
+                evidence_bad.append(
+                    {'experiment': name, 'invalid': insp0['invalid'],
+                     'cleanup_failed': insp0['cleanup_failed']})
+    if not (run / JOURNAL).is_file() and audit.is_file():
+        jfindings.append({'kind': 'journal_absent',
+                          'detail': 'run history exists but no journal — '
+                                    'a prior crash cannot be excluded'})
 
-    def gates_already_passed():
-        if not audit.is_file():
-            return False
-        seen = {}
-        for line in audit.read_text(encoding='utf-8').splitlines():
-            try:
-                e = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if e.get('step') in GATES:
-                seen[e['step']] = e
-        return all(seen.get(g, {}).get('returncode') == 0
-                   and seen[g].get('harness_sha256') == harness_sha
-                   for g in GATES)
+    journal_append(run, {'j': 'invocation_started', 'inv': inv, 'rid': rid,
+                         'experiments': list(only),
+                         'reuse_gates': reuse_gates,
+                         'harness_sha256': harness_sha,
+                         't_epoch': round(time.time(), 3)})
+    inv_finished = False
 
-    if reuse_gates and gates_already_passed():
-        record('gates', {'returncode': 0, 'seconds': 0,
-                         't_epoch_start': round(time.time(), 3),
-                         't_epoch_end': round(time.time(), 3),
-                         'tail': f'reused recorded gate pass for harness '
-                                 f'{harness_sha[:12]} (see earlier entries)',
-                         'reused': True})
-    else:
-        # Gate evidence is exclusive-create (historical evidence is never
-        # overwritten). Re-running gates into an existing run-id — e.g.
-        # after a mid-run harness change — would collide with the recorded
-        # evidence; refuse with instructions instead of crashing a gate.
-        gate_evidence_exists = any(
-            (run / g.replace('.py', '') / 'events.jsonl').is_file()
-            for g in ('oracle_tests.py', 'smoke.py'))
-        if gate_evidence_exists:
+    def finish(status, **extra):
+        nonlocal inv_finished
+        journal_append(run, {'j': 'invocation_completed', 'inv': inv,
+                             'status': status,
+                             't_epoch': round(time.time(), 3), **extra})
+        inv_finished = True
+
+    try:
+        if jfindings or prior or evidence_bad:
             summary['refused'] = True
+            reasons = []
+            if jfindings:
+                reasons.append(f'journal findings: '
+                               f'{[f["kind"] for f in jfindings]}')
+            if prior:
+                reasons.append(f'{len(prior)} run_failed marker(s)')
+            if evidence_bad:
+                reasons.append(f'evidence failures: {evidence_bad}')
             summary['refusal_reason'] = (
-                f"run-id '{rid}' already holds gate evidence but the "
-                'recorded gate pass does not cover the current harness '
-                'hash (or --reuse-gate-pass was not given) — gates cannot '
-                're-run without overwriting preserved evidence; use a '
-                'fresh run-id')
+                f"run-id '{rid}' has a failed or unfinished execution "
+                f"history ({'; '.join(reasons)}) — continuation is refused "
+                'and gate reuse cannot override it; use a fresh run-id '
+                'for retries')
+            finish('REFUSED', findings=[f['kind'] for f in jfindings])
             record('refused', {'returncode': 2, 'seconds': 0,
                                't_epoch_start': round(time.time(), 3),
                                't_epoch_end': round(time.time(), 3),
-                               'tail': summary['refusal_reason']})
+                               'tail': summary['refusal_reason'],
+                               'journal_findings': len(jfindings),
+                               'prior_failures': len(prior),
+                               'evidence_failures': len(evidence_bad)})
             print('REFUSED:', summary['refusal_reason'])
             return summary
-        for gate_script in GATES:
-            gate = run_step_fn(gate_script, rid, timeout=600)
-            entry = record(gate_script, gate)
-            print(f'[{gate_script}] rc={gate["returncode"]} '
-                  f'{gate["seconds"]}s')
-            # full gate output preserved for the evidence archive
-            (run / 'gate_outputs').mkdir(exist_ok=True)
-            (run / 'gate_outputs' / f'{gate_script}.log').write_text(
-                gate.get('output') or gate['tail'], encoding='utf-8')
-            summary['gates'][gate_script] = entry
-            if halt_after_failure(gate['returncode']):
-                print(gate['tail'])
-                summary['gate_failure'] = gate_script
-                # P1-A: durable append-only failure marker
+
+        def gates_already_passed():
+            if not audit.is_file():
+                return False
+            seen = {}
+            for line in audit.read_text(encoding='utf-8').splitlines():
+                try:
+                    e = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if e.get('step') in GATES:
+                    seen[e['step']] = e
+            return all(seen.get(g, {}).get('returncode') == 0
+                       and seen[g].get('harness_sha256') == harness_sha
+                       for g in GATES)
+
+        if reuse_gates and gates_already_passed():
+            record('gates', {'returncode': 0, 'seconds': 0,
+                             't_epoch_start': round(time.time(), 3),
+                             't_epoch_end': round(time.time(), 3),
+                             'tail': f'reused recorded gate pass for '
+                                     f'harness {harness_sha[:12]} '
+                                     f'(see earlier entries)',
+                             'reused': True})
+        else:
+            # Gate evidence is exclusive-create (historical evidence is
+            # never overwritten). Re-running gates into an existing run-id
+            # — e.g. after a mid-run harness change — would collide with
+            # the recorded evidence; refuse with instructions instead of
+            # crashing a gate.
+            gate_evidence_exists = any(
+                (run / g.replace('.py', '') / 'events.jsonl').is_file()
+                for g in ('oracle_tests.py', 'smoke.py'))
+            if gate_evidence_exists:
+                summary['refused'] = True
+                summary['refusal_reason'] = (
+                    f"run-id '{rid}' already holds gate evidence but the "
+                    'recorded gate pass does not cover the current harness '
+                    'hash (or --reuse-gate-pass was not given) — gates '
+                    'cannot re-run without overwriting preserved evidence; '
+                    'use a fresh run-id')
+                finish('REFUSED', findings=['gate_evidence_collision'])
+                record('refused', {'returncode': 2, 'seconds': 0,
+                                   't_epoch_start': round(time.time(), 3),
+                                   't_epoch_end': round(time.time(), 3),
+                                   'tail': summary['refusal_reason']})
+                print('REFUSED:', summary['refusal_reason'])
+                return summary
+            for gate_script in GATES:
+                journal_append(run, {'j': 'step_started', 'inv': inv,
+                                     'step': gate_script,
+                                     't_epoch': round(time.time(), 3)})
+                gate = run_step_fn(gate_script, rid, timeout=600)
+                journal_append(run, {'j': 'step_completed', 'inv': inv,
+                                     'step': gate_script,
+                                     'returncode': gate['returncode'],
+                                     'seconds': gate['seconds'],
+                                     'inspection': None,
+                                     't_epoch': round(time.time(), 3)})
+                entry = record(gate_script, gate)
+                print(f'[{gate_script}] rc={gate["returncode"]} '
+                      f'{gate["seconds"]}s')
+                # full gate output preserved for the evidence archive
+                (run / 'gate_outputs').mkdir(exist_ok=True)
+                (run / 'gate_outputs' / f'{gate_script}.log').write_text(
+                    gate.get('output') or gate['tail'], encoding='utf-8')
+                summary['gates'][gate_script] = entry
+                if halt_after_failure(gate['returncode']):
+                    print(gate['tail'])
+                    summary['gate_failure'] = gate_script
+                    # P1-A: durable append-only failure marker
+                    record(FAILURE_STEP,
+                           {'returncode': 1, 'seconds': 0,
+                            't_epoch_start': round(time.time(), 3),
+                            't_epoch_end': round(time.time(), 3),
+                            'tail': f'gate failure: {gate_script}',
+                            'failed': gate_script})
+                    finish('FAILED', failed=gate_script)
+                    return summary
+
+        # ── experiments with post-hoc evidence inspection ────────────────
+        for i, name in enumerate(only):
+            journal_append(run, {'j': 'step_started', 'inv': inv,
+                                 'step': name,
+                                 'script': EXPERIMENTS[name],
+                                 't_epoch': round(time.time(), 3)})
+            r = run_step_fn(EXPERIMENTS[name], rid)
+            insp = inspect_experiment(run, name)
+            journal_append(run, {'j': 'step_completed', 'inv': inv,
+                                 'step': name,
+                                 'returncode': r['returncode'],
+                                 'seconds': r['seconds'],
+                                 'inspection': insp,
+                                 't_epoch': round(time.time(), 3)})
+            entry = record(name, r)
+            summary['results'][name] = entry
+            summary['inspections'][name] = insp
+            print(f'[{name}] rc={r["returncode"]} {r["seconds"]}s '
+                  f'inspection={insp["classification"]}')
+            bad = (halt_after_failure(r['returncode'])
+                   or insp['invalid'] or insp['missing_classification']
+                   or insp['harness_errors'] or insp['cleanup_failed'])
+            if bad:
+                print('   ', r['tail'])
+                summary['halted'] = name
+                summary['skipped'] = only[i + 1:]
+                record('halt', {'returncode': 1,
+                                't_epoch_start': round(time.time(), 3),
+                                't_epoch_end': round(time.time(), 3),
+                                'seconds': 0,
+                                'tail': f'halted after {name}',
+                                'failed': name,
+                                'skipped': summary['skipped'],
+                                'inspection': insp})
+                # P1-A: durable append-only failure marker — any later
+                # invocation with this run-id is refused.
                 record(FAILURE_STEP, {'returncode': 1, 'seconds': 0,
                                       't_epoch_start': round(time.time(), 3),
                                       't_epoch_end': round(time.time(), 3),
-                                      'tail': f'gate failure: {gate_script}',
-                                      'failed': gate_script})
-                return summary
+                                      'tail': f'run invalidated by {name}',
+                                      'failed': name,
+                                      'skipped': summary['skipped'],
+                                      'inspection': insp})
+                print(f'HALT: {name} invalidated the run (rc='
+                      f'{r["returncode"]}, invalid={insp["invalid"]}, '
+                      f'missing_classification='
+                      f'{insp["missing_classification"]}, '
+                      f'harness_errors={insp["harness_errors"]}, '
+                      f'cleanup_failed={insp["cleanup_failed"]}) — no '
+                      f'further experiments are started; skipped: '
+                      f'{summary["skipped"]}')
+                break
 
-    # ── experiments with post-hoc evidence inspection ────────────────────
-    for i, name in enumerate(only):
-        r = run_step_fn(EXPERIMENTS[name], rid)
-        insp = inspect_experiment(run, name)
-        entry = record(name, r)
-        summary['results'][name] = entry
-        summary['inspections'][name] = insp
-        print(f'[{name}] rc={r["returncode"]} {r["seconds"]}s '
-              f'inspection={insp["classification"]}')
-        bad = (halt_after_failure(r['returncode'])
-               or insp['invalid'] or insp['missing_classification']
-               or insp['harness_errors'] or insp['cleanup_failed'])
-        if bad:
-            print('   ', r['tail'])
-            summary['halted'] = name
-            summary['skipped'] = only[i + 1:]
-            record('halt', {'returncode': 1,
-                            't_epoch_start': round(time.time(), 3),
-                            't_epoch_end': round(time.time(), 3),
-                            'seconds': 0,
-                            'tail': f'halted after {name}', 'failed': name,
-                            'skipped': summary['skipped'],
-                            'inspection': insp})
-            # P1-A: durable append-only failure marker — any later
-            # invocation with this run-id is refused.
-            record(FAILURE_STEP, {'returncode': 1, 'seconds': 0,
-                                  't_epoch_start': round(time.time(), 3),
-                                  't_epoch_end': round(time.time(), 3),
-                                  'tail': f'run invalidated by {name}',
-                                  'failed': name,
-                                  'skipped': summary['skipped'],
-                                  'inspection': insp})
-            print(f'HALT: {name} invalidated the run (rc='
-                  f'{r["returncode"]}, invalid={insp["invalid"]}, '
-                  f'missing_classification={insp["missing_classification"]}, '
-                  f'harness_errors={insp["harness_errors"]}, '
-                  f'cleanup_failed={insp["cleanup_failed"]}) — no further '
-                  f'experiments are started; skipped: {summary["skipped"]}')
-            break
-
-    # ── results collection: missing/invalid classifications fail the suite
-    coll = run_step_fn('_results.py', rid, timeout=120)
-    record('_results.py', coll)
-    summary['coll_rc'] = coll['returncode']
-    print(f"[results] rc={coll['returncode']} {coll['seconds']}s")
-    print(coll['tail'])
-    return summary
+        # ── results collection: missing/invalid classifications fail ─────
+        journal_append(run, {'j': 'step_started', 'inv': inv,
+                             'step': '_results.py',
+                             't_epoch': round(time.time(), 3)})
+        coll = run_step_fn('_results.py', rid, timeout=120)
+        journal_append(run, {'j': 'step_completed', 'inv': inv,
+                             'step': '_results.py',
+                             'returncode': coll['returncode'],
+                             'seconds': coll['seconds'],
+                             'inspection': None,
+                             't_epoch': round(time.time(), 3)})
+        record('_results.py', coll)
+        summary['coll_rc'] = coll['returncode']
+        print(f"[results] rc={coll['returncode']} {coll['seconds']}s")
+        print(coll['tail'])
+        # _results exit codes: 0 COMPLETE, 3 clean PARTIAL, else FAILED.
+        if summary['gate_failure'] or summary['halted']:
+            status = 'FAILED'
+        elif coll['returncode'] == 0:
+            status = 'COMPLETE'
+        elif coll['returncode'] == 3:
+            status = 'PARTIAL'
+        else:
+            status = 'FAILED'
+        finish(status, coll_rc=coll['returncode'])
+        return summary
+    finally:
+        if not inv_finished:
+            # Exception path (a SIGKILL never reaches here — the journal
+            # then permanently shows an unfinished invocation, which is
+            # exactly the crash evidence the continuation gate refuses).
+            finish('FAILED', reason='orchestrator terminated on an '
+                                    'exception path')
 
 
 def main():
@@ -355,10 +548,19 @@ def main():
               'compared against the full expected inventory and reports the '
               'remainder MISSING.')
     bad = any(v['returncode'] for v in summary['results'].values())
-    if summary['halted'] or bad or summary['coll_rc'] != 0:
+    if summary['halted'] or bad or summary['coll_rc'] not in (0, 3):
         sys.exit('SUITE FAILED: experiment error, INVALID/missing '
                  'classification, harness error, or cleanup failure — see '
                  'above and run_all_log.json')
+    if summary['coll_rc'] == 3:
+        # Clean partial segment (P1-1): everything executed so far is
+        # VALID, the inventory is intentionally incomplete, and the
+        # collector distinguishes PARTIAL from FAILED. Continuation with
+        # the same run-id is allowed; only a COMPLETE collection reports
+        # suite success.
+        print('SEGMENT CLEAN (partial run): all executed steps VALID; '
+              'remaining experiments pending under this run-id')
+        return
     print('SUITE PASS')
 
 
