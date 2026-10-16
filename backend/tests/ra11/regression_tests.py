@@ -901,7 +901,7 @@ if callable(_insp) and callable(_exec):
             ran.append(Path(script).name)
             if Path(script).name == '_results.py':
                 # 3 == clean PARTIAL collection (incomplete inventory)
-                return {'returncode': 3, 'seconds': 0.1,
+                return {'returncode': 3, 'result_status': 'PARTIAL', 'seconds': 0.1,
                         'tail': 'missing/invalid present'}
             return {'returncode': 0, 'seconds': 0.1, 'tail': 'fake'}
 
@@ -1224,7 +1224,7 @@ if callable(_prior) and callable(_exec):
         ran21.append(Path(script).name)
         if Path(script).name == '_results.py':
             # 3 == clean PARTIAL collection (incomplete inventory)
-            return {'returncode': 3, 'seconds': 0.1, 'tail': 'fake'}
+            return {'returncode': 3, 'result_status': 'PARTIAL', 'seconds': 0.1, 'tail': 'fake'}
         return {'returncode': 0, 'seconds': 0.1, 'tail': 'fake'}
 
     rid_f = 'reg-fail-' + time.strftime('%H%M%S')
@@ -1417,7 +1417,7 @@ if callable(_exec):
     def fake23(script, rid, timeout=900):
         ran23.append(Path(script).name)
         if Path(script).name == '_results.py':
-            return {'returncode': 3, 'seconds': 0.1, 'tail': 'fake partial'}
+            return {'returncode': 3, 'result_status': 'PARTIAL', 'seconds': 0.1, 'tail': 'fake partial'}
         return {'returncode': 0, 'seconds': 0.1, 'tail': 'fake'}
 
     # Helper subprocess: performs the exact journal writes of an
@@ -1677,7 +1677,9 @@ else:
     check('R24a OLD defect: empty captures equivalent', False)
 
 if callable(_vc) and _red is not None:
-    KW = dict(actor_id='u-priya', company='co-aster')
+    KW = dict(actor_id='u-priya', company='co-aster',
+              real_task_id='t-e4-000', model_task_id='t-e4-000',
+              company_task_id='t-e4-000')
 
     r = _vc(trace24(error='OperationalError: connection lost'),
             trace24(error='OperationalError: connection lost'),
@@ -1733,8 +1735,7 @@ if callable(_vc) and _red is not None:
 
     try:
         r = _vc(REAL_FULL, MODEL_FULL, _red, company_trace=COMPANY_FULL,
-                real_task_id='t-e4-000', model_task_id='t-e4-000',
-                company_task_id='t-e4-000', **KW)
+                **KW)
     except TypeError:
         # pre-P1-B signature without task identity: cannot pass
         r = {'equivalent': False, 'note': 'old signature lacks task ids'}
@@ -1777,95 +1778,11 @@ check('R25a OLD defect: model-trace binds never inspected (stripped '
       legacy_model_binds_ignored([]).get('equivalent') is True,
       '(demonstrates the reviewed defect)')
 
-if callable(_vc) and _red is not None:
-    KW25 = dict(actor_id='u-priya', company='co-aster')
-
-    # 1. remove every model parameter
-    stripped = dict(MODEL_FULL)
-    stripped['params'] = [{} for _ in stripped['stmts']]
-    r = _vc(REAL_FULL, stripped, _red, company_trace=COMPANY_FULL, **KW25)
-    check('R25b NEW: model trace with ALL binds removed is rejected',
-          r.get('equivalent') is False, str(r)[:160])
-
-    # 2. change the capability key (matched ADVISORY_S in both traces)
-    bad_cap = (S_ADV_S_CAP[0], {'key': 'cve-capability:co-aster:TASK_HEAVY'})
-    real_bc = trace24(S_ADV_X_ORG, bad_cap, S_TASK_U, S_ADV_S_ORG,
-                      S_USER_S, S_ADV_S_ORG, S_USER_S, S_USER_NKU, S_COMMIT)
-    model_bc = trace24(S_ADV_X_ORG, bad_cap, S_TASK_U, S_USER_S,
-                       S_USER_NKU)
-    r = _vc(real_bc, model_bc, _red, company_trace=COMPANY_FULL, **KW25)
-    check('R25c NEW: wrong capability advisory key is rejected',
-          r.get('equivalent') is False, str(r)[:160])
-
-    # 3. swap company and user predicate binds on FOR SHARE
-    swapped = (S_USER_S[0], {'company_id_1': 'u-priya',
-                             'id_1': 'co-aster'})
-    real_sw = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
-                      swapped, S_ADV_S_ORG, S_USER_S, S_USER_NKU, S_COMMIT)
-    r = _vc(real_sw, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW25)
-    check('R25d NEW: swapped company/user binds are rejected (set '
-          'membership is not bind resolution)',
-          r.get('equivalent') is False, str(r)[:160])
-
-    # 4. FOR NO KEY UPDATE targeting a different user
-    nku_other = (S_USER_NKU[0], {'company_id_1': 'co-aster',
-                                 'id_1': 'u-marcus'})
-    real_nk = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
-                      S_USER_S, S_ADV_S_ORG, S_USER_S, nku_other, S_COMMIT)
-    r = _vc(real_nk, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW25)
-    check('R25e NEW: NKU targeting a DIFFERENT user is rejected',
-          r.get('equivalent') is False, str(r)[:160])
-
-    # 5. different transaction/connection identities within one trace
-    conns2 = ['c1', 'c1', 'c1', 'c2', 'c1', 'c1', 'c1', 'c1', 'c1']
-    real_dc = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
-                      S_USER_S, S_ADV_S_ORG, S_USER_S, S_USER_NKU,
-                      S_COMMIT, conns=conns2)
-    r = _vc(real_dc, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW25)
-    check('R25f NEW: mixed connection/backend identities inside one '
-          'trace are rejected', r.get('equivalent') is False,
-          str(r)[:160])
-
-    # 6. an actual transaction boundary between lock acquisitions
-    tx_break = [{'event': 'begin', 'conn': 'c1', 'seq': 0},
-                {'event': 'commit', 'conn': 'c1', 'seq': 4},
-                {'event': 'begin', 'conn': 'c1', 'seq': 4}]
-    real_tb = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
-                      S_USER_S, S_ADV_S_ORG, S_USER_S, S_USER_NKU,
-                      S_COMMIT, tx_events=tx_break)
-    r = _vc(real_tb, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW25)
-    check('R25g NEW: recorded COMMIT boundary between locks is rejected '
-          '(not merely textual COMMIT detection)',
-          r.get('equivalent') is False, str(r)[:160])
-
-    # 7. omit the expected Task lock from the model
-    model_notask = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_USER_S, S_USER_NKU)
-    r = _vc(REAL_FULL, model_notask, _red, company_trace=COMPANY_FULL,
-            **KW25)
-    check('R25h NEW: model omitting the Task FOR UPDATE is rejected',
-          r.get('equivalent') is False, str(r)[:160])
-
-    # positive: genuine complete capture still passes (new signature with
-    # task identity; pre-fix the old signature raises TypeError -> fail)
-    try:
-        r = _vc(REAL_FULL, MODEL_FULL, _red, company_trace=COMPANY_FULL,
-                real_task_id='t-e4-000', model_task_id='t-e4-000',
-                company_task_id='t-e4-000', **KW25)
-    except TypeError:
-        r = {'equivalent': False, 'note': 'old signature lacks task ids'}
-    check('R25i NEW positive: genuine complete production-command capture '
-          'still verifies equivalent', r.get('equivalent') is True,
-          str(r)[:160])
-else:
-    for _t in ('R25b NEW: stripped model binds rejected',
-               'R25c NEW: wrong capability key rejected',
-               'R25d NEW: swapped binds rejected',
-               'R25e NEW: NKU different user rejected',
-               'R25f NEW: mixed connection identities rejected',
-               'R25g NEW: recorded tx boundary rejected',
-               'R25h NEW: model omitting task lock rejected',
-               'R25i NEW positive: genuine capture verifies'):
-        check(_t, False)
+# Current-contract mutations supply every task identity and assert both a
+# passing reference and the intended named failure. Older-signature examples
+# above are historical demonstrations only, not mutation coverage.
+from validation_tests import run_e4_tests, run_history_tests, run_collection_tests
+run_e4_tests(check)
 
 # ══ R26 — P1-A: refusal permanence (the reviewer's exact sequence) ═════════
 
@@ -1891,7 +1808,7 @@ if callable(_exec):
     def fake26(script, rid, timeout=900):
         ran26.append(Path(script).name)
         if Path(script).name == '_results.py':
-            return {'returncode': 3, 'seconds': 0.1, 'tail': 'fake'}
+            return {'returncode': 3, 'result_status': 'PARTIAL', 'seconds': 0.1, 'tail': 'fake'}
         return {'returncode': 0, 'seconds': 0.1, 'tail': 'fake'}
 
     hh26 = lab.harness_hash()
@@ -2044,6 +1961,9 @@ else:
                'R26f NEW: corrupt audit refused',
                'R26g NEW positive: clean PARTIAL -> COMPLETE'):
         check(_t, False)
+
+run_history_tests(check)
+run_collection_tests(check)
 
 import shutil
 shutil.rmtree(td, ignore_errors=True)

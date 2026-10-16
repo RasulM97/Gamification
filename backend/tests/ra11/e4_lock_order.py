@@ -204,11 +204,17 @@ def _advisory_key(stmt, params):
     import re
     if not isinstance(params, dict) or '__bind_error__' in params:
         return None
-    m = re.search(r'hashtextextended\(\s*'
-                  r'(?:%\((\w+)\)s|:([A-Za-z_]\w*))', stmt, re.IGNORECASE)
+    # Pinned production emits precisely this bigint advisory expression.
+    # A matching key string with another seed/expression is a DIFFERENT lock.
+    m = re.fullmatch(
+        r'\s*SELECT\s+pg_advisory_xact_lock(?:_shared)?\s*\(\s*'
+        r'hashtextextended\s*\(\s*'
+        r'(?:%\(([A-Za-z_]\w*)\)s|:([A-Za-z_]\w*))'
+        r'\s*,\s*0\s*\)\s*\)\s*;?\s*', stmt, re.IGNORECASE)
     if not m:
         return None
-    return params.get(m.group(1) or m.group(2))
+    value = params.get(m.group(1) or m.group(2))
+    return value if isinstance(value, str) else None
 
 
 def _lock_entries(tr):
@@ -287,36 +293,70 @@ def verify_claim_capture(real, model, reductions, *, actor_id, company,
 
     # ── connection / transaction identity (recorded, never inferred) ──
     def tx_identity_ok(tr, entries, tag):
-        stmts = tr.get('stmts') or []
-        if not entries:
-            ck(f'{tag}_tx_identity', False, 'no lock statements')
-            return
-        conns, pids = tr.get('conns'), tr.get('pids')
-        if (not conns or not pids or len(conns) < len(stmts)
-                or len(pids) < len(stmts)):
-            ck(f'{tag}_tx_identity', False,
-               'missing connection/backend identity evidence')
-            return
-        cs = {conns[e['stmt_index']] for e in entries}
-        ps = {pids[e['stmt_index']] for e in entries}
-        first = min(e['stmt_index'] for e in entries)
-        last = max(e['stmt_index'] for e in entries)
+        """Validate ALL lifecycle events, then assign locks to transactions.
+
+        Events fire before statement index seq; a closing event at last+1
+        is a legitimate post-lock rollback. No malformed event is filtered
+        away, and a second begin cannot silently replace a transaction.
+        """
+        def valid_id(value):
+            return ((type(value) is int and value > 0)
+                    or (isinstance(value, str) and bool(value.strip())))
+
+        stmts, conns, pids = tr.get('stmts'), tr.get('conns'), tr.get('pids')
         evs = tr.get('tx_events')
-        begin_ok = (isinstance(evs, list) and any(
-            e.get('event') == 'begin' and e.get('conn') in cs
-            and isinstance(e.get('seq'), int) and e['seq'] <= first
-            for e in evs))
-        boundary = (not isinstance(evs, list)) or any(
-            e.get('event') in ('commit', 'rollback')
-            and e.get('conn') in cs
-            and isinstance(e.get('seq'), int)
-            and first < e['seq'] <= last for e in evs)
-        ck(f'{tag}_tx_identity',
-           len(cs) == 1 and None not in cs
-           and len(ps) == 1 and None not in ps
-           and begin_ok and not boundary,
-           f'conns={len(cs)} pids={ps} begin_recorded={begin_ok} '
-           f'mid_trace_boundary={boundary}')
+        error = None
+        if (not entries or not isinstance(stmts, list)
+                or not isinstance(conns, list) or not isinstance(pids, list)
+                or len(conns) != len(stmts) or len(pids) != len(stmts)
+                or not all(valid_id(c) for c in conns)
+                or not all(type(p) is int and p > 0 for p in pids)
+                or not isinstance(evs, list) or not evs):
+            error = 'missing/malformed connection or transaction evidence'
+        intervals, active, serial, previous = [], {}, 0, -1
+        if error is None:
+            for event in evs:
+                if (not isinstance(event, dict)
+                        or event.get('event') not in ('begin', 'commit', 'rollback')
+                        or not valid_id(event.get('conn'))
+                        or event['conn'] not in conns
+                        or type(event.get('seq')) is not int
+                        or not 0 <= event['seq'] <= len(stmts)):
+                    error = 'malformed transaction event'
+                    break
+                seq, conn = event['seq'], event['conn']
+                if seq < previous:
+                    error = 'out-of-order transaction events'
+                    break
+                previous = seq
+                if event['event'] == 'begin':
+                    if conn in active:
+                        error = 'begin while transaction still open'
+                        break
+                    serial += 1
+                    active[conn] = (seq, serial)
+                else:
+                    if conn not in active:
+                        error = 'transaction end without begin'
+                        break
+                    begin, token = active.pop(conn)
+                    intervals.append((conn, begin, seq, token))
+            intervals.extend((conn, begin, len(stmts), token)
+                             for conn, (begin, token) in active.items())
+        if error is None:
+            transactions, lock_pids = set(), set()
+            for entry in entries:
+                i = entry['stmt_index']
+                spans = [(conn, token) for conn, begin, end, token in intervals
+                         if conn == conns[i] and begin <= i < end]
+                if len(spans) != 1:
+                    error = 'lock lacks one proven active transaction'
+                    break
+                transactions.add(spans[0])
+                lock_pids.add(pids[i])
+            if len(transactions) != 1 or len(lock_pids) != 1:
+                error = 'locks span multiple transactions/connections/backends'
+        ck(f'{tag}_tx_identity', error is None, error or 'one proven transaction')
 
     tx_identity_ok(real, re_entries, 'real')
     tx_identity_ok(model, mo_entries, 'model')
@@ -741,6 +781,7 @@ def main():
                 missing, empty or truncated captures (P1-2/P1-B)."""
                 db = SessionLocal()
                 before = len(captured)
+                before_events = len(captured.tx_events)
                 error = None
                 try:
                     fn(db)
@@ -767,9 +808,7 @@ def main():
 
                 txe = [{'event': e.get('event'), 'conn': e.get('conn'),
                         'seq': e.get('seq') - before}
-                       for e in getattr(captured, 'tx_events', [])
-                       if isinstance(e.get('seq'), int)
-                       and before <= e.get('seq') <= after]
+                       for e in captured.tx_events[before_events:]]
                 return {'stmts': list(captured[before:after]),
                         'params': aligned('params'),
                         'conns': aligned('conns'),

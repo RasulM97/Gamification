@@ -59,15 +59,21 @@ def main():
                               text=True).stdout.strip()
 
     experiments = {}
+    corrupt_events = []
     for ev_file in sorted(run.rglob('events.jsonl')):
         rel_dir = ev_file.parent.relative_to(run)
         classification = None
         for line in ev_file.read_text(encoding='utf-8').splitlines():
             try:
                 r = json.loads(line)
-            except json.JSONDecodeError:
+                if not isinstance(r, dict) or not isinstance(r.get('kind'), str):
+                    raise ValueError('invalid event object')
+            except (ValueError, RecursionError):
+                corrupt_events.append(str(rel_dir))
                 continue
             if r.get('kind') == 'classification':
+                if not run_all.history.classification_valid(r):
+                    corrupt_events.append(str(rel_dir))
                 classification = {k: v for k, v in r.items()
                                   if k not in ('kind', 't_ms', 't_epoch')}
         key = str(rel_dir).replace('\\', '/')
@@ -107,17 +113,10 @@ def main():
     # never overwrite it into a pass.
     failed_segments = []
     audit = run / 'run_all_log.json'
-    if audit.is_file():
-        for line in audit.read_text(encoding='utf-8').splitlines():
-            try:
-                e = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if e.get('step') == 'run_failed':
-                failed_segments.append(
-                    {'failed': e.get('failed'),
-                     'skipped': e.get('skipped', []),
-                     't_epoch_end': e.get('t_epoch_end')})
+    for e in run_all.prior_failures(run):
+        failed_segments.append({'failed': e.get('failed'),
+                                'skipped': e.get('skipped', []),
+                                't_epoch_end': e.get('t_epoch_end')})
 
     # P1-1: independent verification — the collector derives failures from
     # the append-only execution journal and from the experiment evidence
@@ -138,14 +137,17 @@ def main():
     # failure evidence regardless of markers or journals. The original
     # halt stays visible in the rollup.
     audit_findings = run_all.audit_failures(run)
-    evidence_failures = []
+    evidence_failures = [{'experiment': e, 'corrupt_event': True}
+                         for e in sorted(set(corrupt_events))]
     for name in sorted(run_all.EXPERIMENTS):
         if (run / name / 'events.jsonl').is_file():
             insp = run_all.inspect_experiment(run, name)
-            if insp['invalid'] or insp['cleanup_failed']:
+            if (insp['invalid'] or insp['cleanup_failed']
+                    or insp['harness_errors']):
                 evidence_failures.append(
                     {'experiment': name, 'invalid': insp['invalid'],
-                     'cleanup_failed': insp['cleanup_failed']})
+                     'cleanup_failed': insp['cleanup_failed'],
+                     'harness_errors': insp['harness_errors']})
 
     failed = bool(failed_segments or journal_findings or audit_findings
                   or evidence_failures or invalid or unclassified)
@@ -154,6 +156,7 @@ def main():
 
     out = {
         'run_id': rid,
+        'invocation': os.environ.get('RA11_INVOCATION'),
         'collected_at_epoch': round(time.time(), 3),
         'git': {'head': git('rev-parse', 'HEAD'),
                 'status_short': git('status', '--short')},

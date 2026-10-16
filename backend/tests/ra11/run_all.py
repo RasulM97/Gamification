@@ -36,21 +36,8 @@ import lab  # noqa: E402
 
 PY = sys.executable
 
-# Mandatory gates, executed in this order BEFORE any experiment; the first
-# failure stops the suite (Gate A, targeted blocker 2).
-GATES = ('regression_tests.py', 'oracle_tests.py', 'smoke.py')
-
-EXPERIMENTS = {
-    'e1': 'e1_freeze.py',
-    'e1b': 'e1b_mechanism.py',
-    'e2': 'e2_upgrade.py',
-    'e3': 'e3_auth_pool.py',
-    'e4': 'e4_lock_order.py',
-    'e5': 'e5_commit_outcomes.py',
-    'e6': 'e6_orphans.py',
-    'e7': 'e7_races.py',
-    'e7r6': 'e7_r6.py',
-}
+import _history as history
+from _history import GATES, EXPERIMENTS
 
 
 # Durable, append-only failure marker step name (P1-A). Once recorded for a
@@ -77,120 +64,69 @@ def journal_append(run_dir, record):
 
 
 def journal_records(run_dir):
-    """All journal records for a run-id. A corrupt line is preserved as a
-    {'j': 'corrupt'} record — fail-closed: unreadable history is treated
-    as failure evidence, never skipped."""
-    path = Path(run_dir) / JOURNAL
-    out = []
-    if path.is_file():
-        for line in path.read_text(encoding='utf-8').splitlines():
-            try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                out.append({'j': 'corrupt', 'raw': line[:200]})
-    return out
+    return history.read_records(Path(run_dir) / JOURNAL, 'journal')
 
 
-def journal_failures(records, current_inv=None) -> list:
-    """Independently derive every failure finding from the journal alone.
-
-    Findings: corrupt journal line; an invocation that started but never
-    completed (parent crash); a step that started but never completed
-    (parent killed mid-step); any gate/experiment step with a nonzero
-    return code; any step whose recorded evidence inspection failed
-    (INVALID classification, harness error, failed cleanup, missing
-    classification); any invocation completed with status FAILED; and any
-    completed REFUSED invocation (P1-A round 6: a refusal caused by
-    invalid historical state stays permanently associated with the
-    run-id — the journal created BY a refusal never launders it).
-
-    `current_inv` (the invocation currently executing, passed to the
-    results collector via RA11_INVOCATION) is exempt from the
-    unfinished-* findings only — its completed-status and step-failure
-    findings still count."""
-    findings = []
-    inv_open, step_open = {}, {}
-    for r in records:
-        j = r.get('j')
-        if j == 'corrupt':
-            findings.append({'kind': 'corrupt_journal',
-                             'raw': r.get('raw')})
-        elif j == 'invocation_started':
-            inv_open[r.get('inv')] = r
-        elif j == 'step_started':
-            step_open[(r.get('inv'), r.get('step'))] = r
-        elif j == 'step_completed':
-            step_open.pop((r.get('inv'), r.get('step')), None)
-            step = r.get('step')
-            if step != '_results.py' and r.get('returncode') != 0:
-                findings.append({'kind': 'failed_step', 'step': step,
-                                 'returncode': r.get('returncode')})
-            insp = r.get('inspection') or {}
-            if (insp.get('invalid') or insp.get('cleanup_failed')
-                    or insp.get('harness_errors')
-                    or insp.get('missing_classification')):
-                findings.append({'kind': 'failed_inspection',
-                                 'step': step, 'inspection': insp})
-        elif j == 'invocation_completed':
-            inv_open.pop(r.get('inv'), None)
-            if r.get('status') in ('FAILED', 'REFUSED'):
-                findings.append({'kind': 'journal_' +
-                                 str(r.get('status')).lower(),
-                                 'inv': r.get('inv')})
-    for inv, r in inv_open.items():
-        if inv != current_inv:
-            findings.append({'kind': 'unfinished_invocation', 'inv': inv})
-    for (inv, step), r in step_open.items():
-        if inv != current_inv:
-            findings.append({'kind': 'unfinished_step', 'inv': inv,
-                             'step': step})
-    return findings
+def journal_failures(records, current_inv=None):
+    return history.journal_findings(records, current_inv=current_inv)
 
 
-def audit_failures(run_dir) -> list:
-    """Legacy audit inspection (P1-A round 6): halt records, refusals,
-    run_failed markers, and any gate/experiment step with a nonzero
-    return code are PERMANENT failure evidence — independent of whether a
-    journal exists and of whether an explicit run_failed marker was ever
-    written. Corrupt (unparseable) audit lines are failure evidence too:
-    unreadable history is never treated as healthy."""
-    path = Path(run_dir) / 'run_all_log.json'
-    out = []
-    if not path.is_file():
-        return out
-    for line in path.read_text(encoding='utf-8').splitlines():
-        try:
-            e = json.loads(line)
-        except json.JSONDecodeError:
-            out.append({'kind': 'corrupt_audit', 'raw': line[:200]})
-            continue
-        step = e.get('step')
-        if step in ('halt', 'refused', FAILURE_STEP):
-            out.append({'kind': f'audit_{step}',
-                        'failed': e.get('failed'),
-                        'tail': str(e.get('tail'))[:160]})
-        elif step in GATES or step in EXPERIMENTS:
-            if e.get('returncode') != 0:
-                out.append({'kind': 'audit_failed_step', 'step': step,
-                            'returncode': e.get('returncode')})
-    return out
+def audit_failures(run_dir):
+    return history.audit_findings(
+        history.read_records(Path(run_dir) / 'run_all_log.json', 'audit'),
+        journal_records(run_dir), current_inv=os.environ.get('RA11_INVOCATION'))
 
 
-def prior_failures(run_dir) -> list:
-    """All durable failure markers recorded by PREVIOUS invocations of this
-    run-id (the log is append-only; markers are never removed or
-    overwritten)."""
-    audit = Path(run_dir) / 'run_all_log.json'
-    out = []
-    if audit.is_file():
-        for line in audit.read_text(encoding='utf-8').splitlines():
-            try:
-                e = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if e.get('step') == FAILURE_STEP:
-                out.append(e)
-    return out
+def prior_failures(run_dir):
+    """Compatibility view; malformed history is handled by audit_failures."""
+    return [r for r in history.read_records(
+        Path(run_dir) / 'run_all_log.json', 'audit')
+        if isinstance(r, dict) and r.get('step') == FAILURE_STEP]
+
+
+def collected_status(path, rid, inv, rc):
+    """Bind a collector exit to its fresh, structurally valid results artifact.
+
+    A prior invocation's results.json is never evidence for this subprocess.
+    The classification must agree with inventory and failure rollups.
+    """
+    try:
+        data = json.loads(Path(path).read_text(encoding='utf-8'))
+        if not isinstance(data, dict):
+            return None
+        if data.get('run_id') != rid or data.get('invocation') != inv:
+            return None
+        status, roll = data.get('run_status'), data.get('rollup')
+        expected, experiments = data.get('expected_inventory'), data.get('experiments')
+        if (not isinstance(roll, dict) or not isinstance(expected, list)
+                or not expected or not all(isinstance(e, str) for e in expected)
+                or len(set(expected)) != len(expected)
+                or not isinstance(experiments, dict)):
+            return None
+        flags = ('missing', 'missing_classification', 'invalid', 'failed_segments',
+                 'journal_findings', 'audit_findings', 'evidence_failures')
+        if any(not isinstance(roll.get(k), list) for k in flags):
+            return None
+        if any(roll[k] for k in flags if k != 'missing'):
+            return None
+        missing = []
+        for name in expected:
+            c = experiments.get(name)
+            if not isinstance(c, dict):
+                return None
+            if c.get('missing') is True:
+                missing.append(name)
+            elif (not history.classification_valid(c)
+                  or c.get('harness_validity') not in ('VALID', 'INCONCLUSIVE')
+                  or c.get('missing_classification')):
+                return None
+        if missing != roll['missing']:
+            return None
+        if status != ('PARTIAL' if missing else 'COMPLETE'):
+            return None
+        return status if history.result_ok(rc, status) else None
+    except (OSError, ValueError, TypeError):
+        return None
 
 
 def halt_after_failure(returncode) -> bool:
@@ -208,12 +144,16 @@ def run_step(script, rid=None, timeout=900):
                            text=True, encoding='utf-8', errors='replace',
                            cwd=str(lab.REPO))
         out = (r.stdout or '') + (r.stderr or '')
-        return {'returncode': r.returncode,
-                'seconds': round(time.time() - t0, 1),
-                't_epoch_start': round(t0, 3),
-                't_epoch_end': round(time.time(), 3),
-                'output': out.strip(),
-                'tail': out.strip()[-400:]}
+        result = {'returncode': r.returncode,
+                  'seconds': round(time.time() - t0, 1),
+                  't_epoch_start': round(t0, 3),
+                  't_epoch_end': round(time.time(), 3),
+                  'output': out.strip(), 'tail': out.strip()[-400:]}
+        if script == '_results.py':
+            result['result_status'] = collected_status(
+                lab.OUT_ROOT / rid / 'results.json', rid,
+                os.environ.get('RA11_INVOCATION'), r.returncode)
+        return result
     except subprocess.TimeoutExpired:
         return {'returncode': None, 'seconds': round(time.time() - t0, 1),
                 't_epoch_start': round(t0, 3),
@@ -245,9 +185,12 @@ def inspect_experiment(run_dir, name) -> dict:
     events = []
     for line in ev_file.read_text(encoding='utf-8').splitlines():
         try:
-            events.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
+            r = json.loads(line)
+            if not isinstance(r, dict) or not isinstance(r.get('kind'), str):
+                raise ValueError('invalid event object')
+            events.append(r)
+        except (ValueError, RecursionError):
+            events.append({'kind': 'corrupt_event', 'harness_error': True})
     verified_ok_pids = {r.get('pid') for r in events
                         if r.get('kind') == 'app_stop_verified'
                         and r.get('ok') is True}
@@ -256,6 +199,8 @@ def inspect_experiment(run_dir, name) -> dict:
     harness_errors = []
     for r in events:
         if r.get('kind') == 'classification':
+            if not history.classification_valid(r):
+                harness_errors.append('malformed_classification')
             out['classification'] = {
                 k: r.get(k) for k in ('harness_validity',
                                       'product_observation', 'causal_claim')}
@@ -304,7 +249,7 @@ def execute(rid, only, run_step_fn=None, reuse_gates=False) -> dict:
                'coll_rc': None}
 
     def record(step, result):
-        entry = {'step': step, 'harness_sha256': harness_sha,
+        entry = {'step': step, 'inv': inv, 'harness_sha256': harness_sha,
                  **{k: v for k, v in result.items() if k != 'output'}}
         with open(audit, 'a', encoding='utf-8') as f:
             f.write(json.dumps(entry) + '\n')
@@ -524,19 +469,21 @@ def execute(rid, only, run_step_fn=None, reuse_gates=False) -> dict:
         journal_append(run, {'j': 'step_completed', 'inv': inv,
                              'step': '_results.py',
                              'returncode': coll['returncode'],
+                             'result_status': coll.get('result_status'),
                              'seconds': coll['seconds'],
                              'inspection': None,
                              't_epoch': round(time.time(), 3)})
         record('_results.py', coll)
-        summary['coll_rc'] = coll['returncode']
+        summary['coll_rc'] = (coll['returncode'] if history.result_ok(
+            coll['returncode'], coll.get('result_status')) else 1)
         print(f"[results] rc={coll['returncode']} {coll['seconds']}s")
         print(coll['tail'])
         # _results exit codes: 0 COMPLETE, 3 clean PARTIAL, else FAILED.
         if summary['gate_failure'] or summary['halted']:
             status = 'FAILED'
-        elif coll['returncode'] == 0:
+        elif summary['coll_rc'] == 0:
             status = 'COMPLETE'
-        elif coll['returncode'] == 3:
+        elif summary['coll_rc'] == 3:
             status = 'PARTIAL'
         else:
             status = 'FAILED'
