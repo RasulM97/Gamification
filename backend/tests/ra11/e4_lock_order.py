@@ -176,30 +176,90 @@ def _is_ordered_subsequence(sub, full) -> bool:
     return True
 
 
+def _resolve_binds(stmt, params, table):
+    """Resolve `table.col = <bind>` predicates to their BOUND values.
+
+    Supports the placeholder forms emitted by the pinned SQLAlchemy +
+    psycopg2 stack (pyformat `%(name)s` and named `:name`). Returns None
+    when any found predicate's bind cannot be resolved — callers fail
+    closed. Set membership over the raw parameter dict is NOT bind
+    resolution (a swapped company/user pair would pass it)."""
+    import re
+    if not isinstance(params, dict) or '__bind_error__' in params:
+        return None
+    out = {}
+    for m in re.finditer(rf'{table}\.(\w+)\s*=\s*'
+                         rf'(?:%\((\w+)\)s|:([A-Za-z_]\w*))',
+                         stmt, re.IGNORECASE):
+        name = m.group(2) or m.group(3)
+        if name not in params:
+            return None
+        out[m.group(1).lower()] = params[name]
+    return out
+
+
+def _advisory_key(stmt, params):
+    """Bound key of a hashtextextended(:key,0) advisory lock call, or
+    None when unresolvable (fail closed)."""
+    import re
+    if not isinstance(params, dict) or '__bind_error__' in params:
+        return None
+    m = re.search(r'hashtextextended\(\s*'
+                  r'(?:%\((\w+)\)s|:([A-Za-z_]\w*))', stmt, re.IGNORECASE)
+    if not m:
+        return None
+    return params.get(m.group(1) or m.group(2))
+
+
+def _lock_entries(tr):
+    """Aligned lock view of a capture: [{'clause', 'stmt', 'params',
+    'stmt_index'}] for every lock-acquisition statement."""
+    stmts = tr.get('stmts') or []
+    ps = tr.get('params') or []
+    out = []
+    for i, s in enumerate(stmts):
+        if 'pg_advisory' in s or ' FOR ' in s.upper():
+            cl = lock_clauses([s])
+            out.append({'clause': cl[0] if cl else None, 'stmt': s,
+                        'params': ps[i] if i < len(ps) else None,
+                        'stmt_index': i})
+    return out
+
+
 def verify_claim_capture(real, model, reductions, *, actor_id, company,
-                         company_trace=None) -> dict:
-    """Fail-closed E4 capture verification (P1-2).
+                         company_trace=None, real_task_id=None,
+                         model_task_id=None, company_task_id=None,
+                         capability='TASK_LITE') -> dict:
+    """Fail-closed E4 capture verification (P1-2 + P1-B).
 
     `real` / `model` / `company_trace` are capture dicts:
-    {'stmts': [SQL text], 'params': [bound parameter dicts aligned with
-    stmts], 'error': None or str}. Equivalence can be accepted ONLY when:
+    {'stmts', 'params', 'conns', 'pids', 'tx_events', 'error'}.
+    Equivalence can be accepted ONLY when:
 
-    - both captures (and the company capture, when given) completed
-      successfully — no capture exception, no silent rollback failure;
-    - both traces are non-empty and contain the complete expected lock
-      sequence: ADVISORY_X first, the Task row FOR UPDATE, the User row
-      locks, and scoped FOR SHARE strictly before FOR NO KEY UPDATE;
-    - every lock acquisition in a trace belongs to ONE transaction (no
-      COMMIT/ROLLBACK interleaved between lock statements);
+    - every capture completed successfully — no capture exception, no
+      silent rollback failure — and is non-empty;
+    - both traces contain the complete expected lock sequence: ADVISORY_X
+      first, Task FOR UPDATE, User row locks, scoped FOR SHARE strictly
+      before FOR NO KEY UPDATE; the model trace equals CLAIM_SQL_ORDER
+      exactly;
+    - every lock's identity is verified from RESOLVED BINDS: org
+      EXCLUSIVE advisory key, TASK_LITE capability SHARED advisory key,
+      Task FOR UPDATE against the expected task id + company, User
+      FOR SHARE and FOR NO KEY UPDATE against the expected actor +
+      company (role-resolved company/id binds, never set membership);
+    - every lock statement in a trace ran on ONE recorded connection and
+      ONE recorded backend PID, with a recorded begin event and NO
+      recorded commit/rollback event between the first and last lock —
+      transaction continuity is proven from lifecycle events, never
+      inferred from absent COMMIT text (the textual check remains only
+      as a backstop);
     - the model is an ordered subsequence of the real trace and the
       declared reductions cover the unmatched real locks with EXACT
-      counts (no over- or under-declaration);
-    - every reduction refers to the correct lock key (org advisory key),
-      row identity and participant (actor user id + company), verified
-      from the BOUND PARAMETERS, never from placeholder text;
+      counts, every reduction targeting the same lock identity (org key
+      / actor row) within the same transaction;
     - the COMPANY path remains explicitly distinguished (no FOR SHARE).
 
-    A missing, empty, truncated or errored capture yields
+    Any missing, malformed or contradictory identity evidence yields
     equivalent=False — the experiment must then classify INVALID or
     INCONCLUSIVE, never equivalent."""
     from collections import Counter
@@ -209,33 +269,72 @@ def verify_claim_capture(real, model, reductions, *, actor_id, company,
         checks.append({'check': name, 'ok': bool(ok),
                        'detail': str(detail)[:300]})
 
-    ck('real_capture_ok', real.get('error') is None,
-       real.get('error'))
-    ck('model_capture_ok', model.get('error') is None,
-       model.get('error'))
+    org_key = f'cve-organization:{company}'
+    cap_key = f'cve-capability:{company}:{capability}'
+
+    ck('real_capture_ok', real.get('error') is None, real.get('error'))
+    ck('model_capture_ok', model.get('error') is None, model.get('error'))
     if company_trace is not None:
         ck('company_capture_ok', company_trace.get('error') is None,
            company_trace.get('error'))
     ck('real_nonempty', bool(real.get('stmts')))
     ck('model_nonempty', bool(model.get('stmts')))
 
-    rc = lock_clauses(real.get('stmts') or [])
-    mc = lock_clauses(model.get('stmts') or [])
+    re_entries = _lock_entries(real)
+    mo_entries = _lock_entries(model)
+    rc = [e['clause'] for e in re_entries]
+    mc = [e['clause'] for e in mo_entries]
 
-    # clause index -> statement index (lock_clauses filters the trace;
-    # params are aligned with STATEMENTS, not with clauses)
-    real_stmts = real.get('stmts') or []
-    real_lock_idx = [i for i, s in enumerate(real_stmts)
-                     if 'pg_advisory' in s or ' FOR ' in s.upper()]
+    # ── connection / transaction identity (recorded, never inferred) ──
+    def tx_identity_ok(tr, entries, tag):
+        stmts = tr.get('stmts') or []
+        if not entries:
+            ck(f'{tag}_tx_identity', False, 'no lock statements')
+            return
+        conns, pids = tr.get('conns'), tr.get('pids')
+        if (not conns or not pids or len(conns) < len(stmts)
+                or len(pids) < len(stmts)):
+            ck(f'{tag}_tx_identity', False,
+               'missing connection/backend identity evidence')
+            return
+        cs = {conns[e['stmt_index']] for e in entries}
+        ps = {pids[e['stmt_index']] for e in entries}
+        first = min(e['stmt_index'] for e in entries)
+        last = max(e['stmt_index'] for e in entries)
+        evs = tr.get('tx_events')
+        begin_ok = (isinstance(evs, list) and any(
+            e.get('event') == 'begin' and e.get('conn') in cs
+            and isinstance(e.get('seq'), int) and e['seq'] <= first
+            for e in evs))
+        boundary = (not isinstance(evs, list)) or any(
+            e.get('event') in ('commit', 'rollback')
+            and e.get('conn') in cs
+            and isinstance(e.get('seq'), int)
+            and first < e['seq'] <= last for e in evs)
+        ck(f'{tag}_tx_identity',
+           len(cs) == 1 and None not in cs
+           and len(ps) == 1 and None not in ps
+           and begin_ok and not boundary,
+           f'conns={len(cs)} pids={ps} begin_recorded={begin_ok} '
+           f'mid_trace_boundary={boundary}')
 
-    def real_param(clause_i):
-        if clause_i >= len(real_lock_idx):
-            return {}
-        si = real_lock_idx[clause_i]
-        ps = real.get('params') or []
-        return ps[si] if si < len(ps) else {}
+    tx_identity_ok(real, re_entries, 'real')
+    tx_identity_ok(model, mo_entries, 'model')
 
-    # complete expected lock-acquisition sequence in the REAL scoped trace
+    # textual COMMIT/ROLLBACK backstop (never the sole evidence)
+    def no_textual_boundary(tr, entries):
+        stmts = tr.get('stmts') or []
+        if not entries:
+            return False
+        last = max(e['stmt_index'] for e in entries)
+        return not any(s.strip().upper() in ('COMMIT', 'ROLLBACK')
+                       for i, s in enumerate(stmts) if i < last)
+
+    ck('real_no_textual_tx_boundary', no_textual_boundary(real, re_entries))
+    ck('model_no_textual_tx_boundary',
+       no_textual_boundary(model, mo_entries))
+
+    # ── complete expected lock sequence ────────────────────────────────
     ck('real_advisory_first', bool(rc) and rc[0] == 'ADVISORY_X', rc[:3])
     ck('real_task_row_lock', 'FOR_UPDATE:tasks' in rc, rc)
     ck('real_user_row_locks',
@@ -247,25 +346,61 @@ def verify_claim_capture(real, model, reductions, *, actor_id, company,
     else:
         ck('scoped_share_before_nku', False,
            'one or both User row locks absent from the real trace')
-    ck('model_complete_order',
-       _is_ordered_subsequence(CLAIM_SQL_ORDER, mc)
-       and all(c in mc for c in CLAIM_SQL_ORDER), mc)
+    ck('model_exact_order', mc == CLAIM_SQL_ORDER,
+       f'model={mc} expected={CLAIM_SQL_ORDER}')
 
-    # single-transaction: no COMMIT/ROLLBACK interleaved between locks
-    def single_tx(tr):
-        stmts = tr.get('stmts') or []
-        lock_idx = [i for i, s in enumerate(stmts)
-                    if 'pg_advisory' in s or ' FOR ' in s.upper()]
-        if not lock_idx:
+    # ── bind-level lock identity ───────────────────────────────────────
+    def adv_ok(entry, key):
+        return (entry is not None
+                and _advisory_key(entry['stmt'], entry['params']) == key)
+
+    def row_ok(entry, table, expected):
+        if entry is None:
             return False
-        last = max(lock_idx)
-        return not any(s.strip().upper() in ('COMMIT', 'ROLLBACK')
-                       for i, s in enumerate(stmts) if i < last)
+        b = _resolve_binds(entry['stmt'], entry['params'], table)
+        return b is not None and all(b.get(k) == v
+                                     for k, v in expected.items())
 
-    ck('real_single_transaction', single_tx(real))
-    ck('model_single_transaction', single_tx(model))
+    def first(entries, clause):
+        return next((e for e in entries if e['clause'] == clause), None)
 
-    # ordered subsequence at index level + EXACT reduction counts
+    ck('real_advisory_x_org_key',
+       adv_ok(first(re_entries, 'ADVISORY_X'), org_key),
+       first(re_entries, 'ADVISORY_X'))
+    ck('real_capability_shared_key',
+       adv_ok(first(re_entries, 'ADVISORY_S'), cap_key),
+       first(re_entries, 'ADVISORY_S'))
+    ck('real_task_bind',
+       real_task_id is not None
+       and row_ok(first(re_entries, 'FOR_UPDATE:tasks'), 'tasks',
+                  {'company_id': company, 'id': real_task_id}),
+       f'expected task {real_task_id!r} in {company!r}')
+    ck('real_nku_bind',
+       row_ok(first(re_entries, 'FOR_NO_KEY_UPDATE:users'), 'users',
+              {'company_id': company, 'id': actor_id}),
+       f'expected actor {actor_id!r} in {company!r}')
+
+    ck('model_advisory_x_org_key',
+       adv_ok(first(mo_entries, 'ADVISORY_X'), org_key),
+       first(mo_entries, 'ADVISORY_X'))
+    ck('model_capability_shared_key',
+       adv_ok(first(mo_entries, 'ADVISORY_S'), cap_key),
+       first(mo_entries, 'ADVISORY_S'))
+    ck('model_task_bind',
+       model_task_id is not None
+       and row_ok(first(mo_entries, 'FOR_UPDATE:tasks'), 'tasks',
+                  {'company_id': company, 'id': model_task_id}),
+       f'expected task {model_task_id!r} in {company!r}')
+    ck('model_for_share_bind',
+       row_ok(first(mo_entries, 'FOR_SHARE:users'), 'users',
+              {'company_id': company, 'id': actor_id}),
+       f'expected actor {actor_id!r} in {company!r}')
+    ck('model_nku_bind',
+       row_ok(first(mo_entries, 'FOR_NO_KEY_UPDATE:users'), 'users',
+              {'company_id': company, 'id': actor_id}),
+       f'expected actor {actor_id!r} in {company!r}')
+
+    # ── ordered subsequence + EXACT reduction counts ───────────────────
     matched, ri, order_ok = set(), 0, True
     for m in mc:
         found = -1
@@ -288,49 +423,59 @@ def verify_claim_capture(real, model, reductions, *, actor_id, company,
     ck('reductions_exact_counts', unmatched == declared,
        f'unmatched={dict(unmatched)} declared={dict(declared)}')
 
-    # reduction identity: correct lock key, row identity, participant —
-    # from the BOUND PARAMETERS
-    org_key = f'cve-organization:{company}'
+    # ── reduction identity: same lock identity, same transaction ───────
     id_problems = []
     for j in unmatched_idx:
-        clause, p = rc[j], real_param(j)
+        entry = re_entries[j] if j < len(re_entries) else None
+        clause = rc[j]
         if clause == 'ADVISORY_S':
-            if p.get('key') != org_key:
+            if not adv_ok(entry, org_key):
                 id_problems.append(
-                    f'real[{j}] ADVISORY_S key={p.get("key")!r} '
-                    f'(expected {org_key!r})')
+                    f'real[{j}] ADVISORY_S not bound to {org_key!r}: '
+                    f'{entry and entry["params"]}')
         elif clause == 'FOR_SHARE:users':
-            vals = {str(v) for v in p.values()}
-            if actor_id not in vals or company not in vals:
+            if not row_ok(entry, 'users',
+                          {'company_id': company, 'id': actor_id}):
                 id_problems.append(
-                    f'real[{j}] FOR_SHARE params={p} (expected actor '
-                    f'{actor_id!r} in {company!r})')
+                    f'real[{j}] FOR_SHARE not bound to actor '
+                    f'{actor_id!r}/{company!r}: '
+                    f'{entry and entry["params"]}')
         else:
             id_problems.append(
                 f'real[{j}] unmatched {clause} has no declared identity '
                 'rule')
     ck('reduction_identity', not id_problems, id_problems)
-    ax = next((i for i, c in enumerate(rc) if c == 'ADVISORY_X'), None)
-    ck('advisory_x_org_key',
-       ax is not None and real_param(ax).get('key') == org_key,
-       real_param(ax) if ax is not None else 'no ADVISORY_X')
-    fs_matched = [i for i, c in enumerate(rc)
-                  if c == 'FOR_SHARE:users' and i in matched]
+    fs_matched = [re_entries[i] for i in range(len(rc))
+                  if rc[i] == 'FOR_SHARE:users' and i in matched]
     ck('matched_for_share_actor',
        bool(fs_matched) and all(
-           actor_id in {str(v) for v in real_param(i).values()}
-           for i in fs_matched),
-       [real_param(i) for i in fs_matched])
+           row_ok(e, 'users', {'company_id': company, 'id': actor_id})
+           for e in fs_matched),
+       [e['params'] for e in fs_matched])
 
-    # scoped/company distinction
+    # ── scoped/company distinction ─────────────────────────────────────
     cc = None
     if company_trace is not None:
-        cc = lock_clauses(company_trace.get('stmts') or [])
+        co_entries = _lock_entries(company_trace)
+        cc = [e['clause'] for e in co_entries]
         ck('company_nonempty', bool(company_trace.get('stmts')))
         ck('company_for_share_absent', 'FOR_SHARE:users' not in cc, cc)
         ck('company_row_locks',
            'FOR_UPDATE:tasks' in cc and 'FOR_NO_KEY_UPDATE:users' in cc,
            cc)
+        ck('company_advisory_x_org_key',
+           adv_ok(first(co_entries, 'ADVISORY_X'), org_key))
+        ck('company_capability_shared_key',
+           adv_ok(first(co_entries, 'ADVISORY_S'), cap_key))
+        ck('company_task_bind',
+           company_task_id is not None
+           and row_ok(first(co_entries, 'FOR_UPDATE:tasks'), 'tasks',
+                      {'company_id': company, 'id': company_task_id}),
+           f'expected task {company_task_id!r} in {company!r}')
+        ck('company_nku_bind',
+           row_ok(first(co_entries, 'FOR_NO_KEY_UPDATE:users'), 'users',
+                  {'company_id': company, 'id': actor_id}))
+        tx_identity_ok(company_trace, co_entries, 'company')
 
     equivalent = all(c['ok'] for c in checks)
     return {'equivalent': equivalent, 'checks': checks,
@@ -589,10 +734,11 @@ def main():
             from app.task_services import claim_task as real_claim
 
             def capture(fn):
-                """Run fn in ONE captured session. Returns (stmts, params,
-                error). Any capture exception — and any SILENT ROLLBACK
-                FAILURE — is returned as error; the verifier rejects
-                errored, missing, empty or truncated captures (P1-2)."""
+                """Run fn in ONE captured session. Returns a full trace
+                dict {stmts, params, conns, pids, tx_events, error}.
+                Any capture exception — and any SILENT ROLLBACK FAILURE —
+                is returned as error; the verifier rejects errored,
+                missing, empty or truncated captures (P1-2/P1-B)."""
                 db = SessionLocal()
                 before = len(captured)
                 error = None
@@ -613,17 +759,31 @@ def main():
                                   f'{type(rb).__name__} {str(rb)[:160]}')
                 finally:
                     db.close()
-                params = getattr(captured, 'params', None)
-                return (list(captured[before:]),
-                        list(params[before:]) if params is not None else [],
-                        error)
+                after = len(captured)
 
-            scoped_stmts, scoped_params, scoped_err = capture(
+                def aligned(name):
+                    seq = getattr(captured, name, [])
+                    return list(seq[before:after])
+
+                txe = [{'event': e.get('event'), 'conn': e.get('conn'),
+                        'seq': e.get('seq') - before}
+                       for e in getattr(captured, 'tx_events', [])
+                       if isinstance(e.get('seq'), int)
+                       and before <= e.get('seq') <= after]
+                return {'stmts': list(captured[before:after]),
+                        'params': aligned('params'),
+                        'conns': aligned('conns'),
+                        'pids': aligned('pids'),
+                        'tx_events': txe, 'error': error}
+
+            real_task = next_task()
+            scoped = capture(
                 lambda db: real_claim(db, db.get(User, 'u-priya'),
-                                      next_task()))
-            model_stmts, model_params, model_err = capture(
+                                      real_task))
+            model_task = next_task()
+            modelt = capture(
                 lambda db: (lambda s: (s['first'](db), s['second'](db)))(
-                    claim_seq(next_task())))
+                    claim_seq(model_task)))
 
             # company-scope fixture + capture (P1-B distinction)
             with SessionLocal() as db:
@@ -637,21 +797,18 @@ def main():
                             created_at=now, updated_at=now,
                             created_by='u-dana', team_id=None))
                 db.commit()
-            company_stmts, company_params, company_err = capture(
+            companyt = capture(
                 lambda db: real_claim(db, db.get(User, 'u-priya'),
                                       't-e4-company-scope'))
 
             report = verify_claim_capture(
-                {'stmts': scoped_stmts, 'params': scoped_params,
-                 'error': scoped_err},
-                {'stmts': model_stmts, 'params': model_params,
-                 'error': model_err},
-                CLAIM_SQL_REDUCTIONS,
+                scoped, modelt, CLAIM_SQL_REDUCTIONS,
                 actor_id='u-priya', company='co-aster',
-                company_trace={'stmts': company_stmts,
-                               'params': company_params,
-                               'error': company_err})
+                company_trace=companyt,
+                real_task_id=real_task, model_task_id=model_task,
+                company_task_id='t-e4-company-scope')
             ev.event('claim_model_equivalence', scope='TEAM',
+                     real_task_id=real_task, model_task_id=model_task,
                      real_lock_clauses=report['real_lock_clauses'],
                      model_lock_clauses=report['model_lock_clauses'],
                      declared_reductions=CLAIM_SQL_REDUCTIONS,
@@ -661,11 +818,13 @@ def main():
                      undisclosed_real_locks=report['undisclosed_real_locks'],
                      note='model verified against the REAL claim_task '
                           'emitted SQL with fail-closed capture checks '
-                          '(P1-2): errored/empty/truncated/multi-'
-                          'transaction captures and wrong reduction '
-                          'identities are never equivalent; reductions '
-                          'are declared, counted exactly, and identity-'
-                          'verified from bound parameters')
+                          '(P1-2/P1-B): errored/empty/truncated captures, '
+                          'unresolvable binds, wrong lock keys or row '
+                          'identities, mixed connection/backend identity, '
+                          'and recorded mid-trace transaction boundaries '
+                          'are never equivalent; reductions are declared, '
+                          'counted exactly, and identity-verified from '
+                          'resolved binds within one recorded transaction')
             ev.event('claim_sql_order_company_scope',
                      scope='COMPANY',
                      real_lock_clauses=report['company_lock_clauses'],

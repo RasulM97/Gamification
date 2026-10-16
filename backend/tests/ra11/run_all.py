@@ -99,7 +99,10 @@ def journal_failures(records, current_inv=None) -> list:
     (parent killed mid-step); any gate/experiment step with a nonzero
     return code; any step whose recorded evidence inspection failed
     (INVALID classification, harness error, failed cleanup, missing
-    classification); any invocation completed with status FAILED.
+    classification); any invocation completed with status FAILED; and any
+    completed REFUSED invocation (P1-A round 6: a refusal caused by
+    invalid historical state stays permanently associated with the
+    run-id — the journal created BY a refusal never launders it).
 
     `current_inv` (the invocation currently executing, passed to the
     results collector via RA11_INVOCATION) is exempt from the
@@ -130,8 +133,9 @@ def journal_failures(records, current_inv=None) -> list:
                                  'step': step, 'inspection': insp})
         elif j == 'invocation_completed':
             inv_open.pop(r.get('inv'), None)
-            if r.get('status') == 'FAILED':
-                findings.append({'kind': 'failed_invocation',
+            if r.get('status') in ('FAILED', 'REFUSED'):
+                findings.append({'kind': 'journal_' +
+                                 str(r.get('status')).lower(),
                                  'inv': r.get('inv')})
     for inv, r in inv_open.items():
         if inv != current_inv:
@@ -141,6 +145,35 @@ def journal_failures(records, current_inv=None) -> list:
             findings.append({'kind': 'unfinished_step', 'inv': inv,
                              'step': step})
     return findings
+
+
+def audit_failures(run_dir) -> list:
+    """Legacy audit inspection (P1-A round 6): halt records, refusals,
+    run_failed markers, and any gate/experiment step with a nonzero
+    return code are PERMANENT failure evidence — independent of whether a
+    journal exists and of whether an explicit run_failed marker was ever
+    written. Corrupt (unparseable) audit lines are failure evidence too:
+    unreadable history is never treated as healthy."""
+    path = Path(run_dir) / 'run_all_log.json'
+    out = []
+    if not path.is_file():
+        return out
+    for line in path.read_text(encoding='utf-8').splitlines():
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            out.append({'kind': 'corrupt_audit', 'raw': line[:200]})
+            continue
+        step = e.get('step')
+        if step in ('halt', 'refused', FAILURE_STEP):
+            out.append({'kind': f'audit_{step}',
+                        'failed': e.get('failed'),
+                        'tail': str(e.get('tail'))[:160]})
+        elif step in GATES or step in EXPERIMENTS:
+            if e.get('returncode') != 0:
+                out.append({'kind': 'audit_failed_step', 'step': step,
+                            'returncode': e.get('returncode')})
+    return out
 
 
 def prior_failures(run_dir) -> list:
@@ -287,7 +320,7 @@ def execute(rid, only, run_step_fn=None, reuse_gates=False) -> dict:
     # crash cannot be excluded). Continuation NEVER depends solely on the
     # explicit failure marker.
     jfindings = journal_failures(journal_records(run))
-    prior = prior_failures(run)
+    afindings = audit_failures(run)
     # Evidence scan: experiments scheduled in THIS invocation are excluded
     # — their evidence is (re)produced by the upcoming step and inspected
     # immediately after it; stale bad evidence for them is still caught by
@@ -323,28 +356,30 @@ def execute(rid, only, run_step_fn=None, reuse_gates=False) -> dict:
         inv_finished = True
 
     try:
-        if jfindings or prior or evidence_bad:
+        if jfindings or afindings or evidence_bad:
             summary['refused'] = True
             reasons = []
             if jfindings:
                 reasons.append(f'journal findings: '
                                f'{[f["kind"] for f in jfindings]}')
-            if prior:
-                reasons.append(f'{len(prior)} run_failed marker(s)')
+            if afindings:
+                reasons.append(f'audit findings: '
+                               f'{[f["kind"] for f in afindings]}')
             if evidence_bad:
                 reasons.append(f'evidence failures: {evidence_bad}')
             summary['refusal_reason'] = (
                 f"run-id '{rid}' has a failed or unfinished execution "
                 f"history ({'; '.join(reasons)}) — continuation is refused "
-                'and gate reuse cannot override it; use a fresh run-id '
-                'for retries')
-            finish('REFUSED', findings=[f['kind'] for f in jfindings])
+                'permanently for this run-id and gate reuse cannot '
+                'override it; use a fresh run-id for retries')
+            finish('REFUSED', findings=[f['kind'] for f in jfindings]
+                   + [f['kind'] for f in afindings])
             record('refused', {'returncode': 2, 'seconds': 0,
                                't_epoch_start': round(time.time(), 3),
                                't_epoch_end': round(time.time(), 3),
                                'tail': summary['refusal_reason'],
                                'journal_findings': len(jfindings),
-                               'prior_failures': len(prior),
+                               'audit_findings': len(afindings),
                                'evidence_failures': len(evidence_bad)})
             print('REFUSED:', summary['refusal_reason'])
             return summary

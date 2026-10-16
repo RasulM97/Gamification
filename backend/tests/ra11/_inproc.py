@@ -67,27 +67,67 @@ def setup(base_dir: Path):
 
 
 class SqlCapture(list):
-    """Captured statement strings, with an aligned `.params` list of the
-    bound parameter dicts (P1-2: reduction identity — lock key and row
-    identity — is only verifiable from the bound parameters, never from
-    the placeholder statement text). Slicing yields plain statement
-    lists, so existing consumers are unaffected."""
+    """Captured statement strings with aligned metadata (P1-B):
+
+    .params     — bound parameter dicts per statement (lock/row identity
+                  is only verifiable from binds, never placeholder text)
+    .conns      — id() of the SQLAlchemy Connection per statement
+    .pids       — PostgreSQL backend PID per statement (None if the
+                  driver does not expose it -> verification fails closed)
+    .tx_events  — engine begin/commit/rollback lifecycle events as
+                  {'event', 'conn', 'seq'} where seq is the number of
+                  statements captured when the event fired
+
+    Slicing yields plain statement lists, so existing consumers are
+    unaffected."""
 
 
 def sql_capture(engine, ev, tag: str):
-    """Attach a test-only listener recording emitted SQL text (labeled).
-    Returns a SqlCapture: a list of statement strings plus an aligned
-    `.params` list of bound parameter dicts."""
+    """Attach a test-only listener recording emitted SQL plus connection,
+    backend-PID and transaction lifecycle evidence (labeled). Returns a
+    SqlCapture."""
     from sqlalchemy import event
     captured = SqlCapture()
-    params = []
+    params, conns, pids, tx_events = [], [], [], []
+
+    def _backend_pid(conn):
+        try:
+            dbapi = getattr(conn.connection, 'dbapi_connection', None)
+            return dbapi.get_backend_pid() if dbapi is not None else None
+        except Exception:
+            return None
 
     @event.listens_for(engine, 'before_cursor_execute')
     def _cap(conn, cursor, statement, parameters, context, executemany):
         captured.append(statement)
-        params.append(dict(parameters) if parameters else {})
+        try:
+            params.append(dict(parameters) if parameters else {})
+        except (TypeError, ValueError):
+            params.append({'__bind_error__': repr(parameters)[:100]})
+        conns.append(id(conn))
+        pids.append(_backend_pid(conn))
+
+    @event.listens_for(engine, 'begin')
+    def _begin(conn):
+        tx_events.append({'event': 'begin', 'conn': id(conn),
+                          'seq': len(captured)})
+
+    @event.listens_for(engine, 'commit')
+    def _commit(conn):
+        tx_events.append({'event': 'commit', 'conn': id(conn),
+                          'seq': len(captured)})
+
+    @event.listens_for(engine, 'rollback')
+    def _rollback(conn):
+        tx_events.append({'event': 'rollback', 'conn': id(conn),
+                          'seq': len(captured)})
+
     captured.params = params
+    captured.conns = conns
+    captured.pids = pids
+    captured.tx_events = tx_events
 
     ev.event('instrumentation', instrument='sql_capture', tag=tag,
-             note='test-only before_cursor_execute listener; no code change')
+             note='test-only before_cursor_execute + transaction '
+                  'lifecycle listener; no code change')
     return captured

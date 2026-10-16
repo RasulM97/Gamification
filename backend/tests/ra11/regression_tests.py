@@ -1643,9 +1643,19 @@ S_USER_NKU = ("SELECT users.id, users.max_active_tasks FROM users "
 S_COMMIT = ("COMMIT", {})
 
 
-def trace24(*pairs, error=None):
+def trace24(*pairs, error=None, conns=None, tx_events=None, pids=None):
+    """Capture dict fixture. Post-P1-B the verifier also requires
+    per-statement connection identity (conns), backend identifiers (pids)
+    and transaction lifecycle events (tx_events) — a trace without them
+    is missing identity evidence and must be rejected (fail closed)."""
+    n = len(pairs)
     return {'stmts': [s for s, _ in pairs],
-            'params': [p for _, p in pairs], 'error': error}
+            'params': [p for _, p in pairs], 'error': error,
+            'conns': conns if conns is not None else ['c1'] * n,
+            'pids': pids if pids is not None else [4242] * n,
+            'tx_events': (tx_events if tx_events is not None
+                          else [{'event': 'begin', 'conn': 'c1',
+                                 'seq': 0}])}
 
 
 REAL_FULL = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
@@ -1721,7 +1731,13 @@ if callable(_vc) and _red is not None:
     check('R24h NEW: COMMIT interleaved between locks (multi-transaction '
           'trace) is rejected', r.get('equivalent') is False, str(r)[:200])
 
-    r = _vc(REAL_FULL, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW)
+    try:
+        r = _vc(REAL_FULL, MODEL_FULL, _red, company_trace=COMPANY_FULL,
+                real_task_id='t-e4-000', model_task_id='t-e4-000',
+                company_task_id='t-e4-000', **KW)
+    except TypeError:
+        # pre-P1-B signature without task identity: cannot pass
+        r = {'equivalent': False, 'note': 'old signature lacks task ids'}
     check('R24i NEW positive: faithful complete captures with declared '
           'reductions verify equivalent', r.get('equivalent') is True,
           str(r)[:200])
@@ -1742,6 +1758,291 @@ else:
                'R24h NEW: interleaved COMMIT rejected',
                'R24i NEW positive: faithful captures verify',
                'R24j NEW: company FOR SHARE rejected'):
+        check(_t, False)
+
+# ══ R25 — P1-B: E4 complete lock and transaction identity ══════════════════
+# The reviewer's mutations against verify_claim_capture @d0fdb53. R25b–h
+# use the OLD keyword set so they execute the OLD verifier behaviorally
+# (fail-first); the corrected verifier rejects every mutation.
+
+def legacy_model_binds_ignored(model_params):
+    """verify_claim_capture @d0fdb53: the MODEL trace's bound parameters
+    were never inspected at all — stripping every model bind still
+    compared equivalent=true."""
+    return {'equivalent': True}  # params never read
+
+
+check('R25a OLD defect: model-trace binds never inspected (stripped '
+      'params still equivalent)',
+      legacy_model_binds_ignored([]).get('equivalent') is True,
+      '(demonstrates the reviewed defect)')
+
+if callable(_vc) and _red is not None:
+    KW25 = dict(actor_id='u-priya', company='co-aster')
+
+    # 1. remove every model parameter
+    stripped = dict(MODEL_FULL)
+    stripped['params'] = [{} for _ in stripped['stmts']]
+    r = _vc(REAL_FULL, stripped, _red, company_trace=COMPANY_FULL, **KW25)
+    check('R25b NEW: model trace with ALL binds removed is rejected',
+          r.get('equivalent') is False, str(r)[:160])
+
+    # 2. change the capability key (matched ADVISORY_S in both traces)
+    bad_cap = (S_ADV_S_CAP[0], {'key': 'cve-capability:co-aster:TASK_HEAVY'})
+    real_bc = trace24(S_ADV_X_ORG, bad_cap, S_TASK_U, S_ADV_S_ORG,
+                      S_USER_S, S_ADV_S_ORG, S_USER_S, S_USER_NKU, S_COMMIT)
+    model_bc = trace24(S_ADV_X_ORG, bad_cap, S_TASK_U, S_USER_S,
+                       S_USER_NKU)
+    r = _vc(real_bc, model_bc, _red, company_trace=COMPANY_FULL, **KW25)
+    check('R25c NEW: wrong capability advisory key is rejected',
+          r.get('equivalent') is False, str(r)[:160])
+
+    # 3. swap company and user predicate binds on FOR SHARE
+    swapped = (S_USER_S[0], {'company_id_1': 'u-priya',
+                             'id_1': 'co-aster'})
+    real_sw = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
+                      swapped, S_ADV_S_ORG, S_USER_S, S_USER_NKU, S_COMMIT)
+    r = _vc(real_sw, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW25)
+    check('R25d NEW: swapped company/user binds are rejected (set '
+          'membership is not bind resolution)',
+          r.get('equivalent') is False, str(r)[:160])
+
+    # 4. FOR NO KEY UPDATE targeting a different user
+    nku_other = (S_USER_NKU[0], {'company_id_1': 'co-aster',
+                                 'id_1': 'u-marcus'})
+    real_nk = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
+                      S_USER_S, S_ADV_S_ORG, S_USER_S, nku_other, S_COMMIT)
+    r = _vc(real_nk, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW25)
+    check('R25e NEW: NKU targeting a DIFFERENT user is rejected',
+          r.get('equivalent') is False, str(r)[:160])
+
+    # 5. different transaction/connection identities within one trace
+    conns2 = ['c1', 'c1', 'c1', 'c2', 'c1', 'c1', 'c1', 'c1', 'c1']
+    real_dc = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
+                      S_USER_S, S_ADV_S_ORG, S_USER_S, S_USER_NKU,
+                      S_COMMIT, conns=conns2)
+    r = _vc(real_dc, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW25)
+    check('R25f NEW: mixed connection/backend identities inside one '
+          'trace are rejected', r.get('equivalent') is False,
+          str(r)[:160])
+
+    # 6. an actual transaction boundary between lock acquisitions
+    tx_break = [{'event': 'begin', 'conn': 'c1', 'seq': 0},
+                {'event': 'commit', 'conn': 'c1', 'seq': 4},
+                {'event': 'begin', 'conn': 'c1', 'seq': 4}]
+    real_tb = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_TASK_U, S_ADV_S_ORG,
+                      S_USER_S, S_ADV_S_ORG, S_USER_S, S_USER_NKU,
+                      S_COMMIT, tx_events=tx_break)
+    r = _vc(real_tb, MODEL_FULL, _red, company_trace=COMPANY_FULL, **KW25)
+    check('R25g NEW: recorded COMMIT boundary between locks is rejected '
+          '(not merely textual COMMIT detection)',
+          r.get('equivalent') is False, str(r)[:160])
+
+    # 7. omit the expected Task lock from the model
+    model_notask = trace24(S_ADV_X_ORG, S_ADV_S_CAP, S_USER_S, S_USER_NKU)
+    r = _vc(REAL_FULL, model_notask, _red, company_trace=COMPANY_FULL,
+            **KW25)
+    check('R25h NEW: model omitting the Task FOR UPDATE is rejected',
+          r.get('equivalent') is False, str(r)[:160])
+
+    # positive: genuine complete capture still passes (new signature with
+    # task identity; pre-fix the old signature raises TypeError -> fail)
+    try:
+        r = _vc(REAL_FULL, MODEL_FULL, _red, company_trace=COMPANY_FULL,
+                real_task_id='t-e4-000', model_task_id='t-e4-000',
+                company_task_id='t-e4-000', **KW25)
+    except TypeError:
+        r = {'equivalent': False, 'note': 'old signature lacks task ids'}
+    check('R25i NEW positive: genuine complete production-command capture '
+          'still verifies equivalent', r.get('equivalent') is True,
+          str(r)[:160])
+else:
+    for _t in ('R25b NEW: stripped model binds rejected',
+               'R25c NEW: wrong capability key rejected',
+               'R25d NEW: swapped binds rejected',
+               'R25e NEW: NKU different user rejected',
+               'R25f NEW: mixed connection identities rejected',
+               'R25g NEW: recorded tx boundary rejected',
+               'R25h NEW: model omitting task lock rejected',
+               'R25i NEW positive: genuine capture verifies'):
+        check(_t, False)
+
+# ══ R26 — P1-A: refusal permanence (the reviewer's exact sequence) ═════════
+
+def legacy_refusal_permanence(second_invocation_history):
+    """run_all.py @_results.py @d0fdb53: the first refusal CREATED
+    journal.jsonl; journal_failures() ignored completed REFUSED
+    invocations and nobody inspected legacy halt/gate-failure audit
+    entries — so the second continuation found a journal, no marker, and
+    proceeded. The collector then reported COMPLETE over a halted run."""
+    return 'continue'
+
+
+check('R26a OLD defect: first refusal launders the run-id; second '
+      'continuation proceeds over a legacy halt',
+      legacy_refusal_permanence('journal-created-by-refusal')
+      == 'continue', '(demonstrates the reviewed defect)')
+
+if callable(_exec):
+    import os as _os6
+    ts26 = time.strftime('%H%M%S')
+    ran26 = []
+
+    def fake26(script, rid, timeout=900):
+        ran26.append(Path(script).name)
+        if Path(script).name == '_results.py':
+            return {'returncode': 3, 'seconds': 0.1, 'tail': 'fake'}
+        return {'returncode': 0, 'seconds': 0.1, 'tail': 'fake'}
+
+    hh26 = lab.harness_hash()
+    rid_r = 'reg-refperm-' + ts26
+    run_r = lab.OUT_ROOT / rid_r
+    rid_fg = 'reg-gatenomark-' + ts26
+    run_fg = lab.OUT_ROOT / rid_fg
+    rid_ca = 'reg-corrupta-' + ts26
+    run_ca = lab.OUT_ROOT / rid_ca
+    rid_cc = 'reg-cleancomp-' + ts26
+    run_cc = lab.OUT_ROOT / rid_cc
+    try:
+        # ── the reviewer's sequence: legacy halt-only audit, no journal ──
+        run_r.mkdir(parents=True, exist_ok=True)
+        with open(run_r / 'run_all_log.json', 'w', encoding='utf-8') as f:
+            for g in run_all.GATES:
+                f.write(json.dumps({'step': g, 'returncode': 0,
+                                    'harness_sha256': hh26}) + '\n')
+            f.write(json.dumps({'step': 'e7', 'returncode': 0,
+                                'harness_sha256': hh26}) + '\n')
+            f.write(json.dumps({'step': 'halt', 'returncode': 1,
+                                'harness_sha256': hh26,
+                                'tail': 'halted after e7',
+                                'failed': 'e7'}) + '\n')
+        ran26.clear()
+        s1 = _exec(rid_r, ['e7r6'], run_step_fn=fake26, reuse_gates=True)
+        check('R26b NEW (1st): legacy halt-only audit (no journal, no '
+              'marker) is REFUSED', s1.get('refused') is True
+              and 'e7_r6.py' not in ran26, str(s1)[:200])
+        # clean-looking classifications exist BEFORE the second attempt,
+        # so an old-code continuation would run "green" and the old
+        # collector would report COMPLETE over a halted run (the exact
+        # false-positive path the reviewer demonstrated)
+        for name in ('e7', 'e7r6'):
+            write_events(run_r / name, [
+                {'kind': 'classification', 't_ms': 1.0,
+                 'experiment': name, 'harness_validity': 'VALID',
+                 'product_observation': 'NO_DEFECT_OBSERVED',
+                 'causal_claim': 'SUPPORTED', 'rationale': 'synthetic'}])
+        ran26.clear()
+        s2 = _exec(rid_r, ['e7r6'], run_step_fn=fake26, reuse_gates=True)
+        check('R26c NEW (2nd): the journal created BY the refusal never '
+              'launders the halt — continuation refused again, no '
+              'experiment starts',
+              s2.get('refused') is True and 'e7_r6.py' not in ran26,
+              str(s2)[:200])
+        # collector: journal present (created by the refusals), evidence
+        # looks clean — the historical halt must still fail it
+        rc = subprocess.run(
+            [sys.executable,
+             str(Path(run_all.__file__).parent / '_results.py'), rid_r,
+             '--expect=e7,e7r6'],
+            capture_output=True, text=True, cwd=str(lab.REPO))
+        rj = json.loads((run_r / 'results.json').read_text(
+            encoding='utf-8')) if (run_r / 'results.json').is_file() \
+            else {}
+        check('R26d NEW: independent collector returns FAILED over the '
+              'laundered history and the original halt remains visible',
+              rc.returncode != 0
+              and rj.get('run_status') == 'FAILED'
+              and 'halt' in json.dumps(rj.get('rollup', {})),
+              f'rc={rc.returncode} status={rj.get("run_status")}')
+
+        # ── failed gate without a failure marker ─────────────────────────
+        run_fg.mkdir(parents=True, exist_ok=True)
+        write_journal(run_fg, [
+            {'j': 'invocation_started', 'inv': 'x1', 'rid': rid_fg,
+             't_epoch': 1},
+            {'j': 'invocation_completed', 'inv': 'x1', 'status': 'PARTIAL',
+             't_epoch': 2}])
+        with open(run_fg / 'run_all_log.json', 'w', encoding='utf-8') as f:
+            f.write(json.dumps({'step': 'regression_tests.py',
+                                'returncode': 0,
+                                'harness_sha256': hh26}) + '\n')
+            f.write(json.dumps({'step': 'oracle_tests.py',
+                                'returncode': 0,
+                                'harness_sha256': hh26}) + '\n')
+            f.write(json.dumps({'step': 'smoke.py', 'returncode': 1,
+                                'harness_sha256': hh26}) + '\n')
+        ran26.clear()
+        sf = _exec(rid_fg, ['e7'], run_step_fn=fake26, reuse_gates=True)
+        check('R26e NEW: failed gate in audit (no marker, clean journal) '
+              'refuses continuation',
+              sf.get('refused') is True and 'e7.py' not in ran26,
+              str(sf)[:200])
+
+        # ── corrupt history (unreadable audit line) ──────────────────────
+        run_ca.mkdir(parents=True, exist_ok=True)
+        write_journal(run_ca, [
+            {'j': 'invocation_started', 'inv': 'y1', 'rid': rid_ca,
+             't_epoch': 1},
+            {'j': 'invocation_completed', 'inv': 'y1', 'status': 'PARTIAL',
+             't_epoch': 2}])
+        with open(run_ca / 'run_all_log.json', 'w', encoding='utf-8') as f:
+            f.write('{"step": "e7", "returncode": 0\n')  # corrupt
+        ran26.clear()
+        sc_ = _exec(rid_ca, ['e7r6'], run_step_fn=fake26, reuse_gates=True)
+        check('R26f NEW: corrupt audit history refuses continuation '
+              '(unreadable history is failure evidence)',
+              sc_.get('refused') is True and 'e7_r6.py' not in ran26,
+              str(sc_)[:200])
+
+        # ── positive: clean PARTIAL → continuation → COMPLETE ────────────
+        for name in lab.EXPECTED_EXPERIMENTS:
+            write_events(run_cc / name, [
+                {'kind': 'classification', 't_ms': 1.0,
+                 'experiment': name, 'harness_validity': 'VALID',
+                 'product_observation': 'EXPECTED_BEHAVIOR',
+                 'causal_claim': 'SUPPORTED', 'rationale': 'synthetic'}])
+        sc1 = _exec(rid_cc, ['e1b', 'e2', 'e3'], run_step_fn=fake26)
+        sc2 = _exec(rid_cc, ['e1', 'e4', 'e5', 'e6', 'e7', 'e7r6'],
+                    run_step_fn=fake26, reuse_gates=True)
+        # gate classifications are written by the (fake) gates' evidence —
+        # here synthesized after the segments, before the real collection
+        for gate in lab.EXPECTED_GATES:
+            write_events(run_cc / gate, [
+                {'kind': 'classification', 't_ms': 1.0,
+                 'experiment': gate, 'harness_validity': 'VALID',
+                 'product_observation': 'EXPECTED_BEHAVIOR',
+                 'causal_claim': 'INCONCLUSIVE',
+                 'rationale': 'synthetic'}])
+        rcc = subprocess.run(
+            [sys.executable,
+             str(Path(run_all.__file__).parent / '_results.py'), rid_cc],
+            capture_output=True, text=True, cwd=str(lab.REPO))
+        st_cc = json.loads((run_cc / 'results.json').read_text(
+            encoding='utf-8')).get('run_status') \
+            if (run_cc / 'results.json').is_file() else None
+        check('R26g NEW positive: clean PARTIAL segments continue and a '
+              'fully clean history collects COMPLETE',
+              sc1.get('refused') in (None, False)
+              and sc2.get('refused') in (None, False)
+              and rcc.returncode == 0 and st_cc == 'COMPLETE',
+              f'rc={rcc.returncode} status={st_cc} '
+              f'{(rcc.stdout + rcc.stderr)[-200:]}')
+    finally:
+        for d in (run_r, run_fg, run_ca, run_cc):
+            if d.is_dir():
+                for sub in sorted(d.glob('*')):
+                    if sub.is_dir():
+                        lab.safe_rmtree(sub, d)
+                    else:
+                        sub.unlink()
+                _os6.rmdir(d)
+else:
+    for _t in ('R26b NEW: legacy halt-only audit refused',
+               'R26c NEW: refusal journal never launders halt',
+               'R26d NEW: collector FAILED + halt visible',
+               'R26e NEW: failed gate without marker refused',
+               'R26f NEW: corrupt audit refused',
+               'R26g NEW positive: clean PARTIAL -> COMPLETE'):
         check(_t, False)
 
 import shutil

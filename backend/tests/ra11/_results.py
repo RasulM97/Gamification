@@ -133,6 +133,11 @@ def main():
             {'kind': 'journal_absent',
              'detail': 'run history exists but no journal — a prior crash '
                        'cannot be excluded'})
+    # P1-A round 6: legacy audit inspection — halt records, refusals,
+    # gate/experiment step failures and corrupt lines are permanent
+    # failure evidence regardless of markers or journals. The original
+    # halt stays visible in the rollup.
+    audit_findings = run_all.audit_failures(run)
     evidence_failures = []
     for name in sorted(run_all.EXPERIMENTS):
         if (run / name / 'events.jsonl').is_file():
@@ -142,7 +147,7 @@ def main():
                     {'experiment': name, 'invalid': insp['invalid'],
                      'cleanup_failed': insp['cleanup_failed']})
 
-    failed = bool(failed_segments or journal_findings
+    failed = bool(failed_segments or journal_findings or audit_findings
                   or evidence_failures or invalid or unclassified)
     run_status = ('FAILED' if failed
                   else 'PARTIAL' if missing else 'COMPLETE')
@@ -165,6 +170,7 @@ def main():
             'inconclusive': inconclusive,
             'failed_segments': failed_segments,
             'journal_findings': journal_findings,
+            'audit_findings': audit_findings,
             'evidence_failures': evidence_failures,
         },
         'run_status': run_status,
@@ -186,6 +192,7 @@ def main():
                'invalid': invalid, 'inconclusive': inconclusive,
                'run_failed': failed_segments,
                'journal_findings': journal_findings,
+               'audit_findings': audit_findings,
                'evidence_failures': evidence_failures,
                'run_status': run_status}
     print(json.dumps(summary, indent=2))
