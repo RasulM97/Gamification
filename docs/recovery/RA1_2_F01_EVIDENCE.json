@@ -1,0 +1,560 @@
+{
+  "stage2_e1": {
+    "sha256": "922f9976ed4e83cda719445ef1e7f6d4395ba5eac71e8d5000b7561b4a76791f",
+    "observations": [
+      {
+        "t_ms": 41653.28,
+        "t_epoch": 1792493464.197,
+        "kind": "positive_round_done",
+        "rep": 0,
+        "wall_ms": 30136.1,
+        "results": {
+          "boot1": [
+            "EXC:ReadTimeout",
+            30025.1,
+            "ra11-8f87fc9b44bd"
+          ],
+          "boot3": [
+            "EXC:ReadTimeout",
+            30024.4,
+            "ra11-b896572d0aa2"
+          ],
+          "boot2": [
+            "EXC:ReadTimeout",
+            30025.0,
+            "ra11-76efde4efb8e"
+          ],
+          "boot0": [
+            "EXC:ReadTimeout",
+            30025.8,
+            "ra11-ca0d7dec2646"
+          ],
+          "boot9": [
+            "EXC:ReadTimeout",
+            30034.6,
+            "ra11-4190aa78b4a2"
+          ],
+          "boot4": [
+            "EXC:ReadTimeout",
+            30039.8,
+            "ra11-d833b13191fd"
+          ],
+          "boot5": [
+            "EXC:ReadTimeout",
+            30039.4,
+            "ra11-93771f7e859c"
+          ],
+          "boot7": [
+            "EXC:ReadTimeout",
+            30035.6,
+            "ra11-b29dba6c27c1"
+          ],
+          "boot6": [
+            "EXC:ReadTimeout",
+            30039.0,
+            "ra11-9db79d09b6cb"
+          ],
+          "boot8": [
+            "EXC:ReadTimeout",
+            30035.4,
+            "ra11-33ee5d6e8f49"
+          ],
+          "cmd": [
+            "EXC:ReadTimeout",
+            30028.0,
+            "ra11-7a082be2e386"
+          ]
+        }
+      },
+      {
+        "t_ms": 53721.9,
+        "t_epoch": 1792493476.266,
+        "kind": "wedge_assessment",
+        "rep": 0,
+        "window_start_ms": 41673.1,
+        "window_end_ms": 53701.9,
+        "healthy_pre_window_probes": true,
+        "process_alive": true,
+        "latches_released": true,
+        "loop_fails_in_window": 3,
+        "loop_oks_in_window": 0,
+        "loop_max_consecutive_fails_in_window": 3,
+        "non_recovery_observed": true,
+        "lock_causality_evidence_present": true,
+        "window_s": 12.0,
+        "statement": "did not recover within the observed 12-second window",
+        "note": "progression only \u2014 causal tiers are assessed separately from pg_locks_full evidence and the negative-control outcome (causal_tiers events)"
+      },
+      {
+        "t_ms": 72744.03,
+        "t_epoch": 1792493495.288,
+        "kind": "negative_control_verification",
+        "rep": 0,
+        "round": 0,
+        "task": "t-9dc4d16e7064",
+        "http": 200,
+        "db_owner": "u-priya",
+        "db_status": "IN_PROGRESS",
+        "verified": true
+      },
+      {
+        "t_ms": 115808.82,
+        "t_epoch": 1792493538.353,
+        "kind": "positive_round_done",
+        "rep": 1,
+        "wall_ms": 30126.6,
+        "results": {
+          "boot3": [
+            "EXC:ReadTimeout",
+            30030.5,
+            "ra11-29ce6159698b"
+          ],
+          "boot1": [
+            "EXC:ReadTimeout",
+            30031.6,
+            "ra11-a6949035047c"
+          ],
+          "boot0": [
+            "EXC:ReadTimeout",
+            30035.0,
+            "ra11-cebc11b2b102"
+          ],
+          "boot2": [
+            "EXC:ReadTimeout",
+            30034.4,
+            "ra11-cb1a1b17127d"
+          ],
+          "boot6": [
+            "EXC:ReadTimeout",
+            30033.1,
+            "ra11-e41f102e8f71"
+          ],
+          "boot5": [
+            "EXC:ReadTimeout",
+            30033.6,
+            "ra11-659f86598db5"
+          ],
+          "boot8": [
+            "EXC:ReadTimeout",
+            30032.5,
+            "ra11-2dd2a7508029"
+          ],
+          "boot7": [
+            "EXC:ReadTimeout",
+            30032.9,
+            "ra11-aed6248d8fa9"
+          ],
+          "boot9": [
+            "EXC:ReadTimeout",
+            30032.2,
+            "ra11-c1090f14e3f1"
+          ],
+          "boot4": [
+            "EXC:ReadTimeout",
+            30034.1,
+            "ra11-f103e661ff60"
+          ],
+          "cmd": [
+            "EXC:ReadTimeout",
+            30021.9,
+            "ra11-a8e16241aade"
+          ]
+        }
+      },
+      {
+        "t_ms": 127883.49,
+        "t_epoch": 1792493550.428,
+        "kind": "wedge_assessment",
+        "rep": 1,
+        "window_start_ms": 115821.5,
+        "window_end_ms": 127850.7,
+        "healthy_pre_window_probes": true,
+        "process_alive": true,
+        "latches_released": true,
+        "loop_fails_in_window": 3,
+        "loop_oks_in_window": 0,
+        "loop_max_consecutive_fails_in_window": 3,
+        "non_recovery_observed": true,
+        "lock_causality_evidence_present": true,
+        "window_s": 12.0,
+        "statement": "did not recover within the observed 12-second window",
+        "note": "progression only \u2014 causal tiers are assessed separately from pg_locks_full evidence and the negative-control outcome (causal_tiers events)"
+      },
+      {
+        "t_ms": 152255.74,
+        "t_epoch": 1792493574.8,
+        "kind": "negative_control_verification",
+        "rep": 1,
+        "round": 0,
+        "task": "t-c1cf7c6dcfdb",
+        "http": 200,
+        "db_owner": "u-priya",
+        "db_status": "IN_PROGRESS",
+        "verified": true
+      },
+      {
+        "t_ms": 195891.33,
+        "t_epoch": 1792493618.435,
+        "kind": "positive_round_done",
+        "rep": 2,
+        "wall_ms": 30132.2,
+        "results": {
+          "boot8": [
+            "EXC:ReadTimeout",
+            30036.4,
+            "ra11-653238285398"
+          ],
+          "boot0": [
+            "EXC:ReadTimeout",
+            30040.2,
+            "ra11-8fd8bea271ba"
+          ],
+          "boot2": [
+            "EXC:ReadTimeout",
+            30039.7,
+            "ra11-ee69e5813e45"
+          ],
+          "boot6": [
+            "EXC:ReadTimeout",
+            30038.4,
+            "ra11-05660bf56154"
+          ],
+          "boot1": [
+            "EXC:ReadTimeout",
+            30040.1,
+            "ra11-5361e4aa33c9"
+          ],
+          "boot9": [
+            "EXC:ReadTimeout",
+            30037.5,
+            "ra11-1667512149ae"
+          ],
+          "boot3": [
+            "EXC:ReadTimeout",
+            30039.7,
+            "ra11-31b1c6dd0456"
+          ],
+          "boot4": [
+            "EXC:ReadTimeout",
+            30039.4,
+            "ra11-60fcb82d6c14"
+          ],
+          "boot5": [
+            "EXC:ReadTimeout",
+            30039.1,
+            "ra11-316b8d0238bf"
+          ],
+          "boot7": [
+            "EXC:ReadTimeout",
+            30038.5,
+            "ra11-3a921ba0b6bd"
+          ],
+          "cmd": [
+            "EXC:ReadTimeout",
+            30027.7,
+            "ra11-2a4fe2bab006"
+          ]
+        }
+      },
+      {
+        "t_ms": 207984.38,
+        "t_epoch": 1792493630.529,
+        "kind": "wedge_assessment",
+        "rep": 2,
+        "window_start_ms": 195899.5,
+        "window_end_ms": 207926.2,
+        "healthy_pre_window_probes": true,
+        "process_alive": true,
+        "latches_released": true,
+        "loop_fails_in_window": 3,
+        "loop_oks_in_window": 0,
+        "loop_max_consecutive_fails_in_window": 3,
+        "non_recovery_observed": true,
+        "lock_causality_evidence_present": true,
+        "window_s": 12.0,
+        "statement": "did not recover within the observed 12-second window",
+        "note": "progression only \u2014 causal tiers are assessed separately from pg_locks_full evidence and the negative-control outcome (causal_tiers events)"
+      },
+      {
+        "t_ms": 235219.62,
+        "t_epoch": 1792493657.764,
+        "kind": "negative_control_verification",
+        "rep": 2,
+        "round": 0,
+        "task": "t-55b7923f00fe",
+        "http": 200,
+        "db_owner": "u-priya",
+        "db_status": "IN_PROGRESS",
+        "verified": true
+      },
+      {
+        "t_ms": 244191.32,
+        "t_epoch": 1792493666.735,
+        "kind": "classification",
+        "experiment": "e1",
+        "harness_validity": "VALID",
+        "product_observation": "DEFECT_OBSERVED",
+        "causal_claim": "CONFIRMED",
+        "rationale": "3/3 fresh repetitions met the bounded-window non-recovery criteria (process alive + >=3 consecutive in-window loop failures + zero in-window recovery, window 12s, latches released). Causal tiers: 3 CONFIRMED, 3 SUPPORTED of 3 wedged reps (four-tier Gate-B assessment; tiers are never auto-elevated). Negative control (eligible employee claim) passed HTTP+DB verification.",
+        "reps": 3,
+        "wedged_reps": 3,
+        "confirmed_reps": 3,
+        "supported_reps": 3
+      }
+    ]
+  },
+  "stage2_e1b": {
+    "sha256": "dfe50f2f2f9179ed34d0c51d496007ef07d909332b3cd159a178ed331c459842",
+    "observations": [
+      {
+        "t_ms": 8830.35,
+        "t_epoch": 1792493677.121,
+        "kind": "classification",
+        "experiment": "e1b",
+        "harness_validity": "VALID",
+        "product_observation": "EXPECTED_BEHAVIOR",
+        "causal_claim": "CONFIRMED",
+        "rationale": "PostgreSQL advisory fair queueing with the app's real organization.lock (labeled latches, released before ordering was measured); real bootstrap/claim lock sets captured mid-transaction. This proves the queueing mechanism, not the full wedge by itself. ",
+        "fair_queueing_proven": true,
+        "b1": {
+          "t2_boundary": true,
+          "t3_boundary": true,
+          "t2_acquired": true,
+          "t3_acquired": true,
+          "t2_finished": true,
+          "t3_finished": true,
+          "t3_waited_behind_pending_x": true,
+          "order_verified": true,
+          "exceptions": []
+        },
+        "b2": {
+          "bootstrap_captured": true,
+          "claim_captured": true,
+          "claim_error": null
+        }
+      }
+    ]
+  },
+  "stage2_e3": {
+    "sha256": "b741f6de4a39f0fdaf3b322da417ab2beb714e648e9ba1af5c35a02c3810ebca",
+    "observations": [
+      {
+        "t_ms": 29271.89,
+        "t_epoch": 1792493825.826,
+        "kind": "classification",
+        "experiment": "e3",
+        "harness_validity": "VALID",
+        "product_observation": "DEFECT_OBSERVED",
+        "causal_claim": "CONFIRMED",
+        "rationale": "Connection phases measured per request type with pool/tx/sql listeners; subprocess occupancy computed from the app's own checkout/checkin stream (max_simultaneous=15 vs pool 10+5, saturated=True); health probe failures during fanout: 4; loop failures: 0; timestamp overlap with a pressure interval: True; app identity verified: True; non-saturated control ok: True.  Claims are scoped to the measured request types.",
+        "pool_occupancy": {
+          "max_simultaneous": 15,
+          "event_count": 139,
+          "checkout_events": 69,
+          "checkin_events": 69,
+          "distinct_connections": 15,
+          "id_space": "dbapi_connection_id",
+          "pids": [
+            28872
+          ]
+        },
+        "saturated": true,
+        "pressure_overlap": true,
+        "control": {
+          "executed": true,
+          "health_oks": 18,
+          "health_fails": 0,
+          "max_occupancy": 4,
+          "pool_cap": 15
+        }
+      }
+    ]
+  },
+  "after_e1": {
+    "sha256": "d7d5aa2135f54b7520592c50f64f9b13cf9ee6a5a788a20c89f1a6c91888db1e",
+    "observations": [
+      {
+        "t_ms": 20780.39,
+        "t_epoch": 1792508813.812,
+        "kind": "positive_round_done",
+        "rep": 0,
+        "wall_ms": 4806.7,
+        "results": {
+          "boot0": [
+            200,
+            3290.9,
+            "ra11-e82a90f07492"
+          ],
+          "boot2": [
+            200,
+            3374.3,
+            "ra11-ad1f76d2004c"
+          ],
+          "boot1": [
+            200,
+            3430.1,
+            "ra11-51c5d20f811c"
+          ],
+          "boot7": [
+            200,
+            3500.0,
+            "ra11-a1f9006a1132"
+          ],
+          "boot8": [
+            200,
+            3526.5,
+            "ra11-6401fe3ec438"
+          ],
+          "boot4": [
+            200,
+            3568.7,
+            "ra11-6de7fdd7c0c3"
+          ],
+          "boot6": [
+            200,
+            3570.1,
+            "ra11-25a4a530236c"
+          ],
+          "boot9": [
+            200,
+            3588.1,
+            "ra11-7655458524c8"
+          ],
+          "boot5": [
+            200,
+            4758.3,
+            "ra11-22f531ef276b"
+          ],
+          "boot3": [
+            200,
+            4783.4,
+            "ra11-93f33602c13b"
+          ],
+          "cmd": [
+            200,
+            4701.0,
+            "ra11-821ca152fe18"
+          ]
+        }
+      },
+      {
+        "t_ms": 32813.88,
+        "t_epoch": 1792508825.845,
+        "kind": "wedge_assessment",
+        "rep": 0,
+        "window_start_ms": 20783.3,
+        "window_end_ms": 32788.3,
+        "healthy_pre_window_probes": true,
+        "process_alive": true,
+        "latches_released": true,
+        "loop_fails_in_window": 0,
+        "loop_oks_in_window": 200,
+        "loop_max_consecutive_fails_in_window": 0,
+        "non_recovery_observed": false,
+        "lock_causality_evidence_present": true,
+        "window_s": 12.0,
+        "statement": "recovered or never wedged",
+        "note": "progression only \u2014 causal tiers are assessed separately from pg_locks_full evidence and the negative-control outcome (causal_tiers events)"
+      },
+      {
+        "t_ms": 50591.86,
+        "t_epoch": 1792508843.624,
+        "kind": "negative_control_verification",
+        "rep": 0,
+        "round": 0,
+        "task": "t-fa4435bd4818",
+        "http": 200,
+        "db_owner": "u-priya",
+        "db_status": "IN_PROGRESS",
+        "verified": true
+      },
+      {
+        "t_ms": 59413.95,
+        "t_epoch": 1792508852.445,
+        "kind": "classification",
+        "experiment": "e1",
+        "harness_validity": "VALID",
+        "product_observation": "INCONCLUSIVE",
+        "causal_claim": "INCONCLUSIVE",
+        "rationale": "0/1 fresh repetitions met the bounded-window non-recovery criteria (process alive + >=3 consecutive in-window loop failures + zero in-window recovery, window 12s, latches released). Causal tiers: 0 CONFIRMED, 0 SUPPORTED of 0 wedged reps (four-tier Gate-B assessment; tiers are never auto-elevated). Negative control (eligible employee claim) passed HTTP+DB verification.",
+        "reps": 1,
+        "wedged_reps": 0,
+        "confirmed_reps": 0,
+        "supported_reps": 0
+      }
+    ]
+  },
+  "after_r6": {
+    "sha256": "63be620ae43524ee3f4e0d5f3f42153883380e9184767f72b861e361ef73f95b",
+    "observations": [
+      {
+        "t_ms": 37580.44,
+        "t_epoch": 1792508907.638,
+        "kind": "classification",
+        "experiment": "e7r6",
+        "harness_validity": "VALID",
+        "product_observation": "NO_DEFECT_OBSERVED",
+        "causal_claim": "SUPPORTED",
+        "rationale": "Concurrent double-submit on a standalone fixture. legal outcome: one 200 + one 409 BAD_STATE; exactly one committed submission; final state serially reachable; sequential oracle held (oracle alone does not establish this \u2014 the concurrent invariants do) Causal tier: NO_CAUSAL_EVIDENCE (four-tier Gate-B assessment). Non-recovery is stated per observed 12s window, never \"permanent\".",
+        "window_s": 12.0,
+        "causal_tier": "NO_CAUSAL_EVIDENCE",
+        "invariant_failures": [],
+        "race_outcome": {
+          "A": [
+            200,
+            null,
+            595.2
+          ],
+          "B": [
+            409,
+            "BAD_STATE",
+            614.0
+          ]
+        },
+        "final": {
+          "status": "SUBMITTED",
+          "submissions": 1
+        }
+      }
+    ]
+  },
+  "baseline": {
+    "run": "f01-before-20261020d",
+    "sha256": "dcd20d1618a1ac1e1fb3a4c3031a80a64d0b4ee83176ccac55a9b4ce76a40687",
+    "summary": [
+      "/api/tasks: unrelated health latency=3.1250s",
+      "F/api/tasks/t-pricing/submit: unrelated health latency=3.0150s",
+      "F/api/tasks/t-pricing/handoff: unrelated health latency=3.0160s",
+      "F/api/tasks/t-pricing/reopen: unrelated health latency=3.0150s",
+      "F/api/tasks/t-pricing/reactivate: unrelated health latency=3.0160s",
+      "5 failed, 2 passed, 1 warning in 25.67s"
+    ]
+  },
+  "regressions": {
+    "run": "f01-after-20261020",
+    "sha256": "2715aa534ac0be4c3cf393e76700f8e6e470fa0a51b7b5ef1d98034c8378d712",
+    "summary": [
+      "/api/tasks: unrelated health latency=0.0000s",
+      "./api/tasks/t-pricing/submit: unrelated health latency=0.0000s",
+      "./api/tasks/t-pricing/handoff: unrelated health latency=0.0000s",
+      "./api/tasks/t-pricing/reopen: unrelated health latency=0.0000s",
+      "./api/tasks/t-pricing/reactivate: unrelated health latency=0.0160s",
+      "63 passed, 1 warning in 151.01s (0:02:31)"
+    ]
+  },
+  "workflows": {
+    "run": "f01-final-targeted-20261020",
+    "sha256": "14295801aa36a02bf9201c2ef70fa90bab0b57afefd407967d8baf7dc8f4599e",
+    "summary": [
+      "4 passed, 1 warning in 8.83s"
+    ]
+  },
+  "production_routes_sha256": "afc9852630f35f5ac4920adbabbabc693f82be0897bfe2d6ae0af5f4cdefae62",
+  "exception_oracles": {
+    "run": "f01-exception-oracles-20261020",
+    "sha256": "dddffe64806171ec0f9593f53d18b27a18ee6b663911addad06b416cbeff47d5",
+    "summary": [
+      "3 passed, 1 warning in 4.92s"
+    ]
+  }
+}

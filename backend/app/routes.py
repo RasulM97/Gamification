@@ -62,17 +62,21 @@ def mutate(db: Session, actor: User, action: str, entity: str, fn,
     return _state(db, actor)
 
 
-async def stage_files(db: Session, actor: User,
+def stage_files(db: Session, actor: User,
                       uploads: list[UploadFile]) -> list[StoredFile]:
     """Validate against company §18 policy, then stage bytes in storage.
-    Validation happens BEFORE anything touches disk."""
+    Validation happens BEFORE anything touches disk.
+
+    Called from synchronous handlers: DB waits and spooled-file reads must
+    stay in the worker thread, leaving the event loop free for DB teardown.
+    """
     require_capability(db,actor.company_id,'TASK_LITE')
     if not uploads:
         return []
     s = svc.settings_of(db, actor.company_id)
     read: list[tuple[str, str, bytes]] = []
     for up in uploads:
-        data = await up.read()
+        data = up.file.read()
         read.append((up.filename or 'file', up.content_type or '', data))
     candidates = [UploadCandidate(name=n, size=len(d), type=t) for n, t, d in read]
     errors = validate_attachments(candidates, s.max_file_size_mb, s.max_submission_total_mb)
@@ -106,7 +110,7 @@ def get_bootstrap(actor: User = Depends(current_user), db: Session = Depends(get
 
 
 @router.post('/tasks')
-async def create_task(
+def create_task(
     title: str = Form(...), description: str = Form(''),
     priority: str = Form('NORMAL'), deadline: Optional[str] = Form(None),
     reward: float = Form(...), audience: str = Form('EMPLOYEES'),
@@ -116,7 +120,7 @@ async def create_task(
     files: list[UploadFile] = File(default=[]),
     actor: User = Depends(current_user), db: Session = Depends(get_db),
 ):
-    staged = await stage_files(db, actor, files)
+    staged = stage_files(db, actor, files)
     return mutate(db, actor, 'create_task', title, lambda: svc.create_task(
         db, actor, title=title, description=description, priority=priority,
         deadline=deadline, reward=reward, audience=audience,
@@ -192,11 +196,11 @@ def progress(task_id: str, body: ProgressIn, actor: User = Depends(current_user)
 
 
 @router.post('/tasks/{task_id}/submit')
-async def submit(task_id: str, note: str = Form(...),
+def submit(task_id: str, note: str = Form(...),
                  pct: Optional[float] = Form(None),
                  files: list[UploadFile] = File(default=[]),
                  actor: User = Depends(current_user), db: Session = Depends(get_db)):
-    staged = await stage_files(db, actor, files)
+    staged = stage_files(db, actor, files)
     return mutate(db, actor, 'submit_work', task_id, lambda: svc.submit_work(
         db, actor, task_id, note_text=note, files=staged, pct=pct), staged=staged)
 
@@ -220,8 +224,13 @@ def reject(task_id: str, body: ReasonIn, actor: User = Depends(current_user),
                   lambda: svc.reject_work(db, actor, task_id, body.reason))
 
 
+async def _handoff_deadline_present(request: Request) -> bool:
+    """Form parsing only; no DB/session work on the event loop."""
+    return 'deadline' in await request.form()
+
+
 @router.post('/tasks/{task_id}/handoff')
-async def handoff(
+def handoff(
     task_id: str,
     acceptedPct: float = Form(...), reason: str = Form(...),
     nextKind: str = Form(...), nextId: Optional[str] = Form(None),
@@ -232,11 +241,10 @@ async def handoff(
     sensitivityConfirmed: bool = Form(False),
                  files: list[UploadFile] = File(default=[]),
     actor: User = Depends(current_user), db: Session = Depends(get_db),
-    request: Request = None,
+    deadline_present: bool = Depends(_handoff_deadline_present),
 ):
-    form = await request.form()
-    dl = deadline if 'deadline' in form else ...
-    staged = await stage_files(db, actor, files)
+    dl = deadline if deadline_present else ...
+    staged = stage_files(db, actor, files)
     return mutate(db, actor, 'handoff', task_id, lambda: svc.handoff(
         db, actor, task_id, accepted_pct=acceptedPct, reason=reason,
         next_kind=nextKind, next_id=nextId, audience=audience, priority=priority,
@@ -245,13 +253,13 @@ async def handoff(
 
 
 @router.post('/tasks/{task_id}/reopen')
-async def reopen(task_id: str, description: Optional[str] = Form(None),
+def reopen(task_id: str, description: Optional[str] = Form(None),
                  audience: Optional[str] = Form(None),
                  assigneeId: Optional[str] = Form(None),
                  sensitivityConfirmed: bool = Form(False),
                  files: list[UploadFile] = File(default=[]),
                  actor: User = Depends(current_user), db: Session = Depends(get_db)):
-    staged = await stage_files(db, actor, files)
+    staged = stage_files(db, actor, files)
     return mutate(db, actor, 'reopen_task', task_id, lambda: svc.reopen_task(
         db, actor, task_id, description=description, audience=audience,
         assignee_id=assigneeId, files=staged, sensitivity_confirmed=sensitivityConfirmed), staged=staged)
@@ -270,14 +278,14 @@ def cancel(task_id: str, body: CancelIn, actor: User = Depends(current_user),
 
 
 @router.post('/tasks/{task_id}/reactivate')
-async def reactivate(task_id: str, reason: str = Form(...),
+def reactivate(task_id: str, reason: str = Form(...),
                      description: Optional[str] = Form(None),
                      audience: Optional[str] = Form(None),
                      assigneeId: Optional[str] = Form(None),
                      sensitivityConfirmed: bool = Form(False),
                  files: list[UploadFile] = File(default=[]),
                      actor: User = Depends(current_user), db: Session = Depends(get_db)):
-    staged = await stage_files(db, actor, files)
+    staged = stage_files(db, actor, files)
     return mutate(db, actor, 'reactivate_task', task_id, lambda: svc.reactivate_task(
         db, actor, task_id, reason=reason, description=description,
         audience=audience, assignee_id=assigneeId, files=staged, sensitivity_confirmed=sensitivityConfirmed),
