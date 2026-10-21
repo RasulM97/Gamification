@@ -71,6 +71,10 @@ def test_save_never_overwrites_or_deletes_an_existing_name(tmp_path, monkeypatch
 
 
 def test_cleanup_failure_does_not_hide_write_error_or_skip_remaining_files(client, monkeypatch, caplog):
+    from app.db import logger
+    # Alembic's fileConfig in preceding migration tests disables existing
+    # application loggers. Restore this test's capture precondition only.
+    monkeypatch.setattr(logger, 'disabled', False)
     h = login(client, 'dana@aster.demo')
     saved = []
     save, delete = storage.save, storage.delete
