@@ -1,4 +1,9 @@
 {
+  "command.saving": "保存中… 再送信する前に確認をお待ちください。",
+  "command.OUTCOME_UNKNOWN": "結果は不明です。保存済みの可能性があります。元の内容で再試行し、新しい操作を作成しないでください。",
+  "command.COMMAND_COMMITTED": "保存済みですが、画面を更新できません。更新するか、同じ内容で再試行して確認してください。",
+  "command.RETRY_STORAGE_UNAVAILABLE": "何も送信していません。再試行情報を保存できませんでした。ブラウザーのセッションストレージを有効にして再試行してください。",
+  "command.COMMAND_KEY_CONFLICT": "内容を変更する前に、元の操作の結果を確認してください。",
   "event.peerThanks": "{{actor}}が{{target}}に感謝しました。",
   "event.managerRecognition": "{{actor}}が{{target}}の貢献を称えました。",
   "event.helpRequested": "{{actor}}が支援を依頼しました：{{title}}。",

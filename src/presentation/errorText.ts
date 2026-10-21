@@ -3,6 +3,9 @@ import { currentLocale, translate } from '../i18n'
 
 export function errorText(error: unknown): string {
   const code = error instanceof ApiError ? error.code : 'NETWORK'
+  if (['OUTCOME_UNKNOWN', 'COMMAND_COMMITTED', 'RETRY_STORAGE_UNAVAILABLE', 'COMMAND_KEY_CONFLICT'].includes(code)) {
+    return translate(currentLocale(), `command.${code}`)
+  }
   const known = ['FORBIDDEN', 'VALIDATION', 'NOT_FOUND', 'BAD_STATE', 'INSUFFICIENT_FUNDS',
     'REVIEW_AUTHORITY_REQUIRED', 'SENSITIVITY_CONFIRMATION_REQUIRED', 'USER_HAS_RESPONSIBILITIES',
     'SOLE_ADMIN', 'NETWORK', 'UPLOAD_REJECTED', 'OUT_OF_STOCK', 'LIMIT_REACHED', 'NO_CHANGE']

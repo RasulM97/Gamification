@@ -188,8 +188,9 @@ function ReviewDrawer({ task: t, onClose }: { task: Task | null; onClose: () => 
           </Field>
           <div className="actions">
             {canPay ? (
-              <button className="btn primary" onClick={() => {
-                dispatch({ type: 'APPROVE', taskId: t.id, managerId: me.id }); onClose()
+              <button className="btn primary" onClick={async () => {
+                if (!await dispatch({ type: 'APPROVE', taskId: t.id, managerId: me.id })) return
+                onClose()
               }}>{tr('review.approve', { coins: coins(remaining) })}</button>
             ) : (
               <button className="btn primary" disabled data-testid="approve-admin-required"
@@ -197,8 +198,9 @@ function ReviewDrawer({ task: t, onClose }: { task: Task | null; onClose: () => 
                 {tr('review.approve', { coins: coins(remaining) })}
               </button>
             )}
-            <button className="btn" disabled={!reason.trim()} onClick={() => {
-              dispatch({ type: 'REJECT', taskId: t.id, managerId: me.id, reason: reason.trim() }); onClose()
+            <button className="btn" disabled={!reason.trim()} onClick={async () => {
+              if (!await dispatch({ type: 'REJECT', taskId: t.id, managerId: me.id, reason: reason.trim() })) return
+              onClose()
             }}>{tr('review.reject')}</button>
             {!canPay && (
               <span className="faint" style={{ fontSize: 12, alignSelf: 'center' }}>

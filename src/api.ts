@@ -7,6 +7,7 @@
  * related is stored client-side anymore.
  */
 import type { State } from './domain/engine'
+import { commandIdentity, CommandIdentityConflict, supportsCommandIdentity } from './commandIdentity'
 
 const TOKEN_KEY = 'cve-token'
 /* Legacy cleanup (UAT-blocker cross-window identity fix): pre-fix builds
@@ -70,21 +71,44 @@ async function req<T>(path: string, opts: { method?: string; json?: unknown; for
   } else if (opts.form) {
     body = opts.form // browser sets the multipart boundary
   }
-  const res = await fetch(apiUrl(path), { method: opts.method ?? 'GET', headers, body })
-  if (!res.ok) {
-    let details = {}
-    let code = 'ERROR', message = `Request failed (${res.status})`
-    try {
-      const b = await res.json()
-      const d = b?.detail ?? b
-      if (d?.code) { details = d; code = d.code; message = d.message ?? message }
-      else if (typeof b?.detail === 'string') message = b.detail
-    } catch { /* non-JSON error body */ }
-    throw new ApiError(res.status, code, message, details)
+  const method = opts.method ?? 'GET'
+  let identity: Awaited<ReturnType<typeof commandIdentity>> | undefined
+  if (tok && method !== 'GET' && supportsCommandIdentity(path)) {
+    try { identity = await commandIdentity(tok, method, path, opts.json, opts.form) }
+    catch (error) {
+      if (error instanceof CommandIdentityConflict) throw new ApiError(0, 'COMMAND_KEY_CONFLICT', 'Resolve the original operation before changing its details.')
+      throw new ApiError(0, 'RETRY_STORAGE_UNAVAILABLE', 'Cannot safely save retry information. No request was sent.')
+    }
+    headers['Idempotency-Key'] = identity.key
   }
-  const data: T = await res.json()
-  if (data && typeof data === 'object') responseStatuses.set(data, res.status)
-  return data
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 30000)
+  try {
+    const res = await fetch(apiUrl(path), { method, headers, body, signal: controller.signal })
+    if (!res.ok) {
+      let details: Record<string, string | number> = {}
+      let code = 'ERROR', message = `Request failed (${res.status})`
+      try {
+        const b = await res.json()
+        const d = b?.detail ?? b
+        if (d?.code) { details = d; code = d.code; message = d.message ?? message }
+        else if (typeof b?.detail === 'string') message = b.detail
+      } catch { /* non-JSON error body */ }
+      // A later refusal cannot establish the outcome of an earlier lost response.
+      if (identity && res.status < 500 && ![408, 429].includes(res.status)
+        && (!identity.retry || details.commandOutcome === 'NOT_COMMITTED')) identity.complete()
+      if (method !== 'GET' && (res.status >= 500 || [408, 429].includes(res.status)) && code !== 'COMMAND_COMMITTED') code = 'OUTCOME_UNKNOWN'
+      throw new ApiError(res.status, code, message, details)
+    }
+    const data: T = await res.json()
+    if (data && typeof data === 'object') responseStatuses.set(data, res.status)
+    identity?.complete()
+    return data
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    if (method !== 'GET') throw new ApiError(0, 'OUTCOME_UNKNOWN', 'The response was lost. The operation may have been saved.')
+    throw error
+  } finally { clearTimeout(timer) }
 }
 
 export interface MeUser { id: string; name: string; role: string; position: string; email: string; companyId: string }

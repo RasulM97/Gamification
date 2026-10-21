@@ -1,4 +1,9 @@
 {
+  "command.saving": "Kaydediliyor… Yeniden göndermeden önce onayı bekleyin.",
+  "command.OUTCOME_UNKNOWN": "Sonuç bilinmiyor: kaydedilmiş olabilir. İlk bilgilerle yeniden deneyin; yeni işlem oluşturmayın.",
+  "command.COMMAND_COMMITTED": "Kaydedildi, ancak güncel görünüm kullanılamıyor. Onay için yenileyin veya aynı bilgilerle yeniden deneyin.",
+  "command.RETRY_STORAGE_UNAVAILABLE": "Hiçbir şey gönderilmedi: yeniden deneme bilgileri kaydedilemedi. Tarayıcı oturum depolamasını etkinleştirip yeniden deneyin.",
+  "command.COMMAND_KEY_CONFLICT": "Bilgileri değiştirmeden önce ilk işlemin sonucunu doğrulayın.",
   "event.peerThanks": "{{actor}}, {{target}} kişisine teşekkür etti.",
   "event.managerRecognition": "{{actor}}, {{target}} kişisinin katkısını takdir etti.",
   "event.helpRequested": "{{actor}} yardım istedi: {{title}}.",

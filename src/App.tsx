@@ -399,7 +399,7 @@ function Shell() {
 
         <div className="content">
           <NotificationAudio key={me.id} />
-          <SystemToast message={persistError} onClose={dismissError} />
+          <SystemToast message={persistError} onClose={dismissError} persistent={!IS_DEMO} />
           {view === 'overview' && <Overview onGo={go} />}
           {!tasksEnabled && taskViews.includes(view) && <p role="status">{t('capabilities.taskDisabled')}</p>}
           {tasksEnabled && view === 'tasks' && <TasksView scope="all" onOpen={setTaskId} onCreate={() => setCreateOpen(true)} />}

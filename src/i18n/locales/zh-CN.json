@@ -1,4 +1,9 @@
 {
+  "command.saving": "正在保存… 请等待确认后再发送。",
+  "command.OUTCOME_UNKNOWN": "结果未知：操作可能已保存。请使用原始内容重试，不要创建新操作。",
+  "command.COMMAND_COMMITTED": "已保存，但更新后的界面不可用。请刷新或使用相同内容重试以获取确认。",
+  "command.RETRY_STORAGE_UNAVAILABLE": "未发送任何内容：无法保存重试信息。请启用浏览器会话存储后重试。",
+  "command.COMMAND_KEY_CONFLICT": "请先确认原操作的结果，再更改内容。",
   "event.peerThanks": "{{actor}}感谢了{{target}}。",
   "event.managerRecognition": "{{actor}}表彰了{{target}}。",
   "event.helpRequested": "{{actor}}请求帮助：{{title}}。",

@@ -92,8 +92,8 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
     step === 2 ? (mode === 'AVAILABLE' && audience !== 'PRIVATE' ? true : !!next && !capacityReached(state, next)) :
     step === 3 ? (!overriding || overrideReason.trim().length > 0) && effRemaining >= 0 : true
 
-  const finish = () => {
-    dispatch({
+  const finish = async () => {
+    if (!await dispatch({
       type: 'HANDOFF', sensitivityConfirmed: confirmed, taskId: task.id, managerId: me.id, acceptedPct: pct, reason: reason.trim(),
       next: next === 'AVAILABLE' ? { kind: 'AVAILABLE' } : { kind: 'EMPLOYEE', id: next },
       audience: audience !== task.audience ? audience : undefined,
@@ -104,7 +104,7 @@ export function HandoffWizard({ open, onClose, task }: { open: boolean; onClose:
       remainingReward: overriding ? effRemaining : undefined,
       overrideReason: overriding ? overrideReason.trim() : undefined,
       attachments: files.length > 0 ? files : undefined,
-    })
+    })) return
     onClose()
   }
 

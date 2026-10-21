@@ -63,15 +63,15 @@ export function CreateTaskModal({ open, onClose }: { open: boolean; onClose: () 
     && (audience === 'PRIVATE' ? !!assignee : mode === 'all' || assignee) && +reward > 0
     && (me.role !== 'MANAGER' || scope.kind !== 'COMPANY')
 
-  const create = () => {
-    dispatch({
+  const create = async () => {
+    if (!await dispatch({
       type: 'CREATE_TASK', by: me.id, ...(scope.kind !== 'COMPANY' ? { scope } : {}),
       title: title.trim(), description: desc.trim(),
       priority, deadline: deadline || null, reward: +reward, audience,
       assignMode: mode === 'all' && audience !== 'PRIVATE' ? 'ALL_EMPLOYEES' : 'SPECIFIC_EMPLOYEE',
       assigneeId: (mode === 'specific' || audience === 'PRIVATE') ? assignee : null,
       attachments: files,
-    })
+    })) return
     setTitle(''); setDesc(''); setAudience('EMPLOYEES'); setMode('all'); setAssignee(''); setPriority('NORMAL'); setDeadline(''); setReward('20')
     setFiles([]); setConfirming(false); setScope({ kind: 'COMPANY' })
     onClose()

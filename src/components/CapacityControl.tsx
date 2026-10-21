@@ -28,7 +28,7 @@ export function CapacityControl({ user }: { user: User }) {
       </Field>
       <p className="dim">{t('capacity.preserveWork')}</p>
       <button className="btn primary" disabled={!validCapacity(Number(value)) || Number(value) === limit}
-        onClick={() => { dispatch({ type: 'UPDATE_CAPACITY', by: me.id, userId: user.id, maxActiveTasks: Number(value) }); setEditing(false) }}>
+        onClick={async () => { if (await dispatch({ type: 'UPDATE_CAPACITY', by: me.id, userId: user.id, maxActiveTasks: Number(value) })) setEditing(false) }}>
         {t('common.saveChanges')}
       </button>
     </Modal>, document.body)}

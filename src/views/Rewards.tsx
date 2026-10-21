@@ -208,8 +208,8 @@ export function RewardsView() {
             </div>
             <div className="actionbar" style={{ position: 'static', margin: '0 -18px -18px' }}>
               <button className="btn" onClick={() => setConfirm(null)}>{t('common.back')}</button>
-              <button className="btn primary" onClick={() => {
-                dispatch({ type: 'REDEEM', userId: me.id, rewardId: confirm.id })
+              <button className="btn primary" onClick={async () => {
+                if (!await dispatch({ type: 'REDEEM', userId: me.id, rewardId: confirm.id })) return
                 setConfirm(null)
               }}>{t('reward.action.confirmRedemption')}</button>
             </div>
@@ -241,8 +241,8 @@ function CategoryManagerModal({ open, onClose }: { open: boolean; onClose: () =>
             <input dir={draft ? 'auto' : undefined} type="text" value={draft} aria-label={t('reward.category.ariaPrefix', { name: c.name })}
               onChange={e => setRenaming({ ...renaming, [c.id]: e.target.value })} />
             <button className="btn" disabled={!draft.trim() || draft.trim() === c.name}
-              onClick={() => {
-                dispatch({ type: 'SAVE_REWARD_CATEGORY', by: me.id, category: { ...c, name: draft.trim() } })
+              onClick={async () => {
+                if (!await dispatch({ type: 'SAVE_REWARD_CATEGORY', by: me.id, category: { ...c, name: draft.trim() } })) return
                 setRenaming(rn => { const n = { ...rn }; delete n[c.id]; return n })
               }}>{t('reward.category.rename')}</button>
             <button className="btn" onClick={() =>
@@ -255,8 +255,8 @@ function CategoryManagerModal({ open, onClose }: { open: boolean; onClose: () =>
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
         <input dir={newName ? 'auto' : undefined} type="text" value={newName} placeholder={t('reward.category.newName')} aria-label={t('reward.category.newName')}
           onChange={e => setNewName(e.target.value)} />
-        <button className="btn primary" disabled={!newName.trim()} onClick={() => {
-          dispatch({ type: 'SAVE_REWARD_CATEGORY', by: me.id, category: { id: '', name: newName.trim(), active: true } })
+        <button className="btn primary" disabled={!newName.trim()} onClick={async () => {
+          if (!await dispatch({ type: 'SAVE_REWARD_CATEGORY', by: me.id, category: { id: '', name: newName.trim(), active: true } })) return
           setNewName('')
         }}>{t('reward.category.add')}</button>
       </div>
@@ -383,8 +383,8 @@ function RewardEditModal({ open, reward, onClose }: { open: boolean; reward: Rew
 
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
         <button className="btn" onClick={onClose}>{t('common.cancel')}</button>
-        <button className="btn primary" disabled={!valid} onClick={() => {
-          dispatch({
+        <button className="btn primary" disabled={!valid} onClick={async () => {
+          if (!await dispatch({
             type: 'SAVE_REWARD', by: me.id,
             reward: {
               id: reward?.id ?? '', name: name.trim(), description: desc.trim(),
@@ -398,7 +398,7 @@ function RewardEditModal({ open, reward, onClose }: { open: boolean; reward: Rew
               createdBy: reward?.createdBy ?? me.id,
               executorIds: executors,
             },
-          })
+          })) return
           onClose()
         }}>{reward ? t('common.saveChanges') : t('reward.action.create')}</button>
       </div>

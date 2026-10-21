@@ -97,7 +97,7 @@ export type AuthPhase = 'loading' | 'anon' | 'ready'
 interface Ctx {
   setup: (op: SetupOperation) => Promise<string | null>
   state: State
-  dispatch: (a: Action) => void
+  dispatch: (a: Action) => boolean | Promise<boolean>
   meId: string
   setMeId: (id: string) => void
   reset: () => void
@@ -163,7 +163,7 @@ function useDemoStore(): Ctx {
   }, [meId])
 
   const demoDispatch = (a: Action) => {
-    if (a.type === 'CLEAR_TEST_WORKSPACE' && (!WORKSPACE_TOOLS || a.by !== meId)) return
+    if (a.type === 'CLEAR_TEST_WORKSPACE' && (!WORKSPACE_TOOLS || a.by !== meId)) return false
     const before = latestDemoState.current
     const refusal = capacityRefusal(before, a)
     const actor = before.users.find(u => u.id === meId) ?? before.users[0]
@@ -178,6 +178,7 @@ function useDemoStore(): Ctx {
       latestDemoState.current = next
       applyDemoState(next)
       finishDemoAttempt(attempt, before, next)
+      return !refusal && !code
     } catch (error) { failAttempt(attempt, error); throw error }
   }
 
@@ -217,6 +218,7 @@ function useServerStore(): Ctx {
   /* One promise chain for EVERY server round-trip (mutations and refetches)
      so responses always apply in request order — no stale overwrite. */
   const queue = useRef<Promise<unknown>>(Promise.resolve())
+  const commandPending = useRef(false)
 
   /* N2.1-B: every authoritative payload passes the same defensive
      normalization as demo persisted states (missing eligibility → EMPLOYEES,
@@ -263,18 +265,24 @@ function useServerStore(): Ctx {
     return token
   }
 
-  const serverDispatch = (a: Action) => {
+  const serverDispatch = async (a: Action): Promise<boolean> => {
+    if (commandPending.current) return false
+    commandPending.current = true
+    setPersistError(translate(currentLocale(), 'command.saving'))
+    let succeeded = false
     const actor = me ? { id: me.id, name: me.name, role: me.role } : { id: '', name: '', role: '' }
     const dispatchEpoch = sessionEpoch.current
     const attempt = beginAttempt(a, actor, state!)
-    void enqueue(async () => {
+    try { await enqueue(async () => {
       try {
         if (latestState.current) prepareAttempt(attempt, latestState.current)
         const result = await send(a)
         finishServerAttempt(attempt, result)
+        succeeded = true
         return result
       } catch (error) {
         failAttempt(attempt, error)
+        if (dispatchEpoch === sessionEpoch.current) setPersistError(errorText(error))
         if (!(error instanceof ApiError && error.status === 401)) {
           const epoch = dispatchEpoch
           if (epoch !== sessionEpoch.current) throw error
@@ -282,7 +290,9 @@ function useServerStore(): Ctx {
         }
         throw error
       }
-    })
+    }) } finally { commandPending.current = false }
+    if (succeeded && dispatchEpoch === sessionEpoch.current) setPersistError(null)
+    return succeeded && dispatchEpoch === sessionEpoch.current
   }
 
   const boot = async () => {
@@ -392,7 +402,7 @@ function useServerStore(): Ctx {
      credentials. The switcher UI never renders here, so this is a no-op. */
   const setMeId = (_id: string) => { /* identity is server-authoritative */ }
 
-  /* In server mode, browser storage holds ONLY the auth token — no domain
+  /* In server mode, browser storage holds auth and hashed retry metadata — no domain
      state. The demo keys are inert here (never read; this hook never calls
      load()), and are left untouched so switching back to demo mode restores
      the previous demo session exactly. */

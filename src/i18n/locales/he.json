@@ -1,4 +1,9 @@
 {
+  "command.saving": "שומר… יש להמתין לאישור לפני שליחה נוספת.",
+  "command.OUTCOME_UNKNOWN": "התוצאה אינה ידועה: ייתכן שהפעולה נשמרה. יש לנסות שוב עם הפרטים המקוריים ולא ליצור פעולה חדשה.",
+  "command.COMMAND_COMMITTED": "נשמר, אך התצוגה המעודכנת אינה זמינה. יש לרענן או לנסות שוב עם אותם פרטים לקבלת אישור.",
+  "command.RETRY_STORAGE_UNAVAILABLE": "דבר לא נשלח: מידע לניסיון חוזר לא נשמר. יש לאפשר אחסון הפעלה בדפדפן ולנסות שוב.",
+  "command.COMMAND_KEY_CONFLICT": "יש לברר את תוצאת הפעולה המקורית לפני שינוי פרטיה.",
   "event.peerThanks": "{{actor}} הודה ל־{{target}}.",
   "event.managerRecognition": "{{actor}} הוקיר את תרומתו של {{target}}.",
   "event.helpRequested": "{{actor}} ביקש עזרה: {{title}}.",

@@ -15,7 +15,7 @@ import time
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import (Boolean, Float, ForeignKey, Integer, String, Text, Date,
+from sqlalchemy import (Boolean, Float, ForeignKey, ForeignKeyConstraint, Integer, String, Text, Date,
                         UniqueConstraint, CheckConstraint, Numeric, Index, text)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -31,6 +31,17 @@ def now_ms() -> float:
 
 class Base(DeclarativeBase):
     pass
+
+
+class CommandReceipt(Base):
+    """Committed retry identity, written atomically with a legacy command."""
+    __tablename__ = 'command_receipts'
+    __table_args__ = (ForeignKeyConstraint(['company_id', 'actor_id'], ['users.company_id', 'users.id'],
+                                         name='fk_command_receipt_actor'),)
+    company_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    actor_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
 
 
 class Company(Base):

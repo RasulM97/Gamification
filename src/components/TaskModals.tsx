@@ -81,8 +81,8 @@ export function SubmitModal({ open, onClose, task }: { open: boolean; onClose: (
       )}
       <div className="actionbar" style={{ position: 'static', margin: '8px -18px -18px' }}>
         <button className="btn" onClick={onClose}>{tr('common.cancel')}</button>
-        <button className="btn primary" disabled={errors.length > 0} onClick={() => {
-          dispatch({ type: 'SUBMIT_WORK', taskId: task.id, userId: me.id, note, attachments: files, pct })
+        <button className="btn primary" disabled={errors.length > 0} onClick={async () => {
+          if (!await dispatch({ type: 'SUBMIT_WORK', taskId: task.id, userId: me.id, note, attachments: files, pct })) return
           onClose()
         }}>{tr('task.action.submitReview')}</button>
       </div>
@@ -103,8 +103,8 @@ export function RejectModal({ open, onClose, task }: { open: boolean; onClose: (
       </Field>
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
         <button className="btn" onClick={onClose}>{tr('common.back')}</button>
-        <button className="btn primary" disabled={!reason.trim()} onClick={() => {
-          dispatch({ type: 'REJECT', taskId: task.id, managerId: me.id, reason: reason.trim() })
+        <button className="btn primary" disabled={!reason.trim()} onClick={async () => {
+          if (!await dispatch({ type: 'REJECT', taskId: task.id, managerId: me.id, reason: reason.trim() })) return
           onClose()
         }}>{tr('review.reject')}</button>
       </div>
@@ -125,8 +125,8 @@ export function DeclineModal({ open, onClose, task }: { open: boolean; onClose: 
       </Field>
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
         <button className="btn" onClick={onClose}>{tr('common.back')}</button>
-        <button className="btn primary" disabled={!reason.trim()} onClick={() => {
-          dispatch({ type: 'DECLINE_ASSIGNMENT', taskId: task.id, userId: me.id, reason: reason.trim() })
+        <button className="btn primary" disabled={!reason.trim()} onClick={async () => {
+          if (!await dispatch({ type: 'DECLINE_ASSIGNMENT', taskId: task.id, userId: me.id, reason: reason.trim() })) return
           onClose()
         }}>{tr('task.action.decline')}</button>
       </div>
@@ -176,8 +176,8 @@ export function CancelModal({ open, onClose, task }: { open: boolean; onClose: (
         <button className="btn" onClick={onClose}>{tr('common.back')}</button>
         <button className="btn primary" disabled={!reason.trim() || (pct > 0 && !canExecuteTaskPayout(state, task, me, payout))}
           title={pct > 0 && !canExecuteTaskPayout(state, task, me, payout) ? tr('task.cancelCreditAdminRequired', { name: owner?.name ?? '' }) : ''}
-          onClick={() => {
-          dispatch({ type: 'CANCEL_TASK', taskId: task.id, by: me.id, reason: reason.trim(), acceptedPct: pct })
+          onClick={async () => {
+          if (!await dispatch({ type: 'CANCEL_TASK', taskId: task.id, by: me.id, reason: reason.trim(), acceptedPct: pct })) return
           onClose()
         }}>{pct > 0 ? tr('task.action.cancelCredit', { coins: coins(payout) }) : tr('task.action.cancel')}</button>
       </div>
@@ -208,8 +208,8 @@ export function ReturnModal({ open, onClose, task }: { open: boolean; onClose: (
       </Field>
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
         <button className="btn" onClick={onClose}>{tr('common.back')}</button>
-        <button className="btn primary" disabled={!reason.trim()} onClick={() => {
-          dispatch({ type: 'RETURN_CLAIM', taskId: task.id, userId: me.id, reason: reason.trim() })
+        <button className="btn primary" disabled={!reason.trim()} onClick={async () => {
+          if (!await dispatch({ type: 'RETURN_CLAIM', taskId: task.id, userId: me.id, reason: reason.trim() })) return
           onClose()
         }}>{tr('task.action.returnPenalty', { coins: fmtNum(pen) })}</button>
       </div>
@@ -319,12 +319,12 @@ export function ReopenModal({ open, onClose, task }: { open: boolean; onClose: (
       <BriefChoice task={task} update={update} setUpdate={setUpdate} desc={desc} setDesc={setDesc} files={files} setFiles={setFiles} />
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
         <button className="btn" onClick={onClose}>{tr('common.back')}</button>
-        <button className="btn primary" disabled={routeBad} onClick={() => {
-          dispatch({ type: 'REOPEN', taskId: task.id, by: me.id,
+        <button className="btn primary" disabled={routeBad} onClick={async () => {
+          if (!await dispatch({ type: 'REOPEN', taskId: task.id, by: me.id,
             description: update ? desc : undefined, attachments: files.length > 0 ? files : undefined,
             audience: audience !== task.audience ? audience : undefined,
-            assigneeId: assigneeId || undefined, sensitivityConfirmed: confirmed })
-          onClose()
+            assigneeId: assigneeId || undefined, sensitivityConfirmed: confirmed })) return
+            onClose()
         }}>{tr('task.action.reopenCycle', { cycle: task.cycle + 1 })}</button>
       </div>
     </Modal>
@@ -361,12 +361,12 @@ export function ReactivateModal({ open, onClose, task }: { open: boolean; onClos
       <BriefChoice task={task} update={update} setUpdate={setUpdate} desc={desc} setDesc={setDesc} files={files} setFiles={setFiles} />
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
         <button className="btn" onClick={onClose}>{tr('common.back')}</button>
-        <button className="btn primary" disabled={!reason.trim() || routeBad} onClick={() => {
-          dispatch({ type: 'REACTIVATE', taskId: task.id, by: me.id, reason: reason.trim(),
+        <button className="btn primary" disabled={!reason.trim() || routeBad} onClick={async () => {
+          if (!await dispatch({ type: 'REACTIVATE', taskId: task.id, by: me.id, reason: reason.trim(),
             description: update ? desc : undefined, attachments: files.length > 0 ? files : undefined,
             audience: audience !== task.audience ? audience : undefined,
-            assigneeId: assigneeId || undefined, sensitivityConfirmed: confirmed })
-          onClose()
+            assigneeId: assigneeId || undefined, sensitivityConfirmed: confirmed })) return
+            onClose()
         }}>{tr('task.action.reactivateTask')}</button>
       </div>
     </Modal>
@@ -415,8 +415,8 @@ export function EditTaskModal({ open, onClose, task }: { open: boolean; onClose:
       {rewardBad && <div className="neg" style={{ fontSize: 12, marginBottom: 8 }}>⚠ {tr('task.help.rewardBelowPaid', { coins: coins(minReward) })}</div>}
       <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
         <button className="btn" onClick={onClose}>{tr('common.back')}</button>
-        <button className="btn primary" disabled={rewardBad || unchanged || !title.trim()} onClick={() => {
-          dispatch({
+        <button className="btn primary" disabled={rewardBad || unchanged || !title.trim()} onClick={async () => {
+          if (!await dispatch({
             type: 'EDIT_TASK', taskId: task.id, by: me.id,
             title: title.trim() !== task.title ? title.trim() : undefined,
             description: description.trim() !== task.description ? description.trim() : undefined,
@@ -424,7 +424,7 @@ export function EditTaskModal({ open, onClose, task }: { open: boolean; onClose:
             deadline: (deadline || null) !== (task.deadline ? task.deadline.slice(0, 10) : null)
               ? (deadline || null) : undefined,
             reward: reward !== task.reward ? reward : undefined,
-          })
+          })) return
           onClose()
         }}>{tr('common.saveChanges')}</button>
       </div>

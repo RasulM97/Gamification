@@ -28,8 +28,9 @@ from .security import check_password, current_user, make_token
 from .serializers import bootstrap
 from .task_access import can_view
 from .storage import StoredFile, storage
+from .command_receipts import command_context, begin as begin_command
 
-router = APIRouter(prefix='/api')
+router = APIRouter(prefix='/api', dependencies=[Depends(command_context)])
 
 
 def _company(db: Session, actor: User) -> Company:
@@ -42,14 +43,24 @@ def _state(db: Session, actor: User) -> dict:
 
 def mutate(db: Session, actor: User, action: str, entity: str, fn,
            staged: list[StoredFile] | None = None) -> dict:
-    """Run one service action as one transaction; on any failure roll back
-    AND delete staged files so failed submissions leave no orphan bytes."""
+    """Commit command and retry receipt together; never infer rollback from
+    a commit exception or delete bytes whose commit outcome is unknown."""
     t0 = time.perf_counter()
+    identity_checked = False
     try:
-        fn()
-        db.commit()
+        receipt, replay = begin_command(db, actor)
+        identity_checked = True
+        if not replay:
+            fn()
+            if receipt is not None:
+                db.add(receipt)
+            db.flush()
     except Exception as e:
         db.rollback()
+        if identity_checked and not replay and db.info.get('command') and isinstance(e, DomainError):
+            # We acquired the retry lock and found no committed receipt. This
+            # refusal resolves an earlier unknown delivery as not committed.
+            e.details['commandOutcome'] = 'NOT_COMMITTED'
         for f in staged or []:
             storage.delete(f.storage_path)
         log_action(actor.id, actor.role, actor.company_id, action, entity,
@@ -57,9 +68,28 @@ def mutate(db: Session, actor: User, action: str, entity: str, fn,
                    (time.perf_counter() - t0) * 1000,
                    getattr(e, 'code', type(e).__name__))
         raise
+    if replay:
+        db.rollback()  # release retry lock before the fresh authorized read
+        for f in staged or []:
+            storage.delete(f.storage_path)  # retry's new bytes, never original bytes
+    else:
+        try:
+            db.commit()
+        except Exception as e:
+            # Even a successful rollback call cannot prove COMMIT did not happen.
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            raise HTTPException(503, {'code': 'OUTCOME_UNKNOWN',
+                                     'message': 'Outcome unknown. Retry only with the same command identity.'}) from e
     log_action(actor.id, actor.role, actor.company_id, action, entity, 'ok',
                (time.perf_counter() - t0) * 1000)
-    return _state(db, actor)
+    try:
+        return _state(db, actor)
+    except Exception as e:
+        raise HTTPException(503, {'code': 'COMMAND_COMMITTED',
+                                 'message': 'Saved, but the refreshed view is unavailable. Refresh or retry with the same identity.'}) from e
 
 
 def stage_files(db: Session, actor: User,

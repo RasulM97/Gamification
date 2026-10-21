@@ -1,4 +1,9 @@
 {
+  "command.saving": "جارٍ الحفظ… انتظر التأكيد قبل الإرسال مجدداً.",
+  "command.OUTCOME_UNKNOWN": "النتيجة غير معروفة: ربما تم الحفظ. أعد المحاولة بالتفاصيل الأصلية ولا تنشئ عملية جديدة.",
+  "command.COMMAND_COMMITTED": "تم الحفظ، لكن العرض المحدّث غير متاح. حدّث الصفحة أو أعد المحاولة بالتفاصيل نفسها للتأكيد.",
+  "command.RETRY_STORAGE_UNAVAILABLE": "لم يُرسل شيء: تعذّر حفظ معلومات إعادة المحاولة. فعّل تخزين جلسة المتصفح وحاول مجدداً.",
+  "command.COMMAND_KEY_CONFLICT": "تحقق من نتيجة العملية الأصلية قبل تغيير تفاصيلها.",
   "event.peerThanks": "شكر {{actor}} {{target}}.",
   "event.managerRecognition": "قدّر {{actor}} مساهمة {{target}}.",
   "event.helpRequested": "طلب {{actor}} المساعدة: {{title}}.",

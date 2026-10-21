@@ -195,8 +195,8 @@ export function RedemptionsView() {
         {review && isMgr && canDecideRedemption(user(review.userId)!, me) && decision !== 'cancel' && (
           <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
             <button className="btn" onClick={() => { setDecision('cancel'); setReason('') }}>{t('redemption.action.cancelRefund')}</button>
-            <button className="btn primary" onClick={() => {
-              dispatch({ type: 'APPROVE_REDEMPTION', id: review!.id, by: me.id })
+            <button className="btn primary" onClick={async () => {
+              if (!await dispatch({ type: 'APPROVE_REDEMPTION', id: review!.id, by: me.id })) return
               setReviewId(null)
             }}>{t('redemption.action.approve')}</button>
           </div>
@@ -209,8 +209,8 @@ export function RedemptionsView() {
             </Field>
             <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
               {isMgr && <button className="btn" onClick={() => setDecision(null)}>{t('redemption.backReview')}</button>}
-              <button className="btn primary" disabled={!reason.trim()} onClick={() => {
-                dispatch({ type: 'CANCEL_REDEMPTION', id: review!.id, by: me.id, reason: reason.trim() })
+              <button className="btn primary" disabled={!reason.trim()} onClick={async () => {
+                if (!await dispatch({ type: 'CANCEL_REDEMPTION', id: review!.id, by: me.id, reason: reason.trim() })) return
                 setReviewId(null); setDecision(null)
               }}>{t('redemption.action.cancelRefundAmount', { coins: coins(review?.cost ?? 0) })}</button>
             </div>
@@ -259,8 +259,8 @@ function FulfillModal({ redemption, rewardName, redeemerName, onClose }: {
           </Field>
           <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
             <button className="btn" onClick={onClose}>{t('common.back')}</button>
-            <button className="btn primary" onClick={() => {
-              dispatch({ type: 'FULFILL_REDEMPTION', id: redemption.id, by: me.id, reference, note })
+            <button className="btn primary" onClick={async () => {
+              if (!await dispatch({ type: 'FULFILL_REDEMPTION', id: redemption.id, by: me.id, reference, note })) return
               onClose()
             }}>{t('redemption.action.confirmFulfill')}</button>
           </div>

@@ -18,8 +18,8 @@ export function WorkspaceControls() {
       </Field>
       <div className="testlab-actions">
         <button className="btn" onClick={() => setOpen(false)}>{t('common.cancel')}</button>
-        <button className="btn danger" disabled={confirmation !== 'CLEAR'} onClick={() => {
-          dispatch({ type: 'CLEAR_TEST_WORKSPACE', by: me.id }); setOpen(false)
+        <button className="btn danger" disabled={confirmation !== 'CLEAR'} onClick={async () => {
+          if (await dispatch({ type: 'CLEAR_TEST_WORKSPACE', by: me.id })) setOpen(false)
         }}>{t('admin.clearWorkspace')}</button>
       </div>
     </Modal>

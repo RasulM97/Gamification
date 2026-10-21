@@ -1,4 +1,9 @@
 {
+  "command.saving": "Saving… Wait for confirmation before sending again.",
+  "command.OUTCOME_UNKNOWN": "Outcome unknown: this may have been saved. Retry with the original details; do not create a new operation.",
+  "command.COMMAND_COMMITTED": "Saved, but the updated view is unavailable. Refresh or retry the same details for confirmation.",
+  "command.RETRY_STORAGE_UNAVAILABLE": "Nothing was sent: retry information could not be saved. Enable browser session storage and try again.",
+  "command.COMMAND_KEY_CONFLICT": "Resolve the original operation before changing its details.",
   "event.peerThanks": "{{actor}} thanked {{target}}.",
   "event.managerRecognition": "{{actor}} recognized {{target}}.",
   "event.helpRequested": "{{actor}} requested help: {{title}}.",

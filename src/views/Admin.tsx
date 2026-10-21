@@ -227,8 +227,8 @@ export function AdminView({ onRewards, onGo }: { onRewards?: () => void; onGo?: 
         </Field>
         <div className="actionbar" style={{ position: 'static', margin: '4px -18px -18px' }}>
           <button className="btn" onClick={() => setAdjustFor(null)}>{t('common.cancel')}</button>
-          <button className="btn primary" disabled={!reason.trim() || !+amount} onClick={() => {
-            dispatch({ type: 'ADMIN_ADJUST', by: me.id, userId: adjustFor!, amount: +amount, reason: reason.trim() })
+            <button className="btn primary" disabled={!reason.trim() || !+amount} onClick={async () => {
+              if (!await dispatch({ type: 'ADMIN_ADJUST', by: me.id, userId: adjustFor!, amount: +amount, reason: reason.trim() })) return
             setAdjustFor(null)
           }}>{t('admin.action.postAdjustment')}</button>
         </div>
