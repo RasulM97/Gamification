@@ -9,6 +9,7 @@ cleanup when the DB transaction fails (caller deletes staged files).
 from __future__ import annotations
 
 import os
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -41,8 +42,18 @@ class LocalStorage:
         rel = os.path.join(company_id, f'{uuid.uuid4().hex}-{safe}')
         dest = self._abs(rel)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
-        with open(dest, 'wb') as f:
-            f.write(data)
+        created = False
+        try:
+            with open(dest, 'xb') as f:
+                created = True
+                f.write(data)
+        except Exception:
+            if created:
+                try:
+                    os.remove(dest)
+                except OSError:
+                    logging.getLogger('cve').exception('Partial attachment cleanup failed')
+            raise
         return rel
 
     def read(self, rel: str) -> bytes:

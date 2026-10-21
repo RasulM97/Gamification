@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from .capabilities.service import require as require_capability
 from . import services as svc
 from .config import settings
-from .db import get_db, log_action
+from .db import get_db, log_action, logger
 from .domain import DomainError, UploadCandidate, can_see_task, validate_attachments
 from .models import Attachment, Company, Task, User
 from .security import check_password, current_user, make_token
@@ -39,6 +39,16 @@ def _company(db: Session, actor: User) -> Company:
 
 def _state(db: Session, actor: User) -> dict:
     return bootstrap(db, _company(db, actor), viewer=actor)
+
+
+def _discard_staged(staged):
+    for file in staged or []:
+        try:
+            storage.delete(file.storage_path)
+        except OSError:
+            # Continue attempting the remaining owned files; do not replace
+            # the original command/write error with a cleanup failure.
+            logger.exception('Staged attachment cleanup failed')
 
 
 def mutate(db: Session, actor: User, action: str, entity: str, fn,
@@ -61,8 +71,7 @@ def mutate(db: Session, actor: User, action: str, entity: str, fn,
             # We acquired the retry lock and found no committed receipt. This
             # refusal resolves an earlier unknown delivery as not committed.
             e.details['commandOutcome'] = 'NOT_COMMITTED'
-        for f in staged or []:
-            storage.delete(f.storage_path)
+        _discard_staged(staged)
         log_action(actor.id, actor.role, actor.company_id, action, entity,
                    'refused' if isinstance(e, DomainError) else 'error',
                    (time.perf_counter() - t0) * 1000,
@@ -70,8 +79,7 @@ def mutate(db: Session, actor: User, action: str, entity: str, fn,
         raise
     if replay:
         db.rollback()  # release retry lock before the fresh authorized read
-        for f in staged or []:
-            storage.delete(f.storage_path)  # retry's new bytes, never original bytes
+        _discard_staged(staged)  # retry's new bytes, never original bytes
     else:
         try:
             db.commit()
@@ -112,9 +120,15 @@ def stage_files(db: Session, actor: User,
     errors = validate_attachments(candidates, s.max_file_size_mb, s.max_submission_total_mb)
     if errors:
         raise DomainError('UPLOAD_REJECTED', ' · '.join(errors))
-    return [StoredFile(name=n, size=len(d), type=t,
-                       storage_path=storage.save(actor.company_id, n, d))
-            for n, t, d in read]
+    staged = []
+    try:
+        for n, t, d in read:
+            staged.append(StoredFile(name=n, size=len(d), type=t,
+                                     storage_path=storage.save(actor.company_id, n, d)))
+        return staged
+    except Exception:
+        _discard_staged(staged)
+        raise
 
 
 class CapacityIn(BaseModel):
