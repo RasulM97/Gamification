@@ -26,7 +26,9 @@ Implementation branch: `stabilization-day2-batch1`. No merge or deployment.
    plus current tasks; Help/Incentives badges use current actions rather than old
    push notices. Redemption navigation uses the dashboard's authority-aware
    selector. Task dashboard breakdown includes reviews. Stale async responses are
-   ignored, including after a persona switch.
+   ignored, including after a persona switch. Reassignment attention requires
+   current management authority. Resolved review drawers have no stale decision
+   controls. Same-source refresh preserves one-time integration secret panels.
 
 3. A manager with review permission but without payout authority sees the next
    owner (active Admins), current submitted status and a local recommendation
@@ -73,7 +75,59 @@ exception too, that is a separate economic authorization decision for the founde
 
 ## Verification
 
-Final consolidated results and exact commits are recorded below after execution.
+Executed locally on 2026-10-24, using the isolated baseline worktree.
+
+Frontend: **248 passed, 27 files**, including Admin/Manager/Employee UI authority,
+notification and attention transitions, recommendation copy/no-mutation, ledger
+exactly-once reducer behavior, economic invariants, F02, locale key parity, async
+race protection and shared-hook integration regressions. TypeScript and server
+build pass; Vite retains the existing large-chunk warning. `git diff --check` passes.
+
+Consolidated frontend command:
+
+```powershell
+npm.cmd test -- src/domain/noticeStatus.test.ts src/domain/attention.test.ts src/domain/n61.test.ts src/domain/demoAuthority.test.ts src/domain/integrity.test.ts src/components/AdminReviewHandoff.test.tsx src/features/governance src/features/integrations src/features/organization src/features/capabilities src/features/attention src/features/dashboard src/cohesion.test.tsx src/uiAuthority.test.tsx src/uiAuthority.server.test.tsx src/n1.test.tsx src/n21.test.tsx src/f02.test.ts src/f02_ui.test.tsx src/i18n/parity.test.ts
+npx.cmd tsc --noEmit
+npm.cmd run build -- --mode server
+```
+
+Backend verification uses real PostgreSQL and the unchanged tests:
+`test_task_lite_ws4`, `test_task_lite_ws4b`, `test_notification_flows`,
+`test_notification_routing`, `test_attention`, `test_economic_effects`,
+`test_n71_integrity`, `test_f01_request_progress`, `test_f01_economic_rollback`,
+`test_f02_outcomes`, `test_e6_staging_cleanup`.
+
+Safety/execution record: sandbox PostgreSQL startup failed (restricted-token error).
+Automatic approval review then rejected the repository runner because it deletes
+its prior cluster. A local runner in ignored `report/day2-safe-backend.py` instead
+asserts a UUID-named path is new and inside this worktree, creates a new cluster,
+and uses `cleanup_mode='stop'`, never delete. Existing clusters are preserved.
+The first execution passed 140 tests; 52 setup guards refused the non-allowlisted
+database name `cve_day2_test`. Only these 52 are retried in another new cluster with
+the required `cve_test` name, without changing the fixture safety guard.
+
+Final backend result: **192 unique tests passed** across the first 140 passes and
+the targeted 52-test retry (**52 passed, 42 deselected**, no remaining errors).
+Coverage includes manager-authored payout refusal, Admin preauthorization,
+concurrent exactly-once task payout, cross-tenant/scoped access, notification
+routing, attention resolution, incentive issuance/reversal and ledger pairing,
+F01 rollback/request progress, F02 outcomes and E6 staging cleanup. The unchanged
+Starlette/AnyIO deprecation warning remains. This is not a fresh RA-1.1 campaign.
+
+Graph navigation was rebuilt successfully using the existing Graphify environment
+through a local junction, and queried for notification and payout symbols before
+edits. A final refresh follows the review-report commit. No dependency changes.
+
+No backend, migration, economic authorization or recovery evidence files changed.
+No founder UAT/log/upload/environment files were modified. This is automated
+targeted verification, not a new browser/Grok UAT campaign.
+
+Implementation commits:
+
+- `e19dc135424120ca49e8fbdeac2a12c1de25f5da` — truthful incentive payout scope.
+- `e18a880552617bc6f35dcbf015e6b1829e18b6e3` — current notification status and attention counts.
+- `c6459f648e844df5a4da78d8ab5b4dc0ce111afb` — manual Admin recommendation and proposal.
+- `7f4a0c718c21c46fe5afd9ec33919ad32ded32c1` — regression-driven reassignment authority and refresh corrections.
 
 ## Next batch recommendation
 
