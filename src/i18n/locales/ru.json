@@ -1343,5 +1343,7 @@
   "integrations.err.VALIDATION": "Проверьте введённые значения и попробуйте снова.",
   "integrations.err.INGRESS_UNAVAILABLE": "Приём интеграций не настроен на этом развёртывании. Обратитесь к оператору.",
   "integrations.err.NETWORK": "Проблема с соединением. Попробуйте ещё раз.",
-  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions."
+  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions.",
+  "notification.historical": "Historical ? no current action",
+  "notification.statusUnknown": "Current action status unavailable"
 }

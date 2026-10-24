@@ -1,9 +1,11 @@
+import { noticeIsUnread } from '../domain/noticeStatus'
+import { NoticeStatusBadge } from '../components/NoticeStatusBadge'
 import { EventText, EventReason, eventText } from '../components/EventText'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import { MUTABLE_LEVELS, isMuted, sortNotices, visibleNotices } from '../domain/engine'
 import type { NotifCategory, NotifLevel } from '../domain/engine'
-import { Empty, NotifBadge, Panel, Seg, ago, noticeTab, rowProps } from '../ui'
+import { Empty, Panel, Seg, ago, noticeTab, rowProps } from '../ui'
 import { useI18n } from '../i18n'
 
 // Canonical categories are system metadata, unlike the stored notice prose.
@@ -30,8 +32,8 @@ export function NotificationsView({ onOpenTask, onOpenRedemption }: {
   const [q, setQ] = useState('')
 
   const visible = sortNotices(visibleNotices(state, me.id))
-  const unreadTasks = visible.filter(n => !n.read && !n.archived && noticeTab(n) === 'TASKS').length
-  const unreadRewards = visible.filter(n => !n.read && !n.archived && noticeTab(n) === 'REWARDS').length
+  const unreadTasks = visible.filter(n => noticeIsUnread(state, n) && !n.archived && noticeTab(n) === 'TASKS').length
+  const unreadRewards = visible.filter(n => noticeIsUnread(state, n) && !n.archived && noticeTab(n) === 'REWARDS').length
   const hiddenCount = state.notices.filter(n =>
     n.userId === me.id && !n.archived && isMuted(state, me.id, n.level)).length
 
@@ -90,18 +92,18 @@ export function NotificationsView({ onOpenTask, onOpenRedemption }: {
           const rd = n.redemptionId ? state.redemptions.find(r => r.id === n.redemptionId) : undefined
           const rdName = rd ? state.users.find(u => u.id === rd.userId)?.name : null
           return (
-          <div className={'nitem' + (!n.read ? ' unread' : '')} key={n.id}
+          <div className={'nitem' + (noticeIsUnread(state, n) ? ' unread' : '')} key={n.id}
             {...rowProps(() => {
               dispatch({ type: 'MARK_READ', id: n.id })
               if (n.redemptionId) onOpenRedemption()
               else if (n.taskId) onOpenTask(n.taskId)
             })}>
-            {!n.read ? <span className="un" /> : <span style={{ width: 7, flex: 'none' }} />}
+            {noticeIsUnread(state, n) ? <span className="un" /> : <span style={{ width: 7, flex: 'none' }} />}
             {/* Stored notice prose remains verbatim; typed category metadata localizes at display time. */}
             <div className="tx">
               <span><EventText record={n} legacy={n.text} /><EventReason record={n} /></span>
               <div className="meta">
-                <NotifBadge l={n.level} />
+                <NoticeStatusBadge state={state} notice={n} />
                 <span>{CATEGORY_KEY[n.category] ? t(CATEGORY_KEY[n.category]) : n.category}</span><span>·</span><span>{ago(n.at)}</span>
                 {ownerName && <><span>·</span><span className="bd bd-normal">{t('notification.owner', { name: ownerName })}</span></>}
                 {rdName && <><span>·</span><span className="bd bd-normal" dir="auto">{rdName}</span></>}

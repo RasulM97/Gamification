@@ -417,8 +417,8 @@ describe('D — notification popover parity', () => {
     persona('u-marcus')
     await render(h(App), false)
     await openBell()
-    // Marcus seed: 2 unread task notices (assignment + review), 1 unread reward notice
-    expect(host.querySelector('[data-testid=bell-tab-tasks]')?.textContent).toBe('Tasks (2)')
+    // Marcus has one current assignment; the old review notice has no reviewer grant and remains historical.
+    expect(host.querySelector('[data-testid=bell-tab-tasks]')?.textContent).toBe('Tasks (1)')
     expect(host.querySelector('[data-testid=bell-tab-rewards]')?.textContent).toBe('Rewards (1)')
     // tasks tab shows task notices, not reward notices
     const pop = host.querySelector('.bell-pop')!
@@ -441,7 +441,7 @@ describe('E — mark all read visibly works', () => {
   it('11+12 · popover: bell badge and tab counts clear immediately', async () => {
     persona('u-marcus')
     await render(h(App), false)
-    expect(host.querySelector('.bell-btn .dot')?.textContent).toBe('3')
+    expect(host.querySelector('.bell-btn .dot')?.textContent).toBe('2')
     await act(async () => {
       host.querySelector<HTMLButtonElement>('.bell-btn[aria-label="Open notifications"]')!.click()
     })

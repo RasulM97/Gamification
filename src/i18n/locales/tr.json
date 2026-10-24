@@ -1343,5 +1343,7 @@
   "integrations.err.VALIDATION": "Girilen değerleri kontrol edip tekrar deneyin.",
   "integrations.err.INGRESS_UNAVAILABLE": "Bu dağıtımda entegrasyon girişi yapılandırılmamış. Operatörle iletişime geçin.",
   "integrations.err.NETWORK": "Bağlantı sorunu. Tekrar deneyin.",
-  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions."
+  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions.",
+  "notification.historical": "Historical ? no current action",
+  "notification.statusUnknown": "Current action status unavailable"
 }

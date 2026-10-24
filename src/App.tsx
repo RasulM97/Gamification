@@ -1,3 +1,6 @@
+import { selectRedemptions } from './features/dashboard/dashboard.selectors'
+import { noticeIsUnread } from './domain/noticeStatus'
+import { NoticeStatusBadge } from './components/NoticeStatusBadge'
 import { SystemToast } from './presentation/SystemToast'
 import { NotificationAudio } from './presentation/NotificationAudio'
 import { selectNeedsAttention } from "./domain/attention"
@@ -7,7 +10,7 @@ import { StoreProvider, useStore, useMe, IS_DEMO } from './store'
 import { DEV_TOOLS, WORKSPACE_TOOLS } from './runtime'
 import { ActivationScreen } from './features/onboarding/ActivationScreen'
 import { balanceOf, canFulfillReward, canSeeTask, canReviewTask, sortNotices, visibleNotices } from './domain/engine'
-import { Avatar, Coin, NotifBadge, ago, noticeTab, roleKey } from './ui'
+import { Avatar, Coin, ago, noticeTab, roleKey } from './ui'
 import { I18nProvider, fmtInt, useI18n } from './i18n'
 import { LocaleSwitcher } from './components/LocaleSwitcher'
 import { LoginScreen } from './components/Login'
@@ -16,7 +19,9 @@ import { setPage } from './uat'
 import { Overview } from './views/Overview'
 import { TasksView } from './views/Tasks'
 import { ReviewsView } from './views/Reviews'
-import { MyAttentionView } from './features/attention/MyAttentionView'
+import { AttentionQueue } from './features/attention/MyAttentionView'
+import { useGovData } from './features/governance/hooks'
+import { attention } from './features/attention/source'
 import { FlowView } from './features/attention/FlowView'
 import { RewardsView } from './views/Rewards'
 import { RedemptionsView } from './views/Redemptions'
@@ -102,31 +107,30 @@ function Shell() {
   const whoRef = useRef<HTMLDivElement>(null)
 
   const myNotices = sortNotices(visibleNotices(state, me.id)).filter(n => !n.archived)
-  const unread = myNotices.filter(n => !n.read)
+  const unread = myNotices.filter(n => noticeIsUnread(state, n))
   /* N2.1-D: the popover mirrors the Notification Center's conceptual split —
      TASKS and REWARDS, each with its own unread count. Archived stays on the
      full page; "View all" opens it. */
   const [bellTab, setBellTab] = useState<'tasks' | 'rewards'>('tasks')
-  const unreadTasks = myNotices.filter(n => !n.read && noticeTab(n) === 'TASKS').length
-  const unreadRewards = myNotices.filter(n => !n.read && noticeTab(n) === 'REWARDS').length
+  const unreadTasks = myNotices.filter(n => noticeIsUnread(state, n) && noticeTab(n) === 'TASKS').length
+  const unreadRewards = myNotices.filter(n => noticeIsUnread(state, n) && noticeTab(n) === 'REWARDS').length
   /* WS1 selective push surfaces as nav badges too: actionable Help routing on
      People, pending incentive approvals on Incentives. */
-  const helpPushCount = myNotices.filter(n =>
-    !n.read && (n.eventType === 'HELP_ROUTED' || n.eventType === 'HELP_ESCALATED')).length
-  const approvalPushCount = myNotices.filter(n => !n.read && n.eventType === 'APPROVAL_REQUESTED').length
+  const attentionData = useGovData(() => attention.myAttention({ id: me.id, role: me.role }),
+    [me.id, me.role, state, view])
+  const currentActions = !attentionData.loading && !attentionData.error
+    ? attentionData.data?.filter(item => item.category === 'ACTION_REQUIRED') : undefined
+  const helpPushCount = currentActions?.filter(item => item.kind.startsWith('help.')).length
+  const approvalPushCount = currentActions?.filter(item => item.kind === 'approval.decide').length
   const bellNotices = myNotices.filter(n => noticeTab(n).toLowerCase() === bellTab)
   const reviewCount = state.tasks.filter(t => t.status === 'SUBMITTED' && canReviewTask(state, t, me)).length
-  const attentionCount = selectNeedsAttention(state, me).total
+  const attentionCount = currentActions ? currentActions.length + (tasksEnabled ? selectNeedsAttention(state, me).total : 0) : undefined
   /* N2.2 §8 + N2.3 §1/§9: the badge counts what THIS user can act on —
      management sees pending approvals; whoever holds fulfillment authority
      over an approved item (admin by office, management fallback when no
      executor is configured, or an assigned executor) also counts it. */
-  const redemptionCount = state.redemptions.filter(r => r.status === 'PENDING').length
-    + state.redemptions.filter(r => {
-        if (r.status !== 'APPROVED') return false
-        const w = state.rewards.find(x => x.id === r.rewardId)
-        return !!w && canFulfillReward(me, w)
-      }).length
+  const redemptionQueue = selectRedemptions(state, me)
+  const redemptionCount = redemptionQueue.pending + redemptionQueue.ready
   const bal = balanceOf(state, me.id)
 
   /* role-aware navigation; when switching persona, land on overview */
@@ -369,18 +373,18 @@ function Shell() {
                 <div className="bp-list">
                   {bellNotices.length === 0 && <div style={{ padding: 20, textAlign: 'center', color: 'var(--faint)', fontSize: 12.5 }}>{t('notification.empty')}</div>}
                   {bellNotices.slice(0, 6).map(n => (
-                    <div className={'nitem' + (!n.read ? ' unread' : '')} key={n.id}
+                    <div className={'nitem' + (noticeIsUnread(state, n) ? ' unread' : '')} key={n.id}
                       onClick={() => {
                         dispatch({ type: 'MARK_READ', id: n.id })
                         setBellOpen(false)
                         if (n.redemptionId) go('redemptions')
                         else if (n.taskId) setTaskId(n.taskId)
                       }}>
-                      {!n.read ? <span className="un" /> : <span style={{ width: 7, flex: 'none' }} />}
+                      {noticeIsUnread(state, n) ? <span className="un" /> : <span style={{ width: 7, flex: 'none' }} />}
                       {/* stored notice text is immutable history — rendered as-is,
                           bidi-safe (N3 §10 debt: structured events not yet stored) */}
                       <div className="tx"><EventText record={n} legacy={n.text} /><EventReason record={n} />
-                        <div className="meta"><NotifBadge l={n.level} /><span>{ago(n.at)}</span></div>
+                        <div className="meta"><NoticeStatusBadge state={state} notice={n} /><span>{ago(n.at)}</span></div>
                       </div>
                     </div>
                   ))}
@@ -407,7 +411,7 @@ function Shell() {
           {tasksEnabled && view === 'mywork' && !isAdmin && <TasksView scope="mine" onOpen={setTaskId} onCreate={() => setCreateOpen(true)} />}
           {tasksEnabled && view === 'available' && <TasksView scope="available" onOpen={setTaskId} onCreate={() => setCreateOpen(true)} />}
           {tasksEnabled && view === 'reviews' && <ReviewsView openId={reviewId} onOpen={setReviewId} onClose={() => setReviewId(null)} />}
-          {view === 'attention' && <MyAttentionView tasksEnabled={tasksEnabled} onOpenTask={setTaskId} onNavigate={go} />}
+          {view === 'attention' && <AttentionQueue remote={attentionData} tasksEnabled={tasksEnabled} onOpenTask={setTaskId} onNavigate={go} />}
           {view === 'flow' && isMgr && <FlowView onNavigate={go} />}
           {view === 'rewards' && <RewardsView />}
           {view === 'redemptions' && <RedemptionsView />}

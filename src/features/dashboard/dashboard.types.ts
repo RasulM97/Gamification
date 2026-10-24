@@ -4,7 +4,7 @@ import type { Act, Role, Task, TaskStatus, User, Reward } from '../../domain/eng
 export type DashboardNavigate = (view: string, taskId?: string) => void
 export interface WorkSummary { active: number; inReview: number; tasks: Task[] }
 export interface PersonalWork extends WorkSummary { limit: number; manager: boolean }
-export interface AttentionSummary { rework: Task[]; assignments: Task[]; total: number; personal: boolean }
+export interface AttentionSummary { rework: Task[]; assignments: Task[]; reviews: Task[]; total: number; personal: boolean }
 export interface CapacityPerson { user: User; active: number; limit: number; at: boolean; near: boolean }
 export interface CapacitySummary { people: CapacityPerson[]; at: number; near: number; admin: boolean }
 export interface RedemptionSummary { pending: number; ready: number; ownPending: number; ownReady: number; management: boolean }

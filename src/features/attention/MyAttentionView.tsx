@@ -9,6 +9,7 @@ import { selectNeedsAttention } from '../../domain/attention'
 import { Empty, Panel, rowProps } from '../../ui'
 import { useI18n, fmtInt, relTime } from '../../i18n'
 import { useGovData } from '../governance/hooks'
+import type { AsyncState } from '../governance/hooks'
 import { attention } from './source'
 import type { AttentionCategory, AttentionItem } from './types'
 
@@ -40,14 +41,22 @@ export function ItemRow({ item, onOpen }: { item: AttentionItem; onOpen: () => v
   </div>
 }
 
-export function MyAttentionView({ tasksEnabled, onOpenTask, onNavigate }: {
+type AttentionProps = {
   tasksEnabled: boolean
   onOpenTask: (id: string) => void
   onNavigate: (view: string) => void
+}
+export function MyAttentionView(props: AttentionProps) {
+  const me = useMe()
+  const remote = useGovData(() => attention.myAttention({ id: me.id, role: me.role }), [me.id, me.role])
+  return <AttentionQueue {...props} remote={remote} />
+}
+
+export function AttentionQueue({ tasksEnabled, onOpenTask, onNavigate, remote }: AttentionProps & {
+  remote: AsyncState<AttentionItem[]>
 }) {
   const { state } = useStore(), me = useMe(), { t } = useI18n()
-  const { data, loading, error, reload } = useGovData(
-    () => attention.myAttention({ id: me.id, role: me.role }), [me.id, me.role])
+  const { data, loading, error, reload } = remote
   const tasks = tasksEnabled
     ? selectNeedsAttention(state, me)
     : { rework: [], assignments: [], reviews: [], total: 0, personal: true }

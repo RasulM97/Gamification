@@ -1343,5 +1343,7 @@
   "integrations.err.VALIDATION": "مقادیر واردشده را بررسی کنید و دوباره تلاش کنید.",
   "integrations.err.INGRESS_UNAVAILABLE": "ورودی یکپارچه‌سازی در این استقرار پیکربندی نشده است. با اپراتور تماس بگیرید.",
   "integrations.err.NETWORK": "مشکل اتصال. دوباره تلاش کنید.",
-  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions."
+  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions.",
+  "notification.historical": "Historical ? no current action",
+  "notification.statusUnknown": "Current action status unavailable"
 }

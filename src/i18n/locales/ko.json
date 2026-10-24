@@ -1343,5 +1343,7 @@
   "integrations.err.VALIDATION": "입력한 값을 확인하고 다시 시도하세요.",
   "integrations.err.INGRESS_UNAVAILABLE": "이 배포에는 통합 수신이 구성되어 있지 않습니다. 운영자에게 문의하세요.",
   "integrations.err.NETWORK": "연결에 문제가 있습니다. 다시 시도하세요.",
-  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions."
+  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions.",
+  "notification.historical": "Historical ? no current action",
+  "notification.statusUnknown": "Current action status unavailable"
 }

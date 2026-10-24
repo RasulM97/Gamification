@@ -143,7 +143,7 @@ describe('N1-B — notification tabs', () => {
   it('6 · each tab shows its own unread count', async () => {
     persona('u-marcus')
     await render(h(NotificationsView, { onOpenTask: () => {}, onOpenRedemption: () => {} }))
-    expect(segButton('Tasks').textContent).toBe('Tasks (2)')
+    expect(segButton('Tasks').textContent).toBe('Tasks (1)')
     expect(segButton('Rewards').textContent).toBe('Rewards (1)')
   })
 

@@ -1343,5 +1343,7 @@
   "integrations.err.VALIDATION": "请检查输入的值后重试。",
   "integrations.err.INGRESS_UNAVAILABLE": "此部署未配置集成交接入口。请联系运维人员。",
   "integrations.err.NETWORK": "连接出现问题。请重试。",
-  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions."
+  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions.",
+  "notification.historical": "Historical ? no current action",
+  "notification.statusUnknown": "Current action status unavailable"
 }
