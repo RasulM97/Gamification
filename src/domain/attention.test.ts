@@ -34,6 +34,12 @@ function select(tasks: Task[], viewer: User) {
 }
 
 describe('selectNeedsAttention — WS4 task matrix', () => {
+  it('unassigned company work requires management authority, not merely a manager role', () => {
+    const unassigned = task({ assignMode: 'SPECIFIC_EMPLOYEE', assigneeId: null })
+    expect(select([unassigned], manager).assignments).toEqual([])
+    expect(select([unassigned], employee).assignments).toEqual([])
+    expect(select([unassigned], admin).assignments).toEqual([unassigned])
+  })
   it('employee: specific OPEN assignment to me → actionable; resolved/unrelated absent', () => {
     const mine = task({ assignMode: 'SPECIFIC_EMPLOYEE', assigneeId: 'u-emp' })
     const other = task({ assignMode: 'SPECIFIC_EMPLOYEE', assigneeId: 'u-emp2' })

@@ -77,6 +77,16 @@ const grantedNorthstar = () =>
   reducer(seed(), { type: 'SET_TASK_ACCESS', by: 'u-dana', taskId: 't-northstar', viewerIds: [], reviewerIds: ['u-marcus'] })
 
 describe('Reviews — review authority without economic authority', () => {
+  it('resolved task drawer shows its current status without stale decision controls', async () => {
+    const s = grantedNorthstar()
+    task(s, 't-northstar').status = 'APPROVED'
+    inject(s); persona('u-marcus')
+    await render(h(ReviewsView, { openId: 't-northstar', onOpen: () => {}, onClose: () => {} }))
+    expect(q('[data-testid="approve-admin-required"]')).toBeNull()
+    expect(q('[data-testid="admin-review-handoff"]')).toBeNull()
+    expect(buttons()).not.toContain('Reject')
+    expect(host.textContent).toContain('Approved')
+  })
   it('granted manager keeps the queue item and Reject, but positive Approve is locked with guidance', async () => {
     inject(grantedNorthstar())
     persona('u-marcus')

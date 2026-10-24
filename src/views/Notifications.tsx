@@ -17,11 +17,10 @@ const CATEGORY_KEY: Record<NotifCategory, string> = {
 
 /* Notification Center (N1-B): exactly two product tabs — TASKS and REWARDS —
    each with its own unread count, derived client-side from the existing
-   notice fields (see noticeTab in ui.tsx). Levels are preserved untouched:
-   ACTION_REQUIRED / IMPORTANT / INFORMATIONAL still badge every row, and
-   mute preferences (N-B) only cover low-priority levels — work that needs a
-   decision always lands. Product Activity is never classified as a
-   notification; the bell badge stays the total actionable unread count. */
+   notice fields (see noticeTab in ui.tsx). Stored levels remain untouched;
+   current badges and unread attention exclude resolved action requests.
+   Mute preferences only cover low-priority levels. Unread informational
+   news still counts as unread news, distinct from the current work queue. */
 export function NotificationsView({ onOpenTask, onOpenRedemption }: {
   onOpenTask: (id: string) => void; onOpenRedemption: () => void
 }) {

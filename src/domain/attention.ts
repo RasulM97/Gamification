@@ -1,5 +1,5 @@
 import { canSeeTask, type State, type User } from './model'
-import { canReviewTask } from './taskAccess'
+import { canManageTask, canReviewTask } from './taskAccess'
 
 /** Current work requiring this viewer's action, never event history. */
 export function selectNeedsAttention(state: Pick<State, 'tasks' | 'users'>, viewer: User) {
@@ -7,7 +7,7 @@ export function selectNeedsAttention(state: Pick<State, 'tasks' | 'users'>, view
   const rework = tasks.filter(task => task.status === 'REJECTED' && task.ownerId === viewer.id)
   const assignments = tasks.filter(task => task.status === 'OPEN' && !task.ownerId
     && task.assignMode === 'SPECIFIC_EMPLOYEE'
-    && (task.assigneeId === viewer.id || (!task.assigneeId && viewer.role !== 'EMPLOYEE')))
+    && (task.assigneeId === viewer.id || (!task.assigneeId && canManageTask(task, viewer))))
   /* WS4 round 2 (F3): a submitted task this viewer may actually review is
      exactly an attention-worthy state — one row per task, resolved by the
      review itself. Reuses the canonical canReviewTask rule; no second

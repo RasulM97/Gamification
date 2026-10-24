@@ -16,10 +16,15 @@ export function useGovData<T>(loader: () => Promise<T>, deps: unknown[] = []): A
   const generation = useRef(0)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const load = useCallback(loader, deps)
+  const previousLoader = useRef(load)
   const [loadedBy, setLoadedBy] = useState<(() => Promise<T>) | null>(null)
   const reload = useCallback(() => {
     const request = ++generation.current
-    setLoading(true); setError(null); setData(null); setLoadedBy(() => load)
+    setLoading(true); setError(null); setLoadedBy(() => load)
+    // Keep mounted detail panels (including one-time secrets) on a same-source
+    // refresh. A different actor/source must never receive the previous data.
+    if (previousLoader.current !== load) setData(null)
+    previousLoader.current = load
     load().then(value => {
       if (request !== generation.current) return
       setData(value); setLoading(false)

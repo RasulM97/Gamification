@@ -6,6 +6,7 @@ import type { AttentionSummary, RedemptionSummary, DashboardNavigate } from '../
 export function AttentionModule({ data, onGo }: { data: AttentionSummary; onGo: DashboardNavigate }) {
   const { t } = useI18n()
   return <>
+    <div className="kpi-group-label">{t('common.tasks')}</div>
     <div className="dashboard-number">{fmtInt(data.total)}</div>
     <dl className="kv"><dt>{t('task.status.rejected')}</dt><dd>{fmtInt(data.rework.length)}</dd>
       <dt>{t('notification.category.assignments')}</dt><dd>{fmtInt(data.assignments.length)}</dd>
