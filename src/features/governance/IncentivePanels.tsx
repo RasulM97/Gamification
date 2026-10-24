@@ -184,8 +184,9 @@ export function PayoutsPanel({ onChain }: { onChain: (candidateId: string) => vo
   const name = (id: string) => state.users.find(u => u.id === id)?.name ?? id
   return (
     <Panel pad={false} title={t('incentives.payouts.title')}>
+      <p className="dim" style={{ padding: '0 16px' }}>{t('incentives.payouts.scope')}</p>
       {panelState(effects, t)}
-      {effects.data && effects.data.items.length === 0 && <Empty title={t('incentives.payouts.empty')} />}
+      {!effects.loading && !effects.error && effects.data && effects.data.items.length === 0 && <Empty title={t('incentives.payouts.empty')} />}
       {effects.data?.items.map(e => (
         <div className="aitem" key={e.id}>
           <div style={{ flex: 1, minWidth: 0 }}>

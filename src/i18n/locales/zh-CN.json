@@ -1080,7 +1080,7 @@
   "incentives.tab.policies": "发放政策",
   "incentives.tab.safety": "安全检查",
   "incentives.tab.shadow": "模拟预览",
-  "incentives.tab.payouts": "发放",
+  "incentives.tab.payouts": "Incentive payouts",
   "incentives.approvals.title": "审批",
   "incentives.approvals.pending": "待处理",
   "incentives.approvals.approved": "已批准",
@@ -1134,8 +1134,8 @@
   "incentives.shadow.outcome.PENDING_APPROVAL": "待审批",
   "incentives.shadow.outcome.BLOCKED": "已阻止",
   "incentives.shadow.outcome.INELIGIBLE": "不符合资格",
-  "incentives.payouts.title": "发放",
-  "incentives.payouts.empty": "还没有发放记录",
+  "incentives.payouts.title": "Incentive payouts",
+  "incentives.payouts.empty": "No governed incentive payouts yet",
   "incentives.payouts.status.ISSUED": "已发放",
   "incentives.payouts.status.REVERSED": "已冲销",
   "incentives.payouts.reversedNote": "已冲销：{{reason}}",
@@ -1342,5 +1342,6 @@
   "integrations.err.NOT_FOUND": "此连接已不存在。请刷新页面。",
   "integrations.err.VALIDATION": "请检查输入的值后重试。",
   "integrations.err.INGRESS_UNAVAILABLE": "此部署未配置集成交接入口。请联系运维人员。",
-  "integrations.err.NETWORK": "连接出现问题。请重试。"
+  "integrations.err.NETWORK": "连接出现问题。请重试。",
+  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions."
 }

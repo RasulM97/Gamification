@@ -1080,7 +1080,7 @@
   "incentives.tab.policies": "מדיניות תשלומים",
   "incentives.tab.safety": "בדיקות בטיחות",
   "incentives.tab.shadow": "תצוגה מקדימה ניסיונית",
-  "incentives.tab.payouts": "תשלומים",
+  "incentives.tab.payouts": "Incentive payouts",
   "incentives.approvals.title": "אישורים",
   "incentives.approvals.pending": "ממתינים",
   "incentives.approvals.approved": "אושרו",
@@ -1134,8 +1134,8 @@
   "incentives.shadow.outcome.PENDING_APPROVAL": "ממתין לאישור",
   "incentives.shadow.outcome.BLOCKED": "חסום",
   "incentives.shadow.outcome.INELIGIBLE": "לא זכאי",
-  "incentives.payouts.title": "תשלומים",
-  "incentives.payouts.empty": "אין עדיין תשלומים",
+  "incentives.payouts.title": "Incentive payouts",
+  "incentives.payouts.empty": "No governed incentive payouts yet",
   "incentives.payouts.status.ISSUED": "הונפק",
   "incentives.payouts.status.REVERSED": "בוטל",
   "incentives.payouts.reversedNote": "בוטל: {{reason}}",
@@ -1342,5 +1342,6 @@
   "integrations.err.NOT_FOUND": "חיבור זה כבר לא קיים. רענן את הדף.",
   "integrations.err.VALIDATION": "בדוק את הערכים שהוזנו ונסה שוב.",
   "integrations.err.INGRESS_UNAVAILABLE": "כניסת האינטגרציה אינה מוגדרת בפריסה זו. פנה למפעיל.",
-  "integrations.err.NETWORK": "בעיית חיבור. נסה שוב."
+  "integrations.err.NETWORK": "בעיית חיבור. נסה שוב.",
+  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions."
 }

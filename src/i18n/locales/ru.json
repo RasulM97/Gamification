@@ -1080,7 +1080,7 @@
   "incentives.tab.policies": "Политики выплат",
   "incentives.tab.safety": "Проверки безопасности",
   "incentives.tab.shadow": "Пробный просмотр",
-  "incentives.tab.payouts": "Выплаты",
+  "incentives.tab.payouts": "Incentive payouts",
   "incentives.approvals.title": "Одобрения",
   "incentives.approvals.pending": "Ожидают",
   "incentives.approvals.approved": "Одобренные",
@@ -1134,8 +1134,8 @@
   "incentives.shadow.outcome.PENDING_APPROVAL": "Ожидает одобрения",
   "incentives.shadow.outcome.BLOCKED": "Заблокировано",
   "incentives.shadow.outcome.INELIGIBLE": "Не подходит",
-  "incentives.payouts.title": "Выплаты",
-  "incentives.payouts.empty": "Пока нет выплат",
+  "incentives.payouts.title": "Incentive payouts",
+  "incentives.payouts.empty": "No governed incentive payouts yet",
   "incentives.payouts.status.ISSUED": "Выплачено",
   "incentives.payouts.status.REVERSED": "Сторнировано",
   "incentives.payouts.reversedNote": "сторнировано: {{reason}}",
@@ -1342,5 +1342,6 @@
   "integrations.err.NOT_FOUND": "Это подключение больше не существует. Перезагрузите страницу.",
   "integrations.err.VALIDATION": "Проверьте введённые значения и попробуйте снова.",
   "integrations.err.INGRESS_UNAVAILABLE": "Приём интеграций не настроен на этом развёртывании. Обратитесь к оператору.",
-  "integrations.err.NETWORK": "Проблема с соединением. Попробуйте ещё раз."
+  "integrations.err.NETWORK": "Проблема с соединением. Попробуйте ещё раз.",
+  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions."
 }

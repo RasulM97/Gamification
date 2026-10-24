@@ -1080,7 +1080,7 @@
   "incentives.tab.policies": "지급 정책",
   "incentives.tab.safety": "안전 검사",
   "incentives.tab.shadow": "시뮬레이션 미리보기",
-  "incentives.tab.payouts": "지급",
+  "incentives.tab.payouts": "Incentive payouts",
   "incentives.approvals.title": "승인",
   "incentives.approvals.pending": "대기 중",
   "incentives.approvals.approved": "승인됨",
@@ -1134,8 +1134,8 @@
   "incentives.shadow.outcome.PENDING_APPROVAL": "승인 대기 중",
   "incentives.shadow.outcome.BLOCKED": "차단됨",
   "incentives.shadow.outcome.INELIGIBLE": "자격 없음",
-  "incentives.payouts.title": "지급",
-  "incentives.payouts.empty": "아직 지급이 없습니다",
+  "incentives.payouts.title": "Incentive payouts",
+  "incentives.payouts.empty": "No governed incentive payouts yet",
   "incentives.payouts.status.ISSUED": "지급됨",
   "incentives.payouts.status.REVERSED": "취소됨",
   "incentives.payouts.reversedNote": "취소됨: {{reason}}",
@@ -1342,5 +1342,6 @@
   "integrations.err.NOT_FOUND": "이 연결은 더 이상 존재하지 않습니다. 페이지를 새로 고침하세요.",
   "integrations.err.VALIDATION": "입력한 값을 확인하고 다시 시도하세요.",
   "integrations.err.INGRESS_UNAVAILABLE": "이 배포에는 통합 수신이 구성되어 있지 않습니다. 운영자에게 문의하세요.",
-  "integrations.err.NETWORK": "연결에 문제가 있습니다. 다시 시도하세요."
+  "integrations.err.NETWORK": "연결에 문제가 있습니다. 다시 시도하세요.",
+  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions."
 }

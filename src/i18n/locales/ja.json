@@ -1080,7 +1080,7 @@
   "incentives.tab.policies": "支払いポリシー",
   "incentives.tab.safety": "安全チェック",
   "incentives.tab.shadow": "what-if プレビュー",
-  "incentives.tab.payouts": "支払い",
+  "incentives.tab.payouts": "Incentive payouts",
   "incentives.approvals.title": "承認",
   "incentives.approvals.pending": "保留中",
   "incentives.approvals.approved": "承認済み",
@@ -1134,8 +1134,8 @@
   "incentives.shadow.outcome.PENDING_APPROVAL": "承認待ち",
   "incentives.shadow.outcome.BLOCKED": "ブロック済み",
   "incentives.shadow.outcome.INELIGIBLE": "対象外",
-  "incentives.payouts.title": "支払い",
-  "incentives.payouts.empty": "まだ支払いはありません",
+  "incentives.payouts.title": "Incentive payouts",
+  "incentives.payouts.empty": "No governed incentive payouts yet",
   "incentives.payouts.status.ISSUED": "発行済み",
   "incentives.payouts.status.REVERSED": "取り消し済み",
   "incentives.payouts.reversedNote": "取り消し: {{reason}}",
@@ -1342,5 +1342,6 @@
   "integrations.err.NOT_FOUND": "この接続はもう存在しません。ページを再読み込みしてください。",
   "integrations.err.VALIDATION": "入力値を確認してもう一度お試しください。",
   "integrations.err.INGRESS_UNAVAILABLE": "このデプロイでは連携の入口が設定されていません。運用者にお問い合わせください。",
-  "integrations.err.NETWORK": "接続に問題があります。もう一度お試しください。"
+  "integrations.err.NETWORK": "接続に問題があります。もう一度お試しください。",
+  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions."
 }

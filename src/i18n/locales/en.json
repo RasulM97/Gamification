@@ -1080,7 +1080,7 @@
   "incentives.tab.policies": "Payout policies",
   "incentives.tab.safety": "Safety checks",
   "incentives.tab.shadow": "What-if preview",
-  "incentives.tab.payouts": "Payouts",
+  "incentives.tab.payouts": "Incentive payouts",
   "incentives.approvals.title": "Approvals",
   "incentives.approvals.pending": "Pending",
   "incentives.approvals.approved": "Approved",
@@ -1134,8 +1134,8 @@
   "incentives.shadow.outcome.PENDING_APPROVAL": "Pending approval",
   "incentives.shadow.outcome.BLOCKED": "Blocked",
   "incentives.shadow.outcome.INELIGIBLE": "Ineligible",
-  "incentives.payouts.title": "Payouts",
-  "incentives.payouts.empty": "No payouts yet",
+  "incentives.payouts.title": "Incentive payouts",
+  "incentives.payouts.empty": "No governed incentive payouts yet",
   "incentives.payouts.status.ISSUED": "Issued",
   "incentives.payouts.status.REVERSED": "Reversed",
   "incentives.payouts.reversedNote": "reversed: {{reason}}",
@@ -1342,5 +1342,6 @@
   "integrations.err.NOT_FOUND": "This connection no longer exists. Reload the page.",
   "integrations.err.VALIDATION": "Check the entered values and try again.",
   "integrations.err.INGRESS_UNAVAILABLE": "Integration ingress is not configured on this deployment. Contact the operator.",
-  "integrations.err.NETWORK": "Connection problem. Try again."
+  "integrations.err.NETWORK": "Connection problem. Try again.",
+  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions."
 }

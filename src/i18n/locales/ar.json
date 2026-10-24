@@ -1080,7 +1080,7 @@
   "incentives.tab.policies": "سياسات الدفع",
   "incentives.tab.safety": "فحوصات السلامة",
   "incentives.tab.shadow": "معاينة تجريبية",
-  "incentives.tab.payouts": "المدفوعات",
+  "incentives.tab.payouts": "Incentive payouts",
   "incentives.approvals.title": "الموافقات",
   "incentives.approvals.pending": "قيد الانتظار",
   "incentives.approvals.approved": "تمت الموافقة",
@@ -1134,8 +1134,8 @@
   "incentives.shadow.outcome.PENDING_APPROVAL": "بانتظار الموافقة",
   "incentives.shadow.outcome.BLOCKED": "محظور",
   "incentives.shadow.outcome.INELIGIBLE": "غير مؤهل",
-  "incentives.payouts.title": "المدفوعات",
-  "incentives.payouts.empty": "لا مدفوعات بعد",
+  "incentives.payouts.title": "Incentive payouts",
+  "incentives.payouts.empty": "No governed incentive payouts yet",
   "incentives.payouts.status.ISSUED": "صادرة",
   "incentives.payouts.status.REVERSED": "معكوسة",
   "incentives.payouts.reversedNote": "معكوسة: {{reason}}",
@@ -1342,5 +1342,6 @@
   "integrations.err.NOT_FOUND": "هذا الاتصال لم يعد موجودًا. أعد تحميل الصفحة.",
   "integrations.err.VALIDATION": "تحقق من القيم المدخلة وحاول مرة أخرى.",
   "integrations.err.INGRESS_UNAVAILABLE": "مدخل التكامل غير مهيأ في هذا النشر. تواصل مع المشغّل.",
-  "integrations.err.NETWORK": "مشكلة في الاتصال. حاول مرة أخرى."
+  "integrations.err.NETWORK": "مشكلة في الاتصال. حاول مرة أخرى.",
+  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions."
 }

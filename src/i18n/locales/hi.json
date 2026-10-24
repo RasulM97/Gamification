@@ -1080,7 +1080,7 @@
   "incentives.tab.policies": "भुगतान नीतियाँ",
   "incentives.tab.safety": "सुरक्षा जाँचें",
   "incentives.tab.shadow": "पूर्वावलोकन (प्रयोगात्मक)",
-  "incentives.tab.payouts": "भुगतान",
+  "incentives.tab.payouts": "Incentive payouts",
   "incentives.approvals.title": "स्वीकृतियाँ",
   "incentives.approvals.pending": "लंबित",
   "incentives.approvals.approved": "स्वीकृत",
@@ -1134,8 +1134,8 @@
   "incentives.shadow.outcome.PENDING_APPROVAL": "स्वीकृति लंबित",
   "incentives.shadow.outcome.BLOCKED": "अवरुद्ध",
   "incentives.shadow.outcome.INELIGIBLE": "अयोग्य",
-  "incentives.payouts.title": "भुगतान",
-  "incentives.payouts.empty": "अभी कोई भुगतान नहीं",
+  "incentives.payouts.title": "Incentive payouts",
+  "incentives.payouts.empty": "No governed incentive payouts yet",
   "incentives.payouts.status.ISSUED": "जारी",
   "incentives.payouts.status.REVERSED": "उलटा गया",
   "incentives.payouts.reversedNote": "उलटा गया: {{reason}}",
@@ -1342,5 +1342,6 @@
   "integrations.err.NOT_FOUND": "यह कनेक्शन अब मौजूद नहीं है। पृष्ठ पुनः लोड करें।",
   "integrations.err.VALIDATION": "दर्ज किए गए मान जाँचें और पुनः प्रयास करें।",
   "integrations.err.INGRESS_UNAVAILABLE": "इस परिनियोजन पर इंटीग्रेशन इंग्रेस कॉन्फ़िगर नहीं है। ऑपरेटर से संपर्क करें।",
-  "integrations.err.NETWORK": "कनेक्शन समस्या। पुनः प्रयास करें।"
+  "integrations.err.NETWORK": "कनेक्शन समस्या। पुनः प्रयास करें।",
+  "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions."
 }
