@@ -1344,6 +1344,14 @@
   "integrations.err.INGRESS_UNAVAILABLE": "このデプロイでは連携の入口が設定されていません。運用者にお問い合わせください。",
   "integrations.err.NETWORK": "接続に問題があります。もう一度お試しください。",
   "incentives.payouts.scope": "Only governed incentive credits and their reversals appear here. Task rewards, redemption spending and refunds are separate ledger event types. See Company ledger below for all transactions.",
-  "notification.historical": "Historical ? no current action",
-  "notification.statusUnknown": "Current action status unavailable"
+  "notification.historical": "Historical — no current action",
+  "notification.statusUnknown": "Current action status unavailable",
+  "review.handoff.admin": "Admin",
+  "review.handoff.status": "Submitted — awaiting Admin approval and payout",
+  "review.handoff.nextOwner": "Next owner: {{name}} (Admin)",
+  "review.handoff.manual": "Prepare a recommendation and share it with an Admin through your existing communication channel. This does not send or save a decision; the task stays submitted until Admin acts.",
+  "review.handoff.prepare": "Prepare approval recommendation",
+  "review.handoff.copy": "Copy recommendation",
+  "review.handoff.copied": "Copied — not sent",
+  "review.handoff.summary": "Approval recommendation from {{reviewer}}: {{title}} (task {{id}}, cycle {{cycle}}). I recommend approval. Current status: SUBMITTED; no approval or payout recorded by this recommendation. Next owner: {{owner}} (Admin). Please review the current submission in Reviews and, if approved, authorize the remaining {{amount}} Coins."
 }

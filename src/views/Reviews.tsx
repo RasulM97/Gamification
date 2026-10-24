@@ -3,9 +3,10 @@ import { ActivityEvent } from '../components/EventText'
 import { useState } from 'react'
 import { useStore, useMe } from '../store'
 import type { Task } from '../domain/engine'
-import { AttachmentChips, Avatar, ClampedText, Coin, LinkText, Drawer, Empty, Field, Panel, PriBadge, Progress, ago, coins, cycleOutcome, localizedHist, rowProps } from '../ui'
+import { AttachmentChips, Avatar, ClampedText, Coin, LinkText, Drawer, Empty, Field, Panel, PriBadge, Progress, StatusBadge, ago, coins, cycleOutcome, localizedHist, rowProps } from '../ui'
 import { HandoffWizard } from '../components/HandoffWizard'
 import { CancelModal } from '../components/TaskModals'
+import { AdminReviewHandoff } from '../components/AdminReviewHandoff'
 import { useI18n, fmtPct } from '../i18n'
 
 /* Reviews = the manager's decision inbox. Not a list of cards: each row is a
@@ -172,7 +173,7 @@ function ReviewDrawer({ task: t, onClose }: { task: Task | null; onClose: () => 
 
       <div className="dsec">
         <span className="eyebrow">{tr('review.decision')}</span>
-        {selfReview ? (
+        {t.status !== 'SUBMITTED' ? <StatusBadge s={t.status} /> : selfReview ? (
           <div className="faint" style={{ fontSize: 12.5, marginTop: 8 }}>
             {tr(t.ownerId === me.id ? 'review.selfReviewBlocked' : 'integrity.error.REVIEW_AUTHORITY_REQUIRED')}
           </div>
@@ -182,6 +183,7 @@ function ReviewDrawer({ task: t, onClose }: { task: Task | null; onClose: () => 
             <div className="srow"><span>{tr('review.approvePayout', { name: owner?.name ?? '?' })}</span><Coin n={remaining} sign /></div>
             <div className="srow"><span>{tr('review.handoffPartial', { percent: remainingPct })}</span><span className="dim">{tr('review.handoffPartialHint')}</span></div>
           </div>
+          <AdminReviewHandoff key={`${t.id}:${t.cycle}:${t.submittedAt}`} state={state} task={t} viewer={me} />
           <Field label={tr('review.rejectReasonLabel')}>
             <textarea dir={reason ? 'auto' : undefined} value={reason} onChange={e => setReason(e.target.value)}
               placeholder={tr('review.placeholder.rejectReason')} />
