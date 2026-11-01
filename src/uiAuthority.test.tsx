@@ -102,7 +102,7 @@ describe('Reviews — review authority without economic authority', () => {
     const reject = qa('button').find(b => b.textContent === 'Reject — send to rework') as HTMLButtonElement
     expect(reject).toBeTruthy()
     expect(reject.disabled).toBe(true)
-    await type(q('.dsec textarea')!, 'not ready — rework needed')
+    await type(q('[data-testid="review-reject-reason"]')!, 'not ready — rework needed')
     expect(reject.disabled).toBe(false)
     // Handoff capability is NOT hidden — the restriction is payout-specific
     expect(buttons()).toContain('Handoff to another…')

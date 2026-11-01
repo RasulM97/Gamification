@@ -6,7 +6,7 @@ export function errorText(error: unknown): string {
   if (['OUTCOME_UNKNOWN', 'COMMAND_COMMITTED', 'RETRY_STORAGE_UNAVAILABLE', 'COMMAND_KEY_CONFLICT'].includes(code)) {
     return translate(currentLocale(), `command.${code}`)
   }
-  const known = ['FORBIDDEN', 'VALIDATION', 'NOT_FOUND', 'BAD_STATE', 'INSUFFICIENT_FUNDS',
+  const known = ['STALE_SUBMISSION', 'RECOMMENDATION_EXISTS', 'RECOMMENDATION_NOT_REQUIRED', 'FORBIDDEN', 'VALIDATION', 'NOT_FOUND', 'BAD_STATE', 'INSUFFICIENT_FUNDS',
     'REVIEW_AUTHORITY_REQUIRED', 'SENSITIVITY_CONFIRMATION_REQUIRED', 'USER_HAS_RESPONSIBILITIES',
     'SOLE_ADMIN', 'NETWORK', 'UPLOAD_REJECTED', 'OUT_OF_STOCK', 'LIMIT_REACHED', 'NO_CHANGE']
   return translate(currentLocale(), code === 'CAPACITY_REACHED' ? 'capacity.reached'

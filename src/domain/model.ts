@@ -110,7 +110,13 @@ export interface SubmissionRecord {
   outcome: 'PENDING' | 'APPROVED' | 'REJECTED' | 'HANDED_OFF' | 'CANCELLED'
   reviewerId: string | null; reviewNote: string | null
 }
+export interface TaskRecommendation {
+  id: string; companyId: string; taskId: string; cycle: number; submissionId: string
+  authorId: string; authorName: string; note: string; at: number
+  status?: 'PENDING' | 'RESOLVED' | 'SUPERSEDED'
+}
 export interface Task {
+  recommendations?: TaskRecommendation[]
   viewerIds?: string[]; reviewerIds?: string[]; restrictedAudiences?: Audience[]; privateWorkerRole?: string | null
   /* WS4 parity: exact server projection — present only for TEAM/PROJECT-scoped
      tasks; COMPANY tasks omit it (backend `_task()` emits scope the same way).

@@ -6,7 +6,8 @@ import type { Task } from '../domain/engine'
 import { AttachmentChips, Avatar, ClampedText, Coin, LinkText, Drawer, Empty, Field, Panel, PriBadge, Progress, StatusBadge, ago, coins, cycleOutcome, localizedHist, rowProps } from '../ui'
 import { HandoffWizard } from '../components/HandoffWizard'
 import { CancelModal } from '../components/TaskModals'
-import { AdminReviewHandoff } from '../components/AdminReviewHandoff'
+import { AdminReviewHandoff, RecommendationHistory } from '../components/AdminReviewHandoff'
+import { pendingRecommendation } from '../domain/taskRecommendations'
 import { useI18n, fmtPct } from '../i18n'
 
 /* Reviews = the manager's decision inbox. Not a list of cards: each row is a
@@ -31,6 +32,7 @@ export function ReviewsView({ openId, onOpen, onClose }: {
               {/* titles, notes and names are user-authored — verbatim, bidi-safe */}
               <div className="tt"><span className="t" title={t.title} dir="auto">{t.title}</span></div>
               <div className="sub" title={t.submissionNote ?? ''} dir="auto">{(t.submissionNote ?? '').slice(0, 90) || tr('review.noSubmissionNote')}</div>
+              {pendingRecommendation(t) && <span className="bd bd-important">{tr('review.recommendation.PENDING')}</span>}
             </div>
             <span className="meta hide-m"><Avatar name={user(t.ownerId)?.name ?? '?'} size={22} /><span dir="auto">{user(t.ownerId)?.name}</span></span>
             <span className="hide-m"><Progress verified={t.verified} reported={t.reported > t.verified ? t.reported : undefined} /></span>
@@ -173,6 +175,7 @@ function ReviewDrawer({ task: t, onClose }: { task: Task | null; onClose: () => 
 
       <div className="dsec">
         <span className="eyebrow">{tr('review.decision')}</span>
+        <RecommendationHistory task={t} />
         {t.status !== 'SUBMITTED' ? <StatusBadge s={t.status} /> : selfReview ? (
           <div className="faint" style={{ fontSize: 12.5, marginTop: 8 }}>
             {tr(t.ownerId === me.id ? 'review.selfReviewBlocked' : 'integrity.error.REVIEW_AUTHORITY_REQUIRED')}
@@ -183,9 +186,10 @@ function ReviewDrawer({ task: t, onClose }: { task: Task | null; onClose: () => 
             <div className="srow"><span>{tr('review.approvePayout', { name: owner?.name ?? '?' })}</span><Coin n={remaining} sign /></div>
             <div className="srow"><span>{tr('review.handoffPartial', { percent: remainingPct })}</span><span className="dim">{tr('review.handoffPartialHint')}</span></div>
           </div>
-          <AdminReviewHandoff key={`${t.id}:${t.cycle}:${t.submittedAt}`} state={state} task={t} viewer={me} />
+          <AdminReviewHandoff key={`${t.id}:${t.cycle}:${t.submittedAt}`} state={state} task={t} viewer={me}
+            onRecommend={data => dispatch({ type: 'RECOMMEND_APPROVAL', taskId: t.id, managerId: me.id, ...data })} />
           <Field label={tr('review.rejectReasonLabel')}>
-            <textarea dir={reason ? 'auto' : undefined} value={reason} onChange={e => setReason(e.target.value)}
+            <textarea data-testid="review-reject-reason" dir={reason ? 'auto' : undefined} value={reason} onChange={e => setReason(e.target.value)}
               placeholder={tr('review.placeholder.rejectReason')} />
           </Field>
           <div className="actions">

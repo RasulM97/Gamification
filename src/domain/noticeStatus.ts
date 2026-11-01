@@ -1,5 +1,6 @@
 import { canDecideRedemption, canFulfillReward, type Notice, type State } from './model'
 import { canManageTask, canReviewTask, canSeeTask } from './taskAccess'
+import { recommendationStatus } from './taskRecommendations'
 
 /** Presentation only: never rewrite historical delivery, read or level fields. */
 export function noticeActionState(s: State, n: Notice): 'CURRENT' | 'HISTORICAL' | 'UNKNOWN' {
@@ -15,6 +16,10 @@ export function noticeActionState(s: State, n: Notice): 'CURRENT' | 'HISTORICAL'
     if (s.notices.some(other => other.userId === n.userId && other.taskId === n.taskId
       && other.eventType === n.eventType && other.at > n.at)) return 'HISTORICAL'
     switch (n.eventType) {
+      case 'TASK_APPROVAL_RECOMMENDED': {
+        const rec = task.recommendations?.find(r => r.id === n.params?.recommendationId)
+        return rec ? current(viewer.role === 'ADMIN' && recommendationStatus(task, rec) === 'PENDING') : 'UNKNOWN'
+      }
       case 'TASK_SUBMITTED':
         return current(task.status === 'SUBMITTED' && canReviewTask(s, task, viewer)
           && (task.submittedAt == null || task.submittedAt <= n.at))

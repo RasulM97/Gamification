@@ -12,6 +12,7 @@ import { useGovData } from '../governance/hooks'
 import type { AsyncState } from '../governance/hooks'
 import { attention } from './source'
 import type { AttentionCategory, AttentionItem } from './types'
+import { RecommendationHistory } from '../../components/AdminReviewHandoff'
 
 const CATEGORIES: AttentionCategory[] = ['ACTION_REQUIRED', 'WAITING', 'RESOLVED_RECENTLY', 'INFORMATION']
 
@@ -84,6 +85,7 @@ export function AttentionQueue({ tasksEnabled, onOpenTask, onNavigate, remote }:
             <div style={{ flex: 1, minWidth: 0 }}><b dir="auto">{task.title}</b>
               <p className="dim">{t(task.status === 'SUBMITTED' ? 'attention.kind.task.review'
                 : task.status === 'REJECTED' ? 'attention.kind.task.rework' : 'attention.kind.task.assign')}</p>
+              <RecommendationHistory task={task} pendingOnly />
             </div>
             <span className="badge">{t(task.status === 'SUBMITTED' ? 'task.action.reviewWork'
               : task.status === 'REJECTED' ? 'task.action.resumeRework' : 'task.action.acceptStart')}</span>

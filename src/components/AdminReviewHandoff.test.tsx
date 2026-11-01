@@ -3,38 +3,60 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { seed, reducer } from '../domain/engine'
-import { AdminReviewHandoff } from './AdminReviewHandoff'
+import { AdminReviewHandoff, RecommendationHistory } from './AdminReviewHandoff'
+import { currentSubmission } from '../domain/taskRecommendations'
 
-it('authorized manager can prepare and copy a recommendation without approving, sending or paying', async () => {
-  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-  const s = seed(), task = s.tasks.find(t => t.id === 't-northstar')!, viewer = s.users.find(u => u.id === 'u-marcus')!
-  task.reviewerIds = [viewer.id]
-  const before = JSON.stringify(s), copy = vi.fn().mockResolvedValue(undefined)
-  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: copy } })
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+
+it('records the exact submission and note, shows durable history, and hides duplicate submission', async () => {
+  let state = seed()
+  const viewer = state.users.find(u => u.id === 'u-marcus')!
+  state.tasks.find(t => t.id === 't-northstar')!.reviewerIds = [viewer.id]
   const host = document.createElement('div'), root = createRoot(host)
-  await act(async () => { root.render(<AdminReviewHandoff state={s} task={task} viewer={viewer} />) })
-  expect(host.textContent).toContain('Next owner: Dana Cole (Admin)')
-  expect(host.textContent).toContain('awaiting Admin approval and payout')
+  const onRecommend = vi.fn(async (data) => {
+    state = reducer(state, { type: 'RECOMMEND_APPROVAL', taskId: 't-northstar', managerId: viewer.id, ...data })
+    return true
+  })
+  const draw = () => {
+    const task = state.tasks.find(t => t.id === 't-northstar')!
+    root.render(<><AdminReviewHandoff state={state} task={task} viewer={viewer} onRecommend={onRecommend} />
+      <RecommendationHistory task={task} /></>)
+  }
+  await act(async () => draw())
+  expect(host.textContent).toContain('Next owner: Admin')
+  expect(host.querySelector('button')!.disabled).toBe(true)
+  const sub = currentSubmission(state.tasks.find(t => t.id === 't-northstar')!)!
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(host.querySelector('textarea'), 'Evidence verified')
+    host.querySelector('textarea')!.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  const ledger = JSON.stringify(state.ledger)
   await act(async () => { host.querySelector('button')!.click() })
-  expect(host.querySelector('textarea')!.value).toContain('I recommend approval')
-  expect(host.querySelector('textarea')!.value).toContain(task.id)
-  await act(async () => { host.querySelector('button')!.click() })
-  expect(copy).toHaveBeenCalledOnce()
-  expect(host.textContent).toContain('Copied — not sent')
-  expect(JSON.stringify(s)).toBe(before)
-  expect(reducer(s, { type: 'APPROVE', taskId: task.id, managerId: viewer.id }).ledger).toEqual(s.ledger)
-  task.status = 'APPROVED'
-  await act(async () => { root.render(<AdminReviewHandoff state={s} task={task} viewer={viewer} />) })
-  expect(host.textContent).toBe('')
-  await act(async () => { root.unmount() })
+  await act(async () => draw())
+  expect(onRecommend).toHaveBeenCalledWith({ note: 'Evidence verified', submissionId: sub.id, cycle: 1 })
+  expect(host.querySelector('textarea')).toBeNull()
+  expect(host.textContent).toContain('Pending Admin review')
+  expect(host.textContent).toContain('Marcus')
+  expect(host.textContent).toContain('Evidence verified')
+  expect(JSON.stringify(state.ledger)).toBe(ledger)
+  state = reducer(state, { type: 'APPROVE', taskId: 't-northstar', managerId: 'u-dana' })
+  await act(async () => draw())
+  expect(host.textContent).toContain('Resolved by submission review')
+  expect(host.textContent).toContain('Evidence verified')
+  expect(host.querySelector('[data-testid="admin-review-handoff"]')).toBeNull()
+  await act(async () => root.unmount())
 })
 
-it('no recommendation affordance for an employee, ungranted manager or Admin', async () => {
-  const s = seed(), task = s.tasks.find(t => t.id === 't-northstar')!
-  const host = document.createElement('div'), root = createRoot(host)
+it('employee, ungranted manager, Admin and preauthorized reviewer have no recommendation action', async () => {
+  const state = seed(), task = state.tasks.find(t => t.id === 't-northstar')!
+  const host = document.createElement('div'), root = createRoot(host), send = vi.fn()
   for (const id of ['u-priya', 'u-marcus', 'u-dana']) {
-    await act(async () => { root.render(<AdminReviewHandoff state={s} task={task} viewer={s.users.find(u => u.id === id)!} />) })
+    await act(async () => root.render(<AdminReviewHandoff state={state} task={task} viewer={state.users.find(u => u.id === id)!} onRecommend={send} />))
     expect(host.textContent).toBe('')
   }
-  await act(async () => { root.unmount() })
+  task.reviewerIds = ['u-marcus']; task.createdBy = 'u-dana'
+  await act(async () => root.render(<AdminReviewHandoff state={state} task={task} viewer={state.users.find(u => u.id === 'u-marcus')!} onRecommend={send} />))
+  expect(host.textContent).toBe('')
+  expect(send).not.toHaveBeenCalled()
+  await act(async () => root.unmount())
 })

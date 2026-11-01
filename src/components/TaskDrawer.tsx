@@ -1,4 +1,5 @@
 import { CyclesHistory } from './TaskHistory'
+import { RecommendationHistory } from './AdminReviewHandoff'
 import { TaskAccess } from './TaskAccess'
 import { ReassignInline } from './TaskRouting'
 import { canSeeTask, canReviewTask, canManageTask } from '../domain/taskAccess'
@@ -231,6 +232,7 @@ export function TaskDrawer({ taskId, onClose, onGo }: {
           one click away, history immutable. */}
       <TaskAccess key={t.id + JSON.stringify(t.viewerIds) + JSON.stringify(t.reviewerIds)} task={t} />
       <CyclesHistory task={t} taskActs={taskActs} />
+      <RecommendationHistory task={t} />
 
       {myHistory.length > 0 && !isMgr && (
         <div className="dsec">

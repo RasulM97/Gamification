@@ -9,6 +9,8 @@ import { attention } from './source'
 import { MyAttentionView } from './MyAttentionView'
 import { FlowView } from './FlowView'
 import { resetDemoGovernance } from '../governance/source'
+import { seed, reducer } from '../../domain/engine'
+import { currentSubmission } from '../../domain/taskRecommendations'
 
 const mock = vi.hoisted(() => ({ me: { id: 'u-priya', role: 'EMPLOYEE' as string }, tasks: [] as unknown[] }))
 vi.mock('../../store', () => ({
@@ -235,4 +237,25 @@ it('Team Flow renders sections and scope-aware items for a manager', async () =>
   expect(escalated.textContent).toContain('ERP export access')
   escalated.click()
   expect(nav).toEqual(['people'])
+})
+
+it('Admin attention shows the persisted manager, submission and note once, then clears after review', async () => {
+  let state = seed()
+  const task = state.tasks.find(t => t.id === 't-northstar')!
+  task.reviewerIds = ['u-marcus']
+  const submissionId = currentSubmission(task)!.id
+  state = reducer(state, { type: 'RECOMMEND_APPROVAL', taskId: task.id, managerId: 'u-marcus',
+    cycle: task.cycle, submissionId, note: 'Checked evidence for Admin' })
+  mock.me = { id: 'u-dana', role: 'ADMIN' }
+  mock.tasks = state.tasks
+  await render(<MyAttentionView tasksEnabled={true} onOpenTask={() => {}} onNavigate={() => {}} />)
+  expect(host.querySelectorAll('[data-testid="recommendation-history"]')).toHaveLength(1)
+  expect(host.textContent).toContain('Marcus')
+  expect(host.textContent).toContain('Checked evidence for Admin')
+  expect(host.textContent).toContain(submissionId)
+  state = reducer(state, { type: 'APPROVE', taskId: task.id, managerId: 'u-dana' })
+  mock.tasks = state.tasks
+  await act(async () => root.render(<MyAttentionView tasksEnabled={true} onOpenTask={() => {}} onNavigate={() => {}} />))
+  expect(host.querySelector('[data-testid="recommendation-history"]')).toBeNull()
+  expect(state.tasks.find(t => t.id === task.id)!.recommendations).toHaveLength(1)
 })

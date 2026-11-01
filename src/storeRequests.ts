@@ -43,6 +43,7 @@ export async function send(a: Action): Promise<State | null> {
         note: a.note, ...(a.pct != null ? { pct: String(a.pct) } : {}),
       }, a.attachments))
     case 'RESUME_WORK': return api.post(`/tasks/${a.taskId}/resume`)
+    case 'RECOMMEND_APPROVAL': return api.post(`/tasks/${a.taskId}/recommendation`, { submissionId: a.submissionId, cycle: a.cycle, note: a.note })
     case 'APPROVE': return api.post(`/tasks/${a.taskId}/approve`)
     case 'REJECT': return api.post(`/tasks/${a.taskId}/reject`, { reason: a.reason })
     case 'HANDOFF':

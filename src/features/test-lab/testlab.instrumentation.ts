@@ -57,6 +57,7 @@ export function endpointOf(a: Action): { method: string; path: string } | null {
     case 'SUBMIT_WORK': return { method: 'POST', path: `/tasks/${id}/submit` }
     case 'RESUME_WORK': return { method: 'POST', path: `/tasks/${id}/resume` }
     case 'APPROVE': return { method: 'POST', path: `/tasks/${id}/approve` }
+    case 'RECOMMEND_APPROVAL': return { method: 'POST', path: `/tasks/${id}/recommendation` }
     case 'REJECT': return { method: 'POST', path: `/tasks/${id}/reject` }
     case 'HANDOFF': return { method: 'POST', path: `/tasks/${id}/handoff` }
     case 'REOPEN': return { method: 'POST', path: `/tasks/${id}/reopen` }

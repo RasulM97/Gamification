@@ -1,6 +1,7 @@
 import type { Attachment, AssignMode, Audience, NotifLevel, Priority, Reward, RewardCategory, Settings } from './model'
 
 export type Action =
+  | { type: 'RECOMMEND_APPROVAL'; taskId: string; managerId: string; cycle: number; submissionId: string; note: string }
   | { type: 'SET_TASK_ACCESS'; by: string; taskId: string; viewerIds: string[]; reviewerIds: string[] }
   | { type: 'UPDATE_USER'; by: string; userId: string; name: string; position: string; role: import('./model').Role; active: boolean }
   | { type: 'CLEAR_TEST_WORKSPACE'; by: string }

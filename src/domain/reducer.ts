@@ -308,6 +308,20 @@ export function reducer(prev: State, a: Action): State {
       break
     }
 
+    case 'RECOMMEND_APPROVAL': {
+      const t = task(a.taskId)
+      if (t.recommendations?.some(r => r.submissionId === a.submissionId)) return prev
+      const row = { id: nid('tr'), companyId: s.companyId ?? 'co-aster', taskId: t.id,
+        cycle: a.cycle, submissionId: a.submissionId, authorId: a.managerId,
+        authorName: user(a.managerId).name, note: a.note.trim(), at: now }
+      ;(t.recommendations ??= []).push(row)
+      const params = snap(t, { recommendationId: row.id, submissionId: row.submissionId })
+      act(a.managerId, 'TASK_APPROVAL_RECOMMENDED', params)
+      managers().filter(u => u.role === 'ADMIN').forEach(u =>
+        note(u.id, 'ACTION_REQUIRED', 'Reviews', 'TASK_APPROVAL_RECOMMENDED', params))
+      break
+    }
+
     case 'APPROVE': {
       if (!isMgmt(a.managerId)) break // review decisions are management acts
       const t = task(a.taskId)

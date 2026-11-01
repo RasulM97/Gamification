@@ -1,4 +1,5 @@
 import type { Action } from './reducer'
+import { currentSubmission } from './taskRecommendations'
 import { partialPayout, type State } from './model'
 import { canSeeTask, canReviewTask, canExecuteTaskPayout, needsSensitivityConfirmation, routingAudience } from './taskAccess'
 
@@ -7,6 +8,7 @@ export function integrityRefusal(s: State, a: Action): string | null {
   const actorId = 'by' in a ? a.by : 'managerId' in a ? a.managerId : 'userId' in a ? a.userId : null
   const actor = s.users.find(u => u.id === actorId)
   if (actor?.active === false) return 'FORBIDDEN'
+  if (a.type === 'CLEAR_TEST_WORKSPACE' && s.tasks.some(t => t.recommendations?.length)) return 'FORBIDDEN'
   /* WS4 round-4 parity with backend admit_management: task MANAGEMENT acts are
      admin-only in the demo engine. The backend scopes manager management to
      actively managed TEAM/PROJECT units; the demo State carries no organization
@@ -16,6 +18,15 @@ export function integrityRefusal(s: State, a: Action): string | null {
   if ('taskId' in a) {
     const task = s.tasks.find(t => t.id === a.taskId)
     if (!task || !actor || !canSeeTask(task, actor)) return 'NOT_FOUND'
+    if (a.type === 'RECOMMEND_APPROVAL') {
+      if (actor.role !== 'MANAGER' || actor.activationPending) return 'FORBIDDEN'
+      if (!canReviewTask(s, task, actor)) return 'REVIEW_AUTHORITY_REQUIRED'
+      if (!a.note.trim() || a.note.trim().length > 2000) return 'VALIDATION'
+      if (task.status !== 'SUBMITTED' || task.cycle !== a.cycle || currentSubmission(task)?.id !== a.submissionId) return 'STALE_SUBMISSION'
+      if (canExecuteTaskPayout(s, task, actor, Math.max(0, task.reward - task.paid))) return 'RECOMMENDATION_NOT_REQUIRED'
+      const prior = task.recommendations?.find(r => r.submissionId === a.submissionId)
+      if (prior && (prior.authorId !== actor.id || prior.note !== a.note.trim())) return 'RECOMMENDATION_EXISTS'
+    }
     if (['EDIT_TASK', 'REASSIGN', 'CANCEL_TASK', 'REOPEN', 'REACTIVATE'].includes(a.type)
       && actor.role !== 'ADMIN') return 'FORBIDDEN'
     if (['APPROVE', 'REJECT', 'HANDOFF'].includes(a.type) && !canReviewTask(s, task, actor)) return 'REVIEW_AUTHORITY_REQUIRED'
