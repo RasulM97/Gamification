@@ -14,7 +14,7 @@ from typing import Optional
 from fastapi import (APIRouter, Depends, File, Form, HTTPException, Request,
                      UploadFile)
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, StrictInt
+from pydantic import BaseModel, StrictInt, StrictStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -31,6 +31,23 @@ from .storage import StoredFile, storage
 from .command_receipts import command_context, begin as begin_command
 
 router = APIRouter(prefix='/api', dependencies=[Depends(command_context)])
+
+
+class TaskRecommendationBody(BaseModel):
+    model_config = {'extra': 'forbid'}
+    submissionId: StrictStr
+    cycle: StrictInt
+    note: StrictStr
+
+
+@router.post('/tasks/{task_id}/recommendation')
+def recommend_task(task_id: str, body: TaskRecommendationBody,
+                   actor: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .task_recommendations import recommend
+    if not db.info.get('command'):
+        raise DomainError('VALIDATION', 'Idempotency-Key is required')
+    return mutate(db, actor, 'recommend_task', task_id, lambda: recommend(db, actor, task_id,
+        submission_id=body.submissionId, cycle=body.cycle, note_text=body.note))
 
 
 def _company(db: Session, actor: User) -> Company:

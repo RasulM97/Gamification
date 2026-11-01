@@ -160,6 +160,7 @@ class Submission(Base):
     """Immutable per-owner submission history. Outcome closes in place once;
     note/attachments/reported_pct never change after insert."""
     __tablename__ = 'submissions'
+    __table_args__ = (UniqueConstraint('company_id', 'id', 'task_id', 'cycle', name='uq_submission_identity'),)
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id('s'))
     company_id: Mapped[str] = mapped_column(String(40), index=True)
     task_id: Mapped[str] = mapped_column(ForeignKey('tasks.id'), index=True)
@@ -174,6 +175,35 @@ class Submission(Base):
     reviewed_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     task: Mapped[Task] = relationship(back_populates='submissions')
     attachments: Mapped[list['Attachment']] = relationship(back_populates='submission')
+
+
+class TaskRecommendation(Base):
+    """One immutable recommendation per exact submission; status is derived."""
+    __tablename__ = 'task_recommendations'
+    __table_args__ = (
+        UniqueConstraint('company_id', 'submission_id', name='uq_task_recommendation_submission'),
+        ForeignKeyConstraint(['company_id', 'submission_id', 'task_id', 'cycle'],
+                             ['submissions.company_id', 'submissions.id', 'submissions.task_id', 'submissions.cycle'],
+                             name='fk_task_recommendation_submission'),
+        ForeignKeyConstraint(['company_id', 'author_id'], ['users.company_id', 'users.id'],
+                             name='fk_task_recommendation_author'),
+        CheckConstraint('length(btrim(note)) BETWEEN 1 AND 2000', name='ck_task_recommendation_note'),
+    )
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id('tr'))
+    company_id: Mapped[str] = mapped_column(String(40), index=True)
+    task_id: Mapped[str] = mapped_column(String(40), index=True)
+    cycle: Mapped[int] = mapped_column(Integer)
+    submission_id: Mapped[str] = mapped_column(String(40))
+    author_id: Mapped[str] = mapped_column(String(40))
+    author_name: Mapped[str] = mapped_column(String(300))
+    note: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[float] = mapped_column(Float, default=now_ms)
+
+
+from sqlalchemy import DDL, event as schema_event
+from .task_recommendation_schema import INSTALL_SQL, UNINSTALL_SQL
+schema_event.listen(TaskRecommendation.__table__, 'after_create', DDL(INSTALL_SQL).execute_if(dialect='postgresql'))
+schema_event.listen(TaskRecommendation.__table__, 'before_drop', DDL(UNINSTALL_SQL).execute_if(dialect='postgresql'))
 
 
 class Attachment(Base):

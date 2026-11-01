@@ -1353,5 +1353,19 @@
   "review.handoff.prepare": "Prepare approval recommendation",
   "review.handoff.copy": "Copy recommendation",
   "review.handoff.copied": "Copied — not sent",
-  "review.handoff.summary": "Approval recommendation from {{reviewer}}: {{title}} (task {{id}}, cycle {{cycle}}). I recommend approval. Current status: SUBMITTED; no approval or payout recorded by this recommendation. Next owner: {{owner}} (Admin). Please review the current submission in Reviews and, if approved, authorize the remaining {{amount}} Coins."
+  "review.handoff.summary": "Approval recommendation from {{reviewer}}: {{title}} (task {{id}}, cycle {{cycle}}). I recommend approval. Current status: SUBMITTED; no approval or payout recorded by this recommendation. Next owner: {{owner}} (Admin). Please review the current submission in Reviews and, if approved, authorize the remaining {{amount}} Coins.",
+  "review.recommendation.title": "Manager approval recommendation",
+  "review.recommendation.PENDING": "Pending Admin review",
+  "review.recommendation.RESOLVED": "Resolved by submission review",
+  "review.recommendation.SUPERSEDED": "Superseded submission",
+  "review.recommendation.submission": "Submission: {{id}}",
+  "review.recommendation.nextOwner": "Next owner: Admin",
+  "review.recommendation.explanation": "Record your approval recommendation for this submission. The Task stays submitted and no Coins are issued. An Admin must independently review and decide. The note is permanent and visible to people who can view this Task.",
+  "review.recommendation.note": "Recommendation note",
+  "review.recommendation.send": "Recommend approval to Admin",
+  "review.recommendation.failed": "Recommendation not confirmed. Check the error message; retry unchanged if the outcome is unknown, or refresh if the submission changed.",
+  "event.taskApprovalRecommended": "{{actor}} recommended approval of {{task}} for Admin review",
+  "integrity.error.STALE_SUBMISSION": "The submission changed. Refresh and review the current submission before recommending.",
+  "integrity.error.RECOMMENDATION_EXISTS": "This submission already has a permanent recommendation. Refresh to view it.",
+  "integrity.error.RECOMMENDATION_NOT_REQUIRED": "You can already review this submission directly. Use the existing review action."
 }

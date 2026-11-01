@@ -36,6 +36,7 @@ def _submission(s: Submission) -> dict:
 
 
 def _task(db: Session, t: Task) -> dict:
+    from .task_recommendations import for_task
     subs = sorted(t.submissions, key=lambda s: s.at)
     pending = next((s for s in reversed(subs) if s.outcome == 'PENDING'), None)
     # live review slot = the pending submission's files (TS kept a copy on the
@@ -57,6 +58,7 @@ def _task(db: Session, t: Task) -> dict:
         'submittedAt': t.submitted_at, 'instructions': t.instructions,
         'briefFiles': [_att(a) for a in brief],
         'submissions': [_submission(s) for s in subs],
+        'recommendations': for_task(db, t),
         'contributions': [
             {'id': c.id, 'cycle': c.cycle, 'employeeId': c.employee_id,
              'reportedPct': c.reported_pct, 'acceptedPct': c.accepted_pct,
