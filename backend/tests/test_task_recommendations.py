@@ -235,3 +235,18 @@ def test_second_reviewer_cannot_duplicate_or_edit_author_snapshot(setup):
     response = client.get('/api/bootstrap', headers=auth['dana'])
     assert task(response.json())['recommendations'] == [original]
     assert db.scalar(sa.select(sa.func.count()).select_from(Notification).where(Notification.event_type == 'TASK_APPROVAL_RECOMMENDED')) == 1
+
+
+def test_cached_manager_identity_cannot_outlive_role_revocation(setup):
+    client, auth, db, body = setup
+    from app.task_recommendations import recommend
+    actor = db.get(User, 'u-marcus')
+    db.execute(sa.update(User).where(User.id == actor.id).values(role='EMPLOYEE')
+               .execution_options(synchronize_session=False))
+    db.commit()
+    assert actor.role == 'MANAGER'  # simulate authentication before the lock wait
+    with pytest.raises(DomainError) as error:
+        recommend(db, actor, 't-northstar', submission_id=body['submissionId'], cycle=body['cycle'], note_text=body['note'])
+    assert error.value.code == 'FORBIDDEN'
+    db.rollback()
+    assert db.scalar(sa.select(sa.func.count()).select_from(TaskRecommendation)) == 0

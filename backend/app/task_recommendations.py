@@ -3,7 +3,7 @@ from sqlalchemy import select
 from .models import Submission, TaskRecommendation, User
 from .domain import DomainError
 from .capabilities.service import requires
-from .organization.service import exclusive_guarded, capture
+from .organization.service import exclusive_guarded, capture, account
 from .organization.columns import scope
 from .task_access import require_view, require_review, admit_review, require_payout_authority
 from .service_common import get_task, act, notes, snap, managers
@@ -43,6 +43,9 @@ def for_task(db, task):
 @exclusive_guarded
 @requires('TASK_LITE')
 def recommend(db, actor, task_id, *, submission_id, cycle, note_text):
+    # Authentication can precede a wait for the organization lock. Re-read the
+    # account under that lock so a revoked role never authorizes a new command.
+    actor = account(db, actor.company_id, actor.id)
     if actor.role != 'MANAGER' or actor.active is False or actor.activation_hash:
         raise DomainError('FORBIDDEN', 'Active manager required')
     task = get_task(db, actor.company_id, task_id)
